@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'core/config/supabase_config.dart';
 import 'presentation/screens/home/home_screen.dart';
 
-void main() {
-  runApp(const MysteryLaneApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await SupabaseConfig.initialize();
+
+  runApp(const MyApp());
 }
 
-class MysteryLaneApp extends StatelessWidget {
-  const MysteryLaneApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -16,10 +21,6 @@ class MysteryLaneApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0284C7),
-          brightness: Brightness.light,
-        ),
       ),
       home: const HomeScreen(),
     );
