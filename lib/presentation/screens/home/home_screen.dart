@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../checkpoint/checkpoint_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -574,7 +575,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.assignment_outlined,
                 label: 'MISSIONS',
                 active: _selectedItem == 'Missions',
-                onTap: () => _showPressedMessage('Missions'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CheckpointScreen(),
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(width: 74),
