@@ -16,6 +16,7 @@ class CheckpointMissionScreen extends StatefulWidget {
   final String title;
   final String description;
   final int reward;
+  final String distance;
   final String duration;
   final int currentPoints;
 
