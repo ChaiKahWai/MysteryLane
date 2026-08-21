@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../checkpoint/checkpoint_screen.dart';
+import '../blindbox/Blindbox_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -34,106 +35,22 @@ class _HomeScreenState extends State<HomeScreen> {
       );
   }
 
-  void _openBlindBoxPreview() {
+  void _openBlindBoxScreen() {
     setState(() => _selectedItem = 'Blind Box');
 
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return SafeArea(
-          child: Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x1F0F172A),
-                  blurRadius: 25,
-                  offset: Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFCBD5E1),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-                const SizedBox(height: 22),
-                Container(
-                  width: 62,
-                  height: 62,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [skyBlue, teal],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.casino_rounded,
-                    color: Colors.white,
-                    size: 30,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'Blind Box',
-                  style: TextStyle(
-                    color: darkText,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 7),
-                const Text(
-                  'The button is working. Later, this can navigate to your Blind Box page.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 14,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: skyBlue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                    ),
-                    child: const Text(
-                      'CLOSE PREVIEW',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.4,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const BlindBoxPage(
+          userEp: 0,
+          blindBoxChances: 0,
+        ),
+      ),
+    ).then((_) {
+      if (mounted) {
+        setState(() => _selectedItem = 'Home');
+      }
+    });
   }
 
   @override
@@ -464,7 +381,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.transparent,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(16),
-                            onTap: _openBlindBoxPreview,
+                            onTap: _openBlindBoxScreen,
                             child: const Center(
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -567,7 +484,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.inventory_2_outlined,
                 label: 'BLIND BOX',
                 active: _selectedItem == 'Blind Box',
-                onTap: _openBlindBoxPreview,
+                onTap: _openBlindBoxScreen,
               ),
             ),
             Expanded(
