@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+
 import '../checkpoint/checkpoint_screen.dart';
 import '../blindbox/Blindbox_screen.dart';
+import '../profile/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,103 +31,187 @@ class _HomeScreenState extends State<HomeScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          content: Text('$feature pressed - UI only for now.'),
-          duration: const Duration(milliseconds: 1200),
+          content: Text(
+            '$feature pressed - UI only for now.',
+          ),
+          duration: const Duration(
+            milliseconds: 1200,
+          ),
         ),
       );
   }
 
-  void _openBlindBoxScreen() {
-    setState(() => _selectedItem = 'Blind Box');
+  
+  // ============================================================
+  // OPEN PROFILE SCREEN
+  // ============================================================
 
+  void _openProfile() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const BlindBoxPage(
-          userEp: 0,
-          blindBoxChances: 0,
-        ),
+        builder: (context) =>
+        const ProfileScreen(),
       ),
-    ).then((_) {
-      if (mounted) {
-        setState(() => _selectedItem = 'Home');
-      }
-    });
+    );
   }
+
+  // ============================================================
+  // BLIND BOX PREVIEW
+  // ============================================================
+  void _openBlindBoxScreen() {
+      setState(() => _selectedItem = 'Blind Box');
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const BlindBoxPage(
+            userEp: 0,
+            blindBoxChances: 0,
+          ),
+        ),
+      ).then((_) {
+        if (mounted) {
+          setState(() => _selectedItem = 'Home');
+        }
+      });
+    
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: pageBackground,
+      backgroundColor:
+      pageBackground,
       extendBody: true,
       appBar: _buildTopAppBar(),
+
       body: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 120),
+        child:
+        SingleChildScrollView(
+          padding:
+          const EdgeInsets.fromLTRB(
+            16,
+            18,
+            16,
+            120,
+          ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment:
+            CrossAxisAlignment.stretch,
             children: [
               _buildWelcomeRow(),
-              const SizedBox(height: 18),
+
+              const SizedBox(
+                height: 18,
+              ),
+
               _buildDiscoveryHero(),
             ],
           ),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: _buildHomeButton(),
-      bottomNavigationBar: _buildBottomBar(),
+
+      floatingActionButtonLocation:
+      FloatingActionButtonLocation
+          .centerDocked,
+
+      floatingActionButton:
+      _buildHomeButton(),
+
+      bottomNavigationBar:
+      _buildBottomBar(),
     );
   }
+
+  // ============================================================
+  // TOP APP BAR
+  // ============================================================
 
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
       toolbarHeight: 68,
       elevation: 0,
       scrolledUnderElevation: 2,
-      backgroundColor: Colors.white.withOpacity(0.97),
+      backgroundColor:
+      Colors.white.withOpacity(0.97),
       surfaceTintColor: Colors.white,
       titleSpacing: 16,
+
       title: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => _showPressedMessage('Home'),
+        borderRadius:
+        BorderRadius.circular(14),
+        onTap: () =>
+            _showPressedMessage('Home'),
+
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding:
+          const EdgeInsets.symmetric(
+            vertical: 6,
+          ),
+
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize:
+            MainAxisSize.min,
+
             children: [
               Container(
                 width: 38,
                 height: 38,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [skyBlue, teal],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+
+                decoration:
+                const BoxDecoration(
+                  shape:
+                  BoxShape.circle,
+
+                  gradient:
+                  LinearGradient(
+                    colors: [
+                      skyBlue,
+                      teal,
+                    ],
+                    begin:
+                    Alignment.topLeft,
+                    end:
+                    Alignment.bottomRight,
                   ),
+
                   boxShadow: [
                     BoxShadow(
-                      color: Color(0x300284C7),
+                      color:
+                      Color(
+                        0x300284C7,
+                      ),
                       blurRadius: 10,
-                      offset: Offset(0, 4),
+                      offset:
+                      Offset(0, 4),
                     ),
                   ],
                 ),
-                child: const Icon(
+
+                child:
+                const Icon(
                   Icons.explore_rounded,
                   color: Colors.white,
                   size: 23,
                 ),
               ),
-              const SizedBox(width: 10),
+
+              const SizedBox(
+                width: 10,
+              ),
+
               const Text(
                 'MYSTERYLANE',
+
                 style: TextStyle(
                   color: darkText,
                   fontSize: 20,
-                  fontWeight: FontWeight.w900,
+                  fontWeight:
+                  FontWeight.w900,
                   letterSpacing: -0.5,
                 ),
               ),
@@ -133,84 +219,176 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+
       actions: [
         _TopActionButton(
-          tooltip: 'Leaderboard',
-          icon: Icons.emoji_events_rounded,
-          background: const Color(0xFFFFFBEB),
-          foreground: const Color(0xFFD97706),
-          onTap: () => _showPressedMessage('Leaderboard'),
+          tooltip:
+          'Leaderboard',
+          icon:
+          Icons.emoji_events_rounded,
+          background:
+          const Color(
+            0xFFFFFBEB,
+          ),
+          foreground:
+          const Color(
+            0xFFD97706,
+          ),
+          onTap: () =>
+              _showPressedMessage(
+                'Leaderboard',
+              ),
         ),
-        const SizedBox(width: 6),
+
+        const SizedBox(
+          width: 6,
+        ),
+
         _TopActionButton(
           tooltip: 'Chat',
-          icon: Icons.chat_bubble_outline_rounded,
-          background: const Color(0xFFF0F9FF),
-          foreground: skyBlue,
-          onTap: () => _showPressedMessage('Chat'),
+          icon:
+          Icons
+              .chat_bubble_outline_rounded,
+          background:
+          const Color(
+            0xFFF0F9FF,
+          ),
+          foreground:
+          skyBlue,
+          onTap: () =>
+              _showPressedMessage(
+                'Chat',
+              ),
         ),
-        const SizedBox(width: 6),
+
+        const SizedBox(
+          width: 6,
+        ),
+
+        // ======================================================
+        // PROFILE PICTURE BUTTON
+        // ======================================================
+
         _ProfileButton(
-          onTap: () => _showPressedMessage('Profile'),
+          onTap: _openProfile,
         ),
-        const SizedBox(width: 12),
+
+        const SizedBox(
+          width: 12,
+        ),
       ],
-      bottom: const PreferredSize(
-        preferredSize: Size.fromHeight(1),
+
+      bottom:
+      const PreferredSize(
+        preferredSize:
+        Size.fromHeight(1),
         child: Divider(
           height: 1,
           thickness: 1,
-          color: Color(0xFFE2E8F0),
+          color:
+          Color(
+            0xFFE2E8F0,
+          ),
         ),
       ),
     );
   }
+
+  // ============================================================
+  // WELCOME ROW
+  // ============================================================
 
   Widget _buildWelcomeRow() {
     return Row(
       children: [
         Expanded(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment:
+            CrossAxisAlignment.start,
+
             children: [
               const Text(
                 'Ready for your next mystery?',
                 style: TextStyle(
-                  color: Color(0xFF64748B),
+                  color:
+                  Color(
+                    0xFF64748B,
+                  ),
                   fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                  fontWeight:
+                  FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 3),
+
+              const SizedBox(
+                height: 3,
+              ),
+
               const Text(
                 'Discover somewhere new',
+
                 style: TextStyle(
                   color: darkText,
                   fontSize: 20,
-                  fontWeight: FontWeight.w800,
+                  fontWeight:
+                  FontWeight.w800,
                 ),
               ),
             ],
           ),
         ),
+
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE0F2FE),
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: const Color(0xFFBAE6FD)),
+          padding:
+          const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 7,
           ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
+
+          decoration:
+          BoxDecoration(
+            color:
+            const Color(
+              0xFFE0F2FE,
+            ),
+
+            borderRadius:
+            BorderRadius.circular(
+              99,
+            ),
+
+            border:
+            Border.all(
+              color:
+              const Color(
+                0xFFBAE6FD,
+              ),
+            ),
+          ),
+
+          child:
+          const Row(
+            mainAxisSize:
+            MainAxisSize.min,
+
             children: [
-              Icon(Icons.auto_awesome_rounded, size: 15, color: skyBlue),
-              SizedBox(width: 5),
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 15,
+                color: skyBlue,
+              ),
+
+              SizedBox(
+                width: 5,
+              ),
+
               Text(
                 'EXPLORE',
                 style: TextStyle(
                   color: skyBlue,
                   fontSize: 10,
-                  fontWeight: FontWeight.w900,
+                  fontWeight:
+                  FontWeight.w900,
                   letterSpacing: 1.2,
                 ),
               ),
@@ -221,159 +399,386 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // DISCOVERY HERO
+  // ============================================================
+
   Widget _buildDiscoveryHero() {
     return Container(
       height: 470,
-      decoration: BoxDecoration(
+
+      decoration:
+      BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: const Color(0xFFBAE6FD)),
-        boxShadow: const [
+
+        borderRadius:
+        BorderRadius.circular(
+          26,
+        ),
+
+        border:
+        Border.all(
+          color:
+          const Color(
+            0xFFBAE6FD,
+          ),
+        ),
+
+        boxShadow:
+        const [
           BoxShadow(
-            color: Color(0x140F172A),
+            color:
+            Color(
+              0x140F172A,
+            ),
             blurRadius: 22,
-            offset: Offset(0, 9),
+            offset:
+            Offset(0, 9),
           ),
         ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        fit: StackFit.expand,
+
+      clipBehavior:
+      Clip.antiAlias,
+
+      child:
+      Stack(
+        fit:
+        StackFit.expand,
+
         children: [
           Image.network(
             'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80',
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
+
+            fit:
+            BoxFit.cover,
+
+            loadingBuilder:
+                (
+                context,
+                child,
+                loadingProgress,
+                ) {
+              if (loadingProgress ==
+                  null) {
+                return child;
+              }
+
               return const ColoredBox(
-                color: Color(0xFF0C4A6E),
-                child: Center(
-                  child: CircularProgressIndicator(color: Colors.white),
+                color:
+                Color(
+                  0xFF0C4A6E,
+                ),
+
+                child:
+                Center(
+                  child:
+                  CircularProgressIndicator(
+                    color:
+                    Colors.white,
+                  ),
                 ),
               );
             },
-            errorBuilder: (context, error, stackTrace) {
+
+            errorBuilder:
+                (
+                context,
+                error,
+                stackTrace,
+                ) {
               return const ColoredBox(
-                color: Color(0xFF0C4A6E),
-                child: Center(
-                  child: Icon(
-                    Icons.landscape_rounded,
+                color:
+                Color(
+                  0xFF0C4A6E,
+                ),
+
+                child:
+                Center(
+                  child:
+                  Icon(
+                    Icons
+                        .landscape_rounded,
                     size: 90,
-                    color: Color(0x66FFFFFF),
+                    color:
+                    Color(
+                      0x66FFFFFF,
+                    ),
                   ),
                 ),
               );
             },
           ),
+
           const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
+            decoration:
+            BoxDecoration(
+              gradient:
+              LinearGradient(
+                begin:
+                Alignment.topCenter,
+                end:
+                Alignment.bottomCenter,
+
                 colors: [
-                  Color(0x660F172A),
-                  Color(0x990C4A6E),
-                  Color(0xF20284C7),
+                  Color(
+                    0x660F172A,
+                  ),
+                  Color(
+                    0x990C4A6E,
+                  ),
+                  Color(
+                    0xF20284C7,
+                  ),
                 ],
-                stops: [0.0, 0.55, 1.0],
+
+                stops: [
+                  0.0,
+                  0.55,
+                  1.0,
+                ],
               ),
             ),
           ),
+
           Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
+                padding:
+                const EdgeInsets
+                    .fromLTRB(
+                  18,
+                  18,
+                  18,
+                  0,
+                ),
+
+                child:
+                Align(
+                  alignment:
+                  Alignment
+                      .centerLeft,
+
+                  child:
+                  Container(
+                    padding:
+                    const EdgeInsets
+                        .symmetric(
+                      horizontal:
+                      12,
+                      vertical:
+                      7,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.28),
-                      borderRadius: BorderRadius.circular(99),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.25),
+
+                    decoration:
+                    BoxDecoration(
+                      color:
+                      Colors.black
+                          .withOpacity(
+                        0.28,
+                      ),
+
+                      borderRadius:
+                      BorderRadius
+                          .circular(
+                        99,
+                      ),
+
+                      border:
+                      Border.all(
+                        color:
+                        Colors.white
+                            .withOpacity(
+                          0.25,
+                        ),
                       ),
                     ),
-                    child: const Text(
+
+                    child:
+                    const Text(
                       'FEATURED DISCOVERY  •  VOL. IV',
-                      style: TextStyle(
-                        color: Color(0xFFE0F2FE),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.7,
+
+                      style:
+                      TextStyle(
+                        color:
+                        Color(
+                          0xFFE0F2FE,
+                        ),
+                        fontSize:
+                        9,
+                        fontWeight:
+                        FontWeight.w800,
+                        letterSpacing:
+                        1.7,
                       ),
                     ),
                   ),
                 ),
               ),
+
               const Spacer(),
+
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
+                padding:
+                EdgeInsets.symmetric(
+                  horizontal:
+                  24,
+                ),
+
+                child:
+                Column(
                   children: [
                     Text(
                       'Destination\nDiscovery',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 35,
-                        height: 1.02,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -1.0,
+
+                      textAlign:
+                      TextAlign.center,
+
+                      style:
+                      TextStyle(
+                        color:
+                        Colors.white,
+                        fontSize:
+                        35,
+                        height:
+                        1.02,
+                        fontWeight:
+                        FontWeight.w900,
+                        letterSpacing:
+                        -1.0,
+
                         shadows: [
                           Shadow(
-                            color: Color(0x66000000),
-                            blurRadius: 12,
-                            offset: Offset(0, 3),
+                            color:
+                            Color(
+                              0x66000000,
+                            ),
+                            blurRadius:
+                            12,
+                            offset:
+                            Offset(
+                              0,
+                              3,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    SizedBox(height: 12),
+
+                    SizedBox(
+                      height:
+                      12,
+                    ),
+
                     Text(
                       'Open a mystery and discover an unexpected place waiting around you.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color(0xFFE0F2FE),
-                        fontSize: 14,
-                        height: 1.45,
-                        fontWeight: FontWeight.w500,
+
+                      textAlign:
+                      TextAlign.center,
+
+                      style:
+                      TextStyle(
+                        color:
+                        Color(
+                          0xFFE0F2FE,
+                        ),
+                        fontSize:
+                        14,
+                        height:
+                        1.45,
+                        fontWeight:
+                        FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 26),
+
+              const SizedBox(
+                height:
+                26,
+              ),
+
               Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.96),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(24),
+                width:
+                double.infinity,
+
+                padding:
+                const EdgeInsets
+                    .fromLTRB(
+                  18,
+                  18,
+                  18,
+                  20,
+                ),
+
+                decoration:
+                BoxDecoration(
+                  color:
+                  Colors.white
+                      .withOpacity(
+                    0.96,
+                  ),
+
+                  borderRadius:
+                  const BorderRadius
+                      .vertical(
+                    top:
+                    Radius.circular(
+                      24,
+                    ),
                   ),
                 ),
-                child: Column(
+
+                child:
+                Column(
                   children: [
                     SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [skyBlue, teal],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
+                      width:
+                      double.infinity,
+                      height:
+                      56,
+
+                      child:
+                      DecoratedBox(
+                        decoration:
+                        BoxDecoration(
+                          gradient:
+                          const LinearGradient(
+                            colors: [
+                              skyBlue,
+                              teal,
+                            ],
+
+                            begin:
+                            Alignment
+                                .centerLeft,
+
+                            end:
+                            Alignment
+                                .centerRight,
                           ),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: const [
+
+                          borderRadius:
+                          BorderRadius
+                              .circular(
+                            16,
+                          ),
+
+                          boxShadow:
+                          const [
                             BoxShadow(
-                              color: Color(0x3D0284C7),
-                              blurRadius: 13,
-                              offset: Offset(0, 6),
+                              color:
+                              Color(
+                                0x3D0284C7,
+                              ),
+                              blurRadius:
+                              13,
+                              offset:
+                              Offset(
+                                0,
+                                6,
+                              ),
                             ),
                           ],
                         ),
@@ -385,20 +790,60 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: const Center(
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
+
+                        child:
+                        Material(
+                          color:
+                          Colors.transparent,
+
+                          child:
+                          InkWell(
+                            borderRadius:
+                            BorderRadius
+                                .circular(
+                              16,
+                            ),
+
+                            onTap:
+                            _openBlindBoxPreview,
+
+                            child:
+                            const Center(
+                              child:
+                              Row(
+                                mainAxisSize:
+                                MainAxisSize.min,
+
                                 children: [
                                   Icon(
-                                    Icons.casino_rounded,
-                                    color: Color(0xFFFDE68A),
-                                    size: 23,
+                                    Icons
+                                        .casino_rounded,
+                                    color:
+                                    Color(
+                                      0xFFFDE68A,
+                                    ),
+                                    size:
+                                    23,
                                   ),
-                                  SizedBox(width: 10),
+
+                                  SizedBox(
+                                    width:
+                                    10,
+                                  ),
+
                                   Text(
                                     'EXPLORE BLIND BOX NOW',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.45,
+
+                                    style:
+                                    TextStyle(
+                                      color:
+                                      Colors.white,
+                                      fontSize:
+                                      12,
+                                      fontWeight:
+                                      FontWeight.w900,
+                                      letterSpacing:
+                                      1.45,
                                     ),
                                   ),
                                 ],
@@ -418,45 +863,122 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // HOME BUTTON
+  // ============================================================
+
   Widget _buildHomeButton() {
-    final bool active = _selectedItem == 'Home';
+    final bool active =
+        _selectedItem == 'Home';
 
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: () => _showPressedMessage('Home'),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: active ? 66 : 62,
-          height: active ? 66 : 62,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              colors: [skyBlue, teal],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+      padding:
+      const EdgeInsets.only(
+        top: 10,
+      ),
+
+      child:
+      InkWell(
+        customBorder:
+        const CircleBorder(),
+
+        onTap: () =>
+            _showPressedMessage(
+              'Home',
             ),
-            border: Border.all(color: Colors.white, width: 4),
-            boxShadow: const [
+
+        child:
+        AnimatedContainer(
+          duration:
+          const Duration(
+            milliseconds:
+            180,
+          ),
+
+          width:
+          active
+              ? 66
+              : 62,
+
+          height:
+          active
+              ? 66
+              : 62,
+
+          decoration:
+          BoxDecoration(
+            shape:
+            BoxShape.circle,
+
+            gradient:
+            const LinearGradient(
+              colors: [
+                skyBlue,
+                teal,
+              ],
+
+              begin:
+              Alignment.topLeft,
+
+              end:
+              Alignment.bottomRight,
+            ),
+
+            border:
+            Border.all(
+              color:
+              Colors.white,
+              width:
+              4,
+            ),
+
+            boxShadow:
+            const [
               BoxShadow(
-                color: Color(0x3D0284C7),
-                blurRadius: 16,
-                offset: Offset(0, 7),
+                color:
+                Color(
+                  0x3D0284C7,
+                ),
+                blurRadius:
+                16,
+                offset:
+                Offset(
+                  0,
+                  7,
+                ),
               ),
             ],
           ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+
+          child:
+          const Column(
+            mainAxisAlignment:
+            MainAxisAlignment.center,
+
             children: [
-              Icon(Icons.home_rounded, color: Color(0xFFFDE68A), size: 27),
+              Icon(
+                Icons.home_rounded,
+                color:
+                Color(
+                  0xFFFDE68A,
+                ),
+                size:
+                27,
+              ),
+
               Text(
                 'HOME',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
+
+                style:
+                TextStyle(
+                  color:
+                  Colors.white,
+                  fontSize:
+                  8,
+                  fontWeight:
+                  FontWeight.w900,
+                  letterSpacing:
+                  0.8,
                 ),
               ),
             ],
@@ -466,18 +988,45 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // BOTTOM NAVIGATION
+  // ============================================================
+
   Widget _buildBottomBar() {
     return BottomAppBar(
-      height: 78,
-      padding: EdgeInsets.zero,
-      color: Colors.white.withOpacity(0.98),
-      elevation: 18,
-      shadowColor: const Color(0x330284C7),
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8,
-      child: SafeArea(
-        top: false,
-        child: Row(
+      height:
+      78,
+
+      padding:
+      EdgeInsets.zero,
+
+      color:
+      Colors.white
+          .withOpacity(
+        0.98,
+      ),
+
+      elevation:
+      18,
+
+      shadowColor:
+      const Color(
+        0x330284C7,
+      ),
+
+      shape:
+      const CircularNotchedRectangle(),
+
+      notchMargin:
+      8,
+
+      child:
+      SafeArea(
+        top:
+        false,
+
+        child:
+        Row(
           children: [
             Expanded(
               child: _BottomItem(
@@ -487,36 +1036,76 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: _openBlindBoxScreen,
               ),
             ),
+
             Expanded(
-              child: _BottomItem(
-                icon: Icons.assignment_outlined,
-                label: 'MISSIONS',
-                active: _selectedItem == 'Missions',
+              child:
+              _BottomItem(
+                icon:
+                Icons.assignment_outlined,
+
+                label:
+                'MISSIONS',
+
+                active:
+                _selectedItem ==
+                    'Missions',
+
                 onTap: () {
                   Navigator.push(
                     context,
+
                     MaterialPageRoute(
-                      builder: (context) => const CheckpointScreen(),
+                      builder:
+                          (context) =>
+                      const CheckpointScreen(),
                     ),
                   );
                 },
               ),
             ),
-            const SizedBox(width: 74),
+
+            const SizedBox(
+              width:
+              74,
+            ),
+
             Expanded(
-              child: _BottomItem(
-                icon: Icons.map_outlined,
-                label: 'PLAN',
-                active: _selectedItem == 'Plan',
-                onTap: () => _showPressedMessage('Plan'),
+              child:
+              _BottomItem(
+                icon:
+                Icons.map_outlined,
+
+                label:
+                'PLAN',
+
+                active:
+                _selectedItem ==
+                    'Plan',
+
+                onTap: () =>
+                    _showPressedMessage(
+                      'Plan',
+                    ),
               ),
             ),
+
             Expanded(
-              child: _BottomItem(
-                icon: Icons.groups_2_outlined,
-                label: 'TEAMS',
-                active: _selectedItem == 'Teams',
-                onTap: () => _showPressedMessage('Teams'),
+              child:
+              _BottomItem(
+                icon:
+                Icons.groups_2_outlined,
+
+                label:
+                'TEAMS',
+
+                active:
+                _selectedItem ==
+                    'Teams',
+
+                onTap: () =>
+                    _showPressedMessage(
+                      'Teams',
+                    ),
               ),
             ),
           ],
@@ -526,7 +1115,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _TopActionButton extends StatelessWidget {
+// ============================================================
+// TOP ACTION BUTTON
+// ============================================================
+
+class _TopActionButton
+    extends StatelessWidget {
   final String tooltip;
   final IconData icon;
   final Color background;
@@ -542,54 +1136,136 @@ class _TopActionButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+      BuildContext context,
+      ) {
     return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(99),
-        onTap: onTap,
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: background,
-            shape: BoxShape.circle,
-            border: Border.all(color: foreground.withOpacity(0.20)),
+      message:
+      tooltip,
+
+      child:
+      InkWell(
+        borderRadius:
+        BorderRadius.circular(
+          99,
+        ),
+
+        onTap:
+        onTap,
+
+        child:
+        Container(
+          width:
+          38,
+          height:
+          38,
+
+          decoration:
+          BoxDecoration(
+            color:
+            background,
+
+            shape:
+            BoxShape.circle,
+
+            border:
+            Border.all(
+              color:
+              foreground.withOpacity(
+                0.20,
+              ),
+            ),
           ),
-          child: Icon(icon, color: foreground, size: 20),
+
+          child:
+          Icon(
+            icon,
+            color:
+            foreground,
+            size:
+            20,
+          ),
         ),
       ),
     );
   }
 }
 
-class _ProfileButton extends StatelessWidget {
+// ============================================================
+// PROFILE BUTTON
+// ============================================================
+
+class _ProfileButton
+    extends StatelessWidget {
   final VoidCallback onTap;
 
-  const _ProfileButton({required this.onTap});
+  const _ProfileButton({
+    required this.onTap,
+  });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+      BuildContext context,
+      ) {
     return Tooltip(
-      message: 'Profile',
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Container(
-          width: 38,
-          height: 38,
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFBAE6FD), width: 1.4),
+      message:
+      'Profile',
+
+      child:
+      InkWell(
+        customBorder:
+        const CircleBorder(),
+
+        onTap:
+        onTap,
+
+        child:
+        Container(
+          width:
+          38,
+          height:
+          38,
+
+          padding:
+          const EdgeInsets.all(
+            3,
           ),
-          child: const CircleAvatar(
-            backgroundColor: Color(0xFFE0F2FE),
-            child: Icon(
+
+          decoration:
+          BoxDecoration(
+            color:
+            Colors.white,
+
+            shape:
+            BoxShape.circle,
+
+            border:
+            Border.all(
+              color:
+              const Color(
+                0xFFBAE6FD,
+              ),
+              width:
+              1.4,
+            ),
+          ),
+
+          child:
+          const CircleAvatar(
+            backgroundColor:
+            Color(
+              0xFFE0F2FE,
+            ),
+
+            child:
+            Icon(
               Icons.person_rounded,
-              size: 20,
-              color: Color(0xFF0284C7),
+              size:
+              20,
+              color:
+              Color(
+                0xFF0284C7,
+              ),
             ),
           ),
         ),
@@ -598,7 +1274,12 @@ class _ProfileButton extends StatelessWidget {
   }
 }
 
-class _BottomItem extends StatelessWidget {
+// ============================================================
+// BOTTOM ITEM
+// ============================================================
+
+class _BottomItem
+    extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool active;
@@ -612,40 +1293,107 @@ class _BottomItem extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    const Color blue = Color(0xFF0284C7);
+  Widget build(
+      BuildContext context,
+      ) {
+    const Color blue =
+    Color(
+      0xFF0284C7,
+    );
 
     return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      onTap:
+      onTap,
+
+      child:
+      Padding(
+        padding:
+        const EdgeInsets.only(
+          top:
+          10,
+          bottom:
+          4,
+        ),
+
+        child:
+        Column(
+          mainAxisAlignment:
+          MainAxisAlignment.center,
+
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              width: 42,
-              height: 29,
-              decoration: BoxDecoration(
-                color: active ? blue : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
+              duration:
+              const Duration(
+                milliseconds:
+                160,
               ),
-              child: Icon(
+
+              width:
+              42,
+
+              height:
+              29,
+
+              decoration:
+              BoxDecoration(
+                color:
+                active
+                    ? blue
+                    : Colors.transparent,
+
+                borderRadius:
+                BorderRadius.circular(
+                  12,
+                ),
+              ),
+
+              child:
+              Icon(
                 icon,
-                size: 21,
-                color: active ? Colors.white : const Color(0xFF64748B),
+
+                size:
+                21,
+
+                color:
+                active
+                    ? Colors.white
+                    : const Color(
+                  0xFF64748B,
+                ),
               ),
             ),
-            const SizedBox(height: 3),
+
+            const SizedBox(
+              height:
+              3,
+            ),
+
             Text(
               label,
-              maxLines: 1,
-              overflow: TextOverflow.clip,
-              style: TextStyle(
-                color: active ? blue : const Color(0xFF64748B),
-                fontSize: 8,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.45,
+
+              maxLines:
+              1,
+
+              overflow:
+              TextOverflow.clip,
+
+              style:
+              TextStyle(
+                color:
+                active
+                    ? blue
+                    : const Color(
+                  0xFF64748B,
+                ),
+
+                fontSize:
+                8,
+
+                fontWeight:
+                FontWeight.w800,
+
+                letterSpacing:
+                0.45,
               ),
             ),
           ],
