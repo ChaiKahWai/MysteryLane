@@ -60,6 +60,8 @@ class GooglePlacesDataSource {
       'places.formattedAddress',
       'places.location',
       'places.primaryType',
+      'places.rating,',
+          'places.userRatingCount',
       if (includePhotos) 'places.photos',
     ].join(',');
 
@@ -150,6 +152,70 @@ class GooglePlacesDataSource {
   void dispose() {
     _client.close();
   }
+
+  Future<String?> getPhotoUrl({
+    required String? photoName,
+    int maxWidthPx = 1200,
+  }) async {
+    if (photoName == null || photoName.trim().isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.parse(
+      'https://places.googleapis.com/v1/$photoName/media'
+          '?maxWidthPx=$maxWidthPx'
+          '&skipHttpRedirect=true'
+          '&key=$apiKey',
+    );
+
+    final response = await _client.get(uri);
+
+    if (response.statusCode != 200) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+
+    return data['photoUri'] as String?;
+  }
+
+  Future<String?> getPlaceDescription({
+    required String placeId,
+  }) async {
+    if (placeId.trim().isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.parse(
+      'https://places.googleapis.com/v1/places/$placeId',
+    );
+
+    final response = await _client.get(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'editorialSummary',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw GooglePlacesException(
+        'Place Details failed: '
+            '${response.statusCode} ${response.body}',
+      );
+    }
+
+    final data =
+    jsonDecode(response.body) as Map<String, dynamic>;
+
+    final editorialSummary =
+    data['editorialSummary'] as Map<String, dynamic>?;
+
+    return editorialSummary?['text'] as String?;
+  }
+
+
 }
 
 class GooglePlacesException implements Exception {
@@ -169,4 +235,8 @@ class GooglePlacesException implements Exception {
 
     return 'GooglePlacesException($statusCode): $message';
   }
+
+
+
 }
+

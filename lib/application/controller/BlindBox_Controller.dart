@@ -2,76 +2,90 @@ import 'dart:math';
 
 import '../../data/datasources/google_place_data_source.dart';
 import '../../data/datasources/location_data_source.dart';
+import '../../data/datasources/supabase_datasource.dart';
 import '../../data/models/place_candidate.dart';
 
 /// ============================================================================
 /// APPLICATION / LOGIC LAYER
 /// ============================================================================
 ///
-/// Dependency direction used by the Blind Box module:
-///
 /// Presentation (BlindBox_Screen.dart)
 ///             ↓
 /// Application (this controller)
 ///             ↓
-/// Data (LocationDataSource + GooglePlacesDataSource)
+/// Data
+/// ├── LocationDataSource
+/// ├── GooglePlacesDataSource
+/// └── SupabaseDataSource
 ///
-/// The Presentation layer never calls GPS or Google Places directly.
-/// The Data layer never decides which place should win the Blind Box draw.
-/// All application rules stay here.
+/// This controller owns the Blind Box application rules:
+/// - radius validation
+/// - random destination selection
+/// - no-repeat filtering
+/// - photo + description preparation
+/// - destination persistence
+/// - DRAW / REDRAW history persistence
+/// - history loading for the UI
 class BlindBoxController {
   static const double minRadiusKm = 5;
   static const double maxRadiusKm = 20;
 
   final GooglePlacesDataSource _placesDataSource;
   final LocationDataSource _locationDataSource;
+  final SupabaseDataSource _supabaseDataSource;
   final Random _random;
 
   BlindBoxController({
     required GooglePlacesDataSource placesDataSource,
     required LocationDataSource locationDataSource,
+    required SupabaseDataSource supabaseDataSource,
     Random? random,
   })  : _placesDataSource = placesDataSource,
         _locationDataSource = locationDataSource,
+        _supabaseDataSource = supabaseDataSource,
         _random = random ?? Random();
 
-  /// Convenience factory for the current development stage.
-  ///
-  /// It keeps Data Layer construction outside the UI. The API key is read from
-  /// --dart-define instead of being hard-coded in BlindBox_Screen.dart.
-  ///
   /// Run with:
   /// flutter run --dart-define=GOOGLE_PLACES_API_KEY=YOUR_KEY
   factory BlindBoxController.production() {
     const apiKey = String.fromEnvironment('GOOGLE_PLACES_API_KEY');
 
+    if (apiKey.isEmpty) {
+      throw const BlindBoxException(
+        'Google Places API key is missing. '
+            'Run Flutter with '
+            '--dart-define=GOOGLE_PLACES_API_KEY=YOUR_KEY',
+      );
+    }
+
     return BlindBoxController(
-      placesDataSource: GooglePlacesDataSource(apiKey: apiKey),
+      placesDataSource: GooglePlacesDataSource(
+        apiKey: apiKey,
+      ),
       locationDataSource: LocationDataSource(),
+      supabaseDataSource: SupabaseDataSource(),
     );
   }
 
-  /// First Blind Box draw.
-  ///
-  /// [recentPlaceIds] will later come from Supabase history. For a new user it
-  /// should be an empty set, so every returned place is eligible.
+  /// ==========================================================================
+  /// FIRST DRAW
+  /// ==========================================================================
+
   Future<BlindBoxResult> drawBlindBox({
     required double radiusKm,
     Set<String> recentPlaceIds = const <String>{},
   }) async {
     _validateRadius(radiusKm);
 
-    // DATA LAYER: obtain current device GPS position.
-    final position = await _locationDataSource.getCurrentLocation();
+    final position =
+    await _locationDataSource.getCurrentLocation();
 
-    // DATA LAYER: request nearby Google Places candidates.
     final candidates = await _loadCandidates(
       latitude: position.latitude,
       longitude: position.longitude,
       radiusKm: radiusKm,
     );
 
-    // APPLICATION RULE: do not show a recently drawn place again.
     final available = candidates.where((place) {
       return !recentPlaceIds.contains(place.placeId);
     }).toList();
@@ -83,14 +97,19 @@ class BlindBoxController {
       );
     }
 
-    // APPLICATION RULE: randomly pick exactly one eligible destination.
-    return _toResult(_randomPick(available));
+    final selectedPlace = _randomPick(available);
+
+    return _prepareSelectedDestination(
+      selectedPlace: selectedPlace,
+      radiusKm: radiusKm,
+      drawType: 'DRAW',
+    );
   }
 
-  /// Redraw logic.
-  ///
-  /// The currently revealed destination is excluded, and any IDs supplied in
-  /// [recentPlaceIds] are also excluded.
+  /// ==========================================================================
+  /// REDRAW
+  /// ==========================================================================
+
   Future<BlindBoxResult> redrawBlindBox({
     required double radiusKm,
     required String currentPlaceId,
@@ -98,7 +117,8 @@ class BlindBoxController {
   }) async {
     _validateRadius(radiusKm);
 
-    final position = await _locationDataSource.getCurrentLocation();
+    final position =
+    await _locationDataSource.getCurrentLocation();
 
     final candidates = await _loadCandidates(
       latitude: position.latitude,
@@ -107,8 +127,11 @@ class BlindBoxController {
     );
 
     final available = candidates.where((place) {
-      final isCurrentPlace = place.placeId == currentPlaceId;
-      final wasDrawnBefore = recentPlaceIds.contains(place.placeId);
+      final isCurrentPlace =
+          place.placeId == currentPlaceId;
+      final wasDrawnBefore =
+      recentPlaceIds.contains(place.placeId);
+
       return !isCurrentPlace && !wasDrawnBefore;
     }).toList();
 
@@ -119,8 +142,183 @@ class BlindBoxController {
       );
     }
 
-    return _toResult(_randomPick(available));
+    final selectedPlace = _randomPick(available);
+
+    return _prepareSelectedDestination(
+      selectedPlace: selectedPlace,
+      radiusKm: radiusKm,
+      drawType: 'REDRAW',
+    );
   }
+
+  /// ==========================================================================
+  /// PREPARE THE SELECTED DESTINATION
+  /// ==========================================================================
+  ///
+  /// Only the one randomly selected place gets the extra photo/details calls.
+  /// This avoids making Place Details / Photo calls for all candidates.
+  Future<BlindBoxResult> _prepareSelectedDestination({
+    required PlaceCandidate selectedPlace,
+    required double radiusKm,
+    required String drawType,
+  }) async {
+    String? imageUrl;
+
+    try {
+      imageUrl = await _placesDataSource.getPhotoUrl(
+        photoName: selectedPlace.photoName,
+      );
+    } catch (error) {
+      debugLog(
+        '[BLIND BOX] Photo error: $error',
+      );
+    }
+
+    String? description;
+
+    try {
+      description =
+      await _placesDataSource.getPlaceDescription(
+        placeId: selectedPlace.placeId,
+      );
+    } catch (error) {
+      debugLog(
+        '[BLIND BOX] Place description error: $error',
+      );
+    }
+
+    if (description == null ||
+        description.trim().isEmpty) {
+      description =
+          _buildFallbackDescription(selectedPlace);
+    }
+
+    /// Save/update the destination master record first.
+    ///
+    /// saveBlindBoxDestination() must return destination_id.
+    final destinationId =
+    await _supabaseDataSource
+        .saveBlindBoxDestination(
+      place: selectedPlace,
+      imageUrl: imageUrl,
+      description: description,
+    );
+
+    /// Then create one history row for every draw/redraw.
+    await _supabaseDataSource.saveBlindBoxHistory(
+      destinationId: destinationId,
+      radiusKm: radiusKm,
+      drawType: drawType,
+    );
+
+    debugLog(
+      '[BLIND BOX] $drawType saved. '
+          'destinationId=$destinationId, '
+          'placeId=${selectedPlace.placeId}',
+    );
+
+    return _toResult(
+      selectedPlace,
+      destinationId: destinationId,
+      imageUrl: imageUrl,
+      description: description,
+    );
+  }
+
+  /// ==========================================================================
+  /// LOAD HISTORY
+  /// ==========================================================================
+  ///
+  /// SupabaseDataSource returns Data-layer maps.
+  /// The controller converts them to an Application-layer DTO so the
+  /// Presentation layer never needs to parse Supabase JSON.
+  Future<List<BlindBoxHistoryResult>>
+  loadBlindBoxHistory() async {
+    final rows =
+    await _supabaseDataSource.getBlindBoxHistory();
+
+    final history =
+    <BlindBoxHistoryResult>[];
+
+    for (final row in rows) {
+      final destinationRaw =
+      row['blind_box_destinations'];
+
+      if (destinationRaw is! Map) {
+        continue;
+      }
+
+      final destination =
+      Map<String, dynamic>.from(
+        destinationRaw,
+      );
+
+      final drawnAt =
+          DateTime.tryParse(
+            row['drawn_at']?.toString() ?? '',
+          ) ??
+              DateTime.now().toUtc();
+
+      history.add(
+        BlindBoxHistoryResult(
+          historyId:
+          row['history_id']?.toString() ?? '',
+          destinationId:
+          row['destination_id']?.toString() ?? '',
+          placeId:
+          destination['google_place_id']
+              ?.toString() ??
+              '',
+          name:
+          destination['name']?.toString() ??
+              'Unknown Destination',
+          description:
+          destination['description']?.toString(),
+          category:
+          destination['category']?.toString() ??
+              'unknown',
+          imageUrl:
+          destination['image_url']?.toString(),
+          latitude:
+          _toDouble(
+            destination['latitude'],
+          ) ??
+              0,
+          longitude:
+          _toDouble(
+            destination['longitude'],
+          ) ??
+              0,
+          address:
+          destination['address']?.toString() ??
+              '',
+          rating:
+          _toDouble(
+            destination['rating'],
+          ),
+          userRatingCount:
+          _toInt(
+            destination['user_rating_count'],
+          ),
+          radiusKm:
+          _toDouble(
+            row['radius_km'],
+          ) ??
+              0,
+          drawType:
+          row['draw_type']?.toString() ??
+              'DRAW',
+          drawnAt: drawnAt,
+        ),
+      );
+    }
+
+    return history;
+  }
+
+  /// ==========================================================================
+  /// LOAD NEARBY CANDIDATES
+  /// ==========================================================================
 
   Future<List<PlaceCandidate>> _loadCandidates({
     required double latitude,
@@ -129,7 +327,8 @@ class BlindBoxController {
   }) async {
     final radiusMeters = radiusKm * 1000;
 
-    final places = await _placesDataSource.searchNearby(
+    final places =
+    await _placesDataSource.searchNearby(
       latitude: latitude,
       longitude: longitude,
       radiusMeters: radiusMeters,
@@ -142,30 +341,42 @@ class BlindBoxController {
       includePhotos: true,
     );
 
-    // Google already restricts Nearby Search to the requested circle.
-    // We calculate distance again because the UI needs a readable distance and
-    // this also gives us a defensive application-side radius check.
     return places.map((place) {
-      final distanceKm = _calculateDistanceKm(
+      final distanceKm =
+      _calculateDistanceKm(
         latitude,
         longitude,
         place.latitude,
         place.longitude,
       );
 
-      return place.copyWith(distanceKm: distanceKm);
+      /// PlaceCandidate.copyWith() must preserve:
+      /// photoName, rating and userRatingCount.
+      return place.copyWith(
+        distanceKm: distanceKm,
+      );
     }).where((place) {
       final distance = place.distanceKm;
-      return distance != null && distance <= radiusKm;
+      return distance != null &&
+          distance <= radiusKm;
     }).toList();
   }
 
-  PlaceCandidate _randomPick(List<PlaceCandidate> places) {
-    return places[_random.nextInt(places.length)];
+  PlaceCandidate _randomPick(
+      List<PlaceCandidate> places,
+      ) {
+    return places[
+    _random.nextInt(places.length)];
   }
 
-  BlindBoxResult _toResult(PlaceCandidate place) {
+  BlindBoxResult _toResult(
+      PlaceCandidate place, {
+        required String destinationId,
+        String? imageUrl,
+        String? description,
+      }) {
     return BlindBoxResult(
+      destinationId: destinationId,
       placeId: place.placeId,
       name: place.name,
       formattedAddress: place.formattedAddress,
@@ -174,18 +385,51 @@ class BlindBoxController {
       primaryType: place.primaryType,
       distanceKm: place.distanceKm ?? 0,
       photoName: place.photoName,
+      imageUrl: imageUrl,
+      rating: place.rating,
+      userRatingCount: place.userRatingCount,
+      description: description,
     );
   }
 
+  String _buildFallbackDescription(
+      PlaceCandidate place,
+      ) {
+    final category =
+    _formatCategory(place.primaryType);
+
+    if (place.formattedAddress
+        .trim()
+        .isNotEmpty) {
+      return '${place.name} is a $category located at '
+          '${place.formattedAddress}.';
+    }
+
+    return '${place.name} is a $category waiting '
+        'for you to discover.';
+  }
+
+  String _formatCategory(String category) {
+    if (category.trim().isEmpty ||
+        category == 'unknown') {
+      return 'destination';
+    }
+
+    return category
+        .replaceAll('_', ' ')
+        .toLowerCase();
+  }
+
   void _validateRadius(double radiusKm) {
-    if (radiusKm < minRadiusKm || radiusKm > maxRadiusKm) {
+    if (radiusKm < minRadiusKm ||
+        radiusKm > maxRadiusKm) {
       throw const BlindBoxException(
-        'Blind Box radius must be between 5 KM and 20 KM.',
+        'Blind Box radius must be between '
+            '5 KM and 20 KM.',
       );
     }
   }
 
-  /// Haversine formula: straight-line distance between two GPS coordinates.
   double _calculateDistanceKm(
       double lat1,
       double lon1,
@@ -194,23 +438,57 @@ class BlindBoxController {
       ) {
     const earthRadiusKm = 6371.0;
 
-    final dLat = _degreesToRadians(lat2 - lat1);
-    final dLon = _degreesToRadians(lon2 - lon1);
-    final lat1Rad = _degreesToRadians(lat1);
-    final lat2Rad = _degreesToRadians(lat2);
+    final dLat =
+    _degreesToRadians(lat2 - lat1);
+    final dLon =
+    _degreesToRadians(lon2 - lon1);
+    final lat1Rad =
+    _degreesToRadians(lat1);
+    final lat2Rad =
+    _degreesToRadians(lat2);
 
-    final a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(lat1Rad) *
-            cos(lat2Rad) *
-            sin(dLon / 2) *
-            sin(dLon / 2);
+    final a =
+        sin(dLat / 2) * sin(dLat / 2) +
+            cos(lat1Rad) *
+                cos(lat2Rad) *
+                sin(dLon / 2) *
+                sin(dLon / 2);
 
-    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    final c = 2 *
+        atan2(
+          sqrt(a),
+          sqrt(1 - a),
+        );
+
     return earthRadiusKm * c;
   }
 
-  double _degreesToRadians(double degrees) {
+  double _degreesToRadians(
+      double degrees,
+      ) {
     return degrees * pi / 180;
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+      value.toString(),
+    );
+  }
+
+  int? _toInt(dynamic value) {
+    if (value == null) return null;
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+      value.toString(),
+    );
   }
 
   void dispose() {
@@ -218,11 +496,16 @@ class BlindBoxController {
   }
 }
 
-/// Application-layer result DTO.
-///
-/// This prevents BlindBox_Screen.dart from importing PlaceCandidate from the
-/// Data layer. The UI only knows this Logic/Application-layer object.
+/// Simple logger kept here to avoid importing Flutter into the controller.
+/// Replace with your project logger later if desired.
+void debugLog(String message) {
+  // ignore: avoid_print
+  print(message);
+}
+
+/// Application-layer result returned after DRAW / REDRAW.
 class BlindBoxResult {
+  final String destinationId;
   final String placeId;
   final String name;
   final String formattedAddress;
@@ -231,8 +514,13 @@ class BlindBoxResult {
   final String primaryType;
   final double distanceKm;
   final String? photoName;
+  final String? imageUrl;
+  final double? rating;
+  final int? userRatingCount;
+  final String? description;
 
   const BlindBoxResult({
+    required this.destinationId,
     required this.placeId,
     required this.name,
     required this.formattedAddress,
@@ -241,6 +529,47 @@ class BlindBoxResult {
     required this.primaryType,
     required this.distanceKm,
     this.photoName,
+    this.imageUrl,
+    this.rating,
+    this.userRatingCount,
+    this.description,
+  });
+}
+
+/// Application-layer DTO used by Draw History.
+class BlindBoxHistoryResult {
+  final String historyId;
+  final String destinationId;
+  final String placeId;
+  final String name;
+  final String? description;
+  final String category;
+  final String? imageUrl;
+  final double latitude;
+  final double longitude;
+  final String address;
+  final double? rating;
+  final int? userRatingCount;
+  final double radiusKm;
+  final String drawType;
+  final DateTime drawnAt;
+
+  const BlindBoxHistoryResult({
+    required this.historyId,
+    required this.destinationId,
+    required this.placeId,
+    required this.name,
+    required this.description,
+    required this.category,
+    required this.imageUrl,
+    required this.latitude,
+    required this.longitude,
+    required this.address,
+    required this.rating,
+    required this.userRatingCount,
+    required this.radiusKm,
+    required this.drawType,
+    required this.drawnAt,
   });
 }
 

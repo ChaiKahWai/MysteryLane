@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../application/controller/BlindBox_Controller.dart';
 import '../home/home_screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
+import 'package:flutter/services.dart';
 //import '../plan/plan_screen.dart';
-import '../group/group_screen.dart';
+//import '../group/group_screen.dart';
 
 enum MysteryLaneTab {
   blindBox,
@@ -22,6 +23,8 @@ class BlindBoxDestinationUi {
   final String difficulty;
   final String imageUrl;
   final String locationName;
+  final double? rating;
+  final int? userRatingCount;
 
   const BlindBoxDestinationUi({
     required this.id,
@@ -32,12 +35,15 @@ class BlindBoxDestinationUi {
     required this.difficulty,
     required this.imageUrl,
     required this.locationName,
+    required this.rating,
+    required this.userRatingCount
   });
 }
 
 class BlindBoxHistoryUi extends BlindBoxDestinationUi {
   final String drawnAtDate;
   final String drawnAtTime;
+
 
   const BlindBoxHistoryUi({
     required super.id,
@@ -48,6 +54,8 @@ class BlindBoxHistoryUi extends BlindBoxDestinationUi {
     required super.difficulty,
     required super.imageUrl,
     required super.locationName,
+    required super.rating,
+    required super.userRatingCount,
     required this.drawnAtDate,
     required this.drawnAtTime,
   });
@@ -108,8 +116,10 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
   bool _showResult = false;
   bool _historyTab = false;
   bool _isDrawing = false;
+  bool _isLoadingHistory = false;
   double _radiusKm = 12;
   BlindBoxDestinationUi? _currentDestination;
+  List<BlindBoxHistoryUi> _history = [];
 
   TextStyle get _heading => const TextStyle(
     color: _slate900,
@@ -126,6 +136,13 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     _controller = widget.controller ?? BlindBoxController.production();
     _currentDestination = widget.currentDestination;
     _showResult = _currentDestination != null;
+    _history = List<BlindBoxHistoryUi>.from(widget.history);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadBlindBoxHistory();
+      }
+    });
   }
 
   @override
@@ -152,7 +169,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     setState(() => _isDrawing = true);
 
     try {
-      final recentIds = widget.history.map((item) => item.id).toSet();
+      final recentIds = _history.map((item) => item.id).toSet();
 
       final result = await _controller.drawBlindBox(
         radiusKm: _radiusKm,
@@ -165,6 +182,8 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
         _currentDestination = _mapResultToUi(result);
         _showResult = true;
       });
+
+      await _loadBlindBoxHistory();
     } catch (error) {
       if (!mounted) return;
       _showError(error);
@@ -182,7 +201,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     setState(() => _isDrawing = true);
 
     try {
-      final recentIds = widget.history.map((item) => item.id).toSet();
+      final recentIds = _history.map((item) => item.id).toSet();
 
       final result = await _controller.redrawBlindBox(
         radiusKm: _radiusKm,
@@ -196,6 +215,8 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
         _currentDestination = _mapResultToUi(result);
         _showResult = true;
       });
+
+      await _loadBlindBoxHistory();
     } catch (error) {
       if (!mounted) return;
       _showError(error);
@@ -206,21 +227,98 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     }
   }
 
+  Future<void> _loadBlindBoxHistory({
+    bool showError = false,
+  }) async {
+    if (_isLoadingHistory) return;
+
+    if (mounted) {
+      setState(() => _isLoadingHistory = true);
+    }
+
+    try {
+      final results = await _controller.loadBlindBoxHistory();
+
+      debugPrint(
+        '[BLIND BOX UI] History received: ${results.length}',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _history = results
+            .map(_mapHistoryResultToUi)
+            .toList(growable: false);
+      });
+    } catch (error) {
+      debugPrint(
+        '[BLIND BOX UI] History load error: $error',
+      );
+
+      if (showError && mounted) {
+        _showError(error);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingHistory = false);
+      }
+    }
+  }
+
+  BlindBoxHistoryUi _mapHistoryResultToUi(
+      BlindBoxHistoryResult result,
+      ) {
+    final localTime = result.drawnAt.toLocal();
+
+    return BlindBoxHistoryUi(
+      id: result.placeId,
+      title: result.name,
+      tag: _formatPlaceType(result.category),
+      distance: '${result.radiusKm.toStringAsFixed(0)} km radius',
+      lore: result.description?.trim().isNotEmpty == true
+          ? result.description!
+          : 'A mystery destination is waiting for you to explore.',
+      difficulty: result.drawType == 'REDRAW'
+          ? 'Redrawn destination'
+          : 'Explore this destination',
+      imageUrl: result.imageUrl ?? '',
+      locationName: result.address.trim().isNotEmpty
+          ? result.address
+          : '${result.latitude.toStringAsFixed(5)}, '
+          '${result.longitude.toStringAsFixed(5)}',
+      rating: result.rating,
+      userRatingCount: result.userRatingCount,
+      drawnAtDate: _formatHistoryDate(localTime),
+      drawnAtTime: _formatHistoryTime(localTime),
+    );
+  }
+
+  String _formatHistoryDate(DateTime dateTime) {
+    final day = dateTime.day.toString().padLeft(2, '0');
+    final month = dateTime.month.toString().padLeft(2, '0');
+    return '$day/$month/${dateTime.year}';
+  }
+
+  String _formatHistoryTime(DateTime dateTime) {
+    return MaterialLocalizations.of(context).formatTimeOfDay(
+      TimeOfDay.fromDateTime(dateTime),
+    );
+  }
+
   BlindBoxDestinationUi _mapResultToUi(BlindBoxResult result) {
     return BlindBoxDestinationUi(
       id: result.placeId,
       title: result.name,
       tag: _formatPlaceType(result.primaryType),
       distance: '${result.distanceKm.toStringAsFixed(1)} km',
-      // Google Nearby Search currently provides the real address.
-      // Your own description/lore can later come from Supabase.
-      lore: result.formattedAddress.isEmpty
-          ? 'A mystery destination is waiting for you to explore.'
-          : result.formattedAddress,
+      lore:
+      result.description?.trim().isNotEmpty == true
+          ? result.description!
+          : 'A mystery destination is waiting for you to explore.',
       difficulty: 'Explore this destination',
-      // Photo URL is intentionally empty at this step.
-      // Place Photos should be added in the Data Layer next.
-      imageUrl: '',
+      imageUrl: result.imageUrl ?? '',
+      rating: result.rating,
+      userRatingCount: result.userRatingCount,
       locationName: result.formattedAddress.isEmpty
           ? '${result.latitude.toStringAsFixed(5)}, ${result.longitude.toStringAsFixed(5)}'
           : result.formattedAddress,
@@ -246,6 +344,25 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
         SnackBar(
           behavior: SnackBarBehavior.floating,
           content: Text(error.toString()),
+        ),
+      );
+  }
+
+  Future<void> _copyAddress(String address) async {
+    if (address.trim().isEmpty) return;
+
+    await Clipboard.setData(
+      ClipboardData(text: address),
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Address copied to clipboard'),
         ),
       );
   }
@@ -315,11 +432,11 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
           );
         break;
 
-      //case MysteryLaneTab.teams:
-      //  _replaceWith(const GroupScreen());
-      //  break;
+    //case MysteryLaneTab.teams:
+    //  _replaceWith(const GroupScreen());
+    //  break;
       case MysteryLaneTab.teams:
-        // TODO: Handle this case.
+      // TODO: Handle this case.
         throw UnimplementedError();
     }
   }
@@ -407,8 +524,13 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       borderRadius: BorderRadius.circular(20),
       onTap: _showChanceDialog,
       child: Container(
-        height: 62,
-        padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+        constraints: const BoxConstraints(
+          minHeight: 62,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 8,
+        ),
         decoration: BoxDecoration(
           color: const Color(0xFFFFFBEB),
           borderRadius: BorderRadius.circular(20),
@@ -419,6 +541,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
         ),
         child: Row(
           children: [
+            // Gift icon
             Container(
               width: 38,
               height: 38,
@@ -432,7 +555,10 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                 color: Color(0xFFD97706),
               ),
             ),
-            const SizedBox(width: 10),
+
+            const SizedBox(width: 8),
+
+            // Middle text
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -440,17 +566,21 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                 children: [
                   Text(
                     'Blind Box Chances',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: _bodyStyle.copyWith(
-                      fontSize: 12.5,
+                      fontSize: 12,
                       color: const Color(0xFF0F172A),
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     '${widget.blindBoxChances} of 10 remaining',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: _bodyStyle.copyWith(
-                      fontSize: 10.5,
+                      fontSize: 9.5,
                       color: const Color(0xFF92400E),
                       fontWeight: FontWeight.w600,
                     ),
@@ -458,43 +588,53 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            Container(
-              constraints: const BoxConstraints(minWidth: 84),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEA7900),
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x22EA7900),
-                    blurRadius: 5,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '+ GET',
-                    style: _bodyStyle.copyWith(
-                      fontSize: 10,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.6,
+
+            const SizedBox(width: 6),
+
+            // GET button
+            Flexible(
+              flex: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEA7900),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x22EA7900),
+                      blurRadius: 5,
+                      offset: Offset(0, 2),
                     ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    '200 EP',
-                    style: _bodyStyle.copyWith(
-                      fontSize: 9,
-                      color: const Color(0xFFFFF1C2),
-                      fontWeight: FontWeight.w800,
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '+ GET',
+                      maxLines: 1,
+                      style: _bodyStyle.copyWith(
+                        fontSize: 9.5,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.4,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 1),
+                    Text(
+                      '200 EP',
+                      maxLines: 1,
+                      style: _bodyStyle.copyWith(
+                        fontSize: 8.5,
+                        color: const Color(0xFFFFF1C2),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -528,8 +668,11 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
               selected: _historyTab,
               icon: Icons.history_rounded,
               label: 'Draw History',
-              badge: widget.history.length,
-              onTap: () => setState(() => _historyTab = true),
+              badge: _history.length,
+              onTap: () {
+                setState(() => _historyTab = true);
+                _loadBlindBoxHistory(showError: true);
+              },
             ),
           ),
         ],
@@ -702,7 +845,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text(
-                  '${widget.history.length} RECORDED\nDRAWS',
+                  '${_history.length} RECORDED\nDRAWS',
                   style: _bodyStyle.copyWith(
                     color: _slate500,
                     fontSize: 9.5,
@@ -716,18 +859,37 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
           ),
         ),
         const SizedBox(height: 20),
-        if (widget.history.isEmpty)
-          _buildEmptyHistory()
-        else
-          ...widget.history.map(
-                (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 13),
-              child: _HistoryCard(
-                item: item,
-                onTap: () => _showHistoryDialog(item),
+        if (_isLoadingHistory && _history.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(
+              child: CircularProgressIndicator(
+                color: _primary,
+                strokeWidth: 2.5,
               ),
             ),
-          ),
+          )
+        else if (_history.isEmpty)
+          _buildEmptyHistory()
+        else ...[
+            if (_isLoadingHistory)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 14),
+                child: LinearProgressIndicator(
+                  color: _primary,
+                  minHeight: 2,
+                ),
+              ),
+            ..._history.map(
+                  (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 13),
+                child: _HistoryCard(
+                  item: item,
+                  onTap: () => _showHistoryDialog(item),
+                ),
+              ),
+            ),
+          ],
       ],
     );
   }
@@ -786,7 +948,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                 child: Text(
                   'Destination Revealed',
                   textAlign: TextAlign.center,
-                  style: _heading.copyWith(fontSize: 24),
+                  style: _heading.copyWith(fontSize: 20),
                 ),
               ),
             ),
@@ -834,8 +996,11 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                     ),
                     const SizedBox(height: 19),
                     const Divider(height: 1, color: Color(0xFFE8EEF4)),
-                    const SizedBox(height: 9),
+                    const SizedBox(height: 14),
+
+                    // Explore this destination
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Icon(
                           Icons.explore_outlined,
@@ -848,32 +1013,88 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                             destination.difficulty,
                             style: _bodyStyle.copyWith(
                               color: _slate900,
-                              fontSize: 11.5,
+                              fontSize: 11.8,
                               height: 1.25,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        const Icon(
-                          Icons.location_on,
-                          color: Color(0xFFEC4899),
-                          size: 16,
-                        ),
-                        const SizedBox(width: 5),
-                        Flexible(
-                          child: Text(
-                            destination.locationName,
-                            textAlign: TextAlign.right,
-                            style: _bodyStyle.copyWith(
-                              color: _primary,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
+
+                    const SizedBox(height: 12),
+
+                    // Address + working copy button
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.location_on,
+                            color: Color(0xFFEC4899),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Address',
+                                  style: _bodyStyle.copyWith(
+                                    color: _slate500,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  destination.locationName,
+                                  style: _bodyStyle.copyWith(
+                                    color: _primary,
+                                    fontSize: 11.5,
+                                    height: 1.35,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Material(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => _copyAddress(
+                                destination.locationName,
+                              ),
+                              child: const Padding(
+                                padding: EdgeInsets.all(9),
+                                child: Icon(
+                                  Icons.copy_rounded,
+                                  color: _primary,
+                                  size: 17,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                     const SizedBox(height: 27),
                     _SolidPrimaryButton(
                       icon: Icons.navigation_rounded,
@@ -885,7 +1106,9 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                       icon: Icons.refresh_rounded,
                       label: 'REDRAW',
                       trailingLabel: '200 EP',
-                      onTap: _isDrawing ? () {} : _redrawBlindBox,
+                      isLoading: _isDrawing,
+                      loadingLabel: 'SEARCHING NEW LOCATION...',
+                      onTap: _redrawBlindBox,
                     ),
                   ],
                 ),
@@ -1057,8 +1280,15 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                       icon: Icons.navigation_rounded,
                       label: 'START CHECKPOINT MISSION',
                       onTap: () {
+                        // 1. Close history detail dialog
                         Navigator.of(dialogContext).pop();
-                        widget.onStartMission?.call(item);
+
+                        // 2. Navigate to Checkpoint page
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CheckpointScreen(),
+                          ),
+                        );
                       },
                     ),
                   ],
@@ -1808,12 +2038,16 @@ class _OutlineActionButton extends StatelessWidget {
   final String label;
   final String trailingLabel;
   final VoidCallback onTap;
+  final bool isLoading;
+  final String? loadingLabel;
 
   const _OutlineActionButton({
     required this.icon,
     required this.label,
     required this.trailingLabel,
     required this.onTap,
+    this.isLoading = false,
+    this.loadingLabel,
   });
 
   @override
@@ -1822,7 +2056,7 @@ class _OutlineActionButton extends StatelessWidget {
       width: double.infinity,
       height: 48,
       child: OutlinedButton(
-        onPressed: onTap,
+        onPressed: isLoading ? null : onTap,
         style: OutlinedButton.styleFrom(
           foregroundColor: const Color(0xFF0F172A),
           side: const BorderSide(color: Color(0xFFD8E1EA)),
@@ -1830,7 +2064,34 @@ class _OutlineActionButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(15),
           ),
         ),
-        child: Row(
+        child: isLoading
+            ? Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.2,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  Color(0xFF0284C7),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                loadingLabel ?? 'LOADING...',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11.5,
+                ),
+              ),
+            ),
+          ],
+        )
+            : Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: const Color(0xFF0284C7), size: 18),
@@ -1844,7 +2105,10 @@ class _OutlineActionButton extends StatelessWidget {
             ),
             const SizedBox(width: 9),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 7,
+                vertical: 4,
+              ),
               decoration: BoxDecoration(
                 color: const Color(0xFFE0F2FE),
                 borderRadius: BorderRadius.circular(10),
@@ -1864,7 +2128,6 @@ class _OutlineActionButton extends StatelessWidget {
     );
   }
 }
-
 class _DestinationHero extends StatelessWidget {
   final BlindBoxDestinationUi destination;
 
@@ -1879,10 +2142,17 @@ class _DestinationHero extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
+          // ================================================================
+          // DESTINATION IMAGE
+          // ================================================================
           _NetworkImage(
             url: destination.imageUrl,
             fit: BoxFit.cover,
           ),
+
+          // ================================================================
+          // DARK GRADIENT
+          // ================================================================
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -1897,15 +2167,81 @@ class _DestinationHero extends StatelessWidget {
               ),
             ),
           ),
+
+          // ================================================================
+          // TOP LEFT - GOOGLE RATING
+          // ================================================================
+          if (destination.rating != null)
+            Positioned(
+              top: 14,
+              left: 14,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xEEFFF7ED),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: const Color(0xFFFCD34D),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x33000000),
+                      blurRadius: 5,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.star_rounded,
+                      color: Color(0xFFF59E0B),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+
+                    Text(
+                      destination.rating!.toStringAsFixed(1),
+                      style: const TextStyle(
+                        color: Color(0xFF7C2D12),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+
+                  ],
+                ),
+              ),
+            ),
+
+          // ================================================================
+          // TOP RIGHT - MYSTERY SPOT
+          // ================================================================
           Positioned(
             top: 14,
             right: 14,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 7,
+              ),
               decoration: BoxDecoration(
                 color: const Color(0xDD17243B),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0x997C6A2B)),
+                border: Border.all(
+                  color: const Color(0x997C6A2B),
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 5,
+                    offset: Offset(0, 2),
+                  ),
+                ],
               ),
               child: const Text(
                 '✦ Mystery Spot ✦',
@@ -1917,6 +2253,11 @@ class _DestinationHero extends StatelessWidget {
               ),
             ),
           ),
+
+          // ================================================================
+          // BOTTOM CONTENT
+          // CATEGORY + TITLE + DISTANCE
+          // ================================================================
           Positioned(
             left: 18,
             right: 18,
@@ -1924,10 +2265,14 @@ class _DestinationHero extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                // ----------------------------------------------------------
+                // CATEGORY + DESTINATION NAME
+                // ----------------------------------------------------------
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Category
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -1936,9 +2281,18 @@ class _DestinationHero extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(9),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x26000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Text(
                           destination.tag,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Color(0xFF1E293B),
                             fontSize: 10,
@@ -1946,38 +2300,43 @@ class _DestinationHero extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 5),
-                      Text(
-                        destination.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          height: 1.0,
-                          shadows: [
-                            Shadow(
-                              color: Color(0x66000000),
-                              blurRadius: 2,
-                              offset: Offset(0, 1),
-                            ),
-                          ],
-                        ),
+
+                      const SizedBox(height: 6),
+
+                      // Destination Name
+                      _AutoFitDestinationTitle(
+                        text: destination.title,
                       ),
                     ],
                   ),
                 ),
+
                 const SizedBox(width: 10),
+
+                // ----------------------------------------------------------
+                // DISTANCE
+                // ----------------------------------------------------------
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
+                    horizontal: 11,
                     vertical: 9,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0284C7),
+                    color: const Color(0xE60284C7),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFF7DD3FC)),
+                    border: Border.all(
+                      color: const Color(0xFF7DD3FC),
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
                         Icons.location_on_outlined,
@@ -2001,6 +2360,68 @@ class _DestinationHero extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+}
+
+class _AutoFitDestinationTitle extends StatelessWidget {
+  final String text;
+
+  const _AutoFitDestinationTitle({
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const maxFontSize = 28.0;
+        const minFontSize = 16.0;
+        const maxLines = 3;
+
+        double fontSize = maxFontSize;
+
+        while (fontSize > minFontSize) {
+          final painter = TextPainter(
+            text: TextSpan(
+              text: text,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w900,
+                height: 1.02,
+              ),
+            ),
+            maxLines: maxLines,
+            textDirection: TextDirection.ltr,
+          )..layout(maxWidth: constraints.maxWidth);
+
+          if (!painter.didExceedMaxLines) {
+            break;
+          }
+
+          fontSize -= 1;
+        }
+
+        return Text(
+          text,
+          maxLines: maxLines,
+          overflow: TextOverflow.clip,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: fontSize,
+            fontWeight: FontWeight.w900,
+            height: 1.02,
+            shadows: const [
+              Shadow(
+                color: Color(0x99000000),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

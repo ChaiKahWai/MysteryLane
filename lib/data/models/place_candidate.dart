@@ -5,6 +5,8 @@ class PlaceCandidate {
   final double latitude;
   final double longitude;
   final String primaryType;
+  final double? rating;
+  final int? userRatingCount;
 
   /// Google Places photo resource name.
   ///
@@ -25,6 +27,8 @@ class PlaceCandidate {
     required this.latitude,
     required this.longitude,
     required this.primaryType,
+    required this.rating,
+    required this.userRatingCount,
     this.photoName,
     this.distanceKm,
   });
@@ -56,6 +60,11 @@ class PlaceCandidate {
       longitude: ((location['longitude'] as num?) ?? 0).toDouble(),
       primaryType: (json['primaryType'] as String?) ?? 'unknown',
       photoName: firstPhotoName,
+      rating:
+      (json['rating'] as num?)?.toDouble(),
+
+      userRatingCount:
+      (json['userRatingCount'] as num?)?.toInt(),
     );
   }
 
@@ -78,6 +87,8 @@ class PlaceCandidate {
       primaryType: primaryType ?? this.primaryType,
       photoName: photoName ?? this.photoName,
       distanceKm: distanceKm ?? this.distanceKm,
+      rating: rating,
+      userRatingCount: userRatingCount,
     );
   }
 
