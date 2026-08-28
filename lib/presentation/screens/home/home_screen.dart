@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/config/supabase_config.dart';
+
 import '../checkpoint/checkpoint_screen.dart';
 import '../profile/profile_screen.dart';
+import '../profile/leaderboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,6 +20,51 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color pageBackground = Color(0xFFF8FAFC);
 
   String _selectedItem = 'Home';
+
+  String? _headerProfilePictureUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHeaderProfile();
+  }
+
+  Future<void> _loadHeaderProfile() async {
+    try {
+      final user = SupabaseConfig.client.auth.currentUser;
+
+      if (user == null) {
+        if (mounted) {
+          setState(() {
+            _headerProfilePictureUrl = null;
+          });
+        }
+        return;
+      }
+
+      final profile = await SupabaseConfig.client
+          .from('profiles')
+          .select('profile_picture_url')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (!mounted) return;
+
+      final picture =
+      profile?['profile_picture_url']?.toString().trim();
+
+      setState(() {
+        _headerProfilePictureUrl =
+        picture != null && picture.isNotEmpty
+            ? picture
+            : null;
+      });
+    } catch (error) {
+      debugPrint(
+        'HOME HEADER PROFILE PHOTO ERROR: $error',
+      );
+    }
+  }
 
   void _showPressedMessage(String feature) {
     setState(() => _selectedItem = feature);
@@ -44,12 +92,30 @@ class _HomeScreenState extends State<HomeScreen> {
   // OPEN PROFILE SCREEN
   // ============================================================
 
-  void _openProfile() {
-    Navigator.push(
+  Future<void> _openProfile() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) =>
         const ProfileScreen(),
+      ),
+    );
+
+    // Reload after returning from ProfileScreen so a newly
+    // changed profile picture is shown immediately.
+    await _loadHeaderProfile();
+  }
+
+  // ============================================================
+  // OPEN LEADERBOARD SCREEN
+  // ============================================================
+
+  void _openLeaderboard() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+        const LeaderboardScreen(),
       ),
     );
   }
@@ -363,10 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const Color(
             0xFFD97706,
           ),
-          onTap: () =>
-              _showPressedMessage(
-                'Leaderboard',
-              ),
+          onTap: _openLeaderboard,
         ),
 
         const SizedBox(
@@ -400,6 +463,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _ProfileButton(
           onTap: _openProfile,
+          imageUrl: _headerProfilePictureUrl,
         ),
 
         const SizedBox(
@@ -1328,75 +1392,64 @@ class _TopActionButton
 class _ProfileButton
     extends StatelessWidget {
   final VoidCallback onTap;
+  final String? imageUrl;
 
   const _ProfileButton({
     required this.onTap,
+    required this.imageUrl,
   });
 
   @override
   Widget build(
       BuildContext context,
       ) {
-    return Tooltip(
-      message:
-      'Profile',
+    final String? cleanUrl =
+    imageUrl?.trim();
 
-      child:
-      InkWell(
+    final ImageProvider? provider =
+    cleanUrl != null &&
+        cleanUrl.isNotEmpty
+        ? NetworkImage(cleanUrl)
+        : null;
+
+    return Tooltip(
+      message: 'Profile',
+      child: InkWell(
         customBorder:
         const CircleBorder(),
-
-        onTap:
-        onTap,
-
-        child:
-        Container(
-          width:
-          38,
-          height:
-          38,
-
+        onTap: onTap,
+        child: Container(
+          width: 38,
+          height: 38,
           padding:
-          const EdgeInsets.all(
-            3,
-          ),
-
-          decoration:
-          BoxDecoration(
-            color:
-            Colors.white,
-
-            shape:
-            BoxShape.circle,
-
-            border:
-            Border.all(
+          const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(
               color:
               const Color(
                 0xFFBAE6FD,
               ),
-              width:
-              1.4,
+              width: 1.4,
             ),
           ),
-
-          child:
-          const CircleAvatar(
+          child: CircleAvatar(
             backgroundColor:
-            Color(
+            const Color(
               0xFFE0F2FE,
             ),
-
-            child:
-            Icon(
+            backgroundImage:
+            provider,
+            child: provider == null
+                ? const Icon(
               Icons.person_rounded,
-              size:
-              20,
-              color:
-              Color(
+              size: 20,
+              color: Color(
                 0xFF0284C7,
               ),
-            ),
+            )
+                : null,
           ),
         ),
       ),
