@@ -30,6 +30,9 @@ class BlindBoxController {
   static const double minRadiusKm = 5;
   static const double maxRadiusKm = 20;
 
+  static const int maxBlindBoxChances = 10;
+  static const int blindBoxChanceCostEp = 200;
+
   final GooglePlacesDataSource _placesDataSource;
   final LocationDataSource _locationDataSource;
   final SupabaseDataSource _supabaseDataSource;
@@ -68,6 +71,45 @@ class BlindBoxController {
   }
 
   /// ==========================================================================
+  /// AUTHENTICATED USER BALANCE
+  /// ==========================================================================
+
+  Future<BlindBoxBalance> loadBlindBoxBalance() async {
+    final data =
+    await _supabaseDataSource.getBlindBoxBalance();
+
+    return BlindBoxBalance(
+      explorationPoints:
+      data['exploration_points'] ?? 0,
+      chances:
+      data['blind_box_chances'] ?? 0,
+    );
+  }
+
+  Future<BlindBoxBalance> buyBlindBoxChance() async {
+    final data =
+    await _supabaseDataSource.buyBlindBoxChance();
+
+    return BlindBoxBalance(
+      explorationPoints:
+      data['exploration_points'] ?? 0,
+      chances:
+      data['blind_box_chances'] ?? 0,
+    );
+  }
+
+  Future<void> _ensureChanceAvailable() async {
+    final balance = await loadBlindBoxBalance();
+
+    if (balance.chances <= 0) {
+      throw const BlindBoxException(
+        'No Blind Box chances remaining. '
+            'Get 1 additional chance using 200 Exploration Points.',
+      );
+    }
+  }
+
+  /// ==========================================================================
   /// FIRST DRAW
   /// ==========================================================================
 
@@ -76,6 +118,7 @@ class BlindBoxController {
     Set<String> recentPlaceIds = const <String>{},
   }) async {
     _validateRadius(radiusKm);
+    await _ensureChanceAvailable();
 
     final position =
     await _locationDataSource.getCurrentLocation();
@@ -116,6 +159,7 @@ class BlindBoxController {
     Set<String> recentPlaceIds = const <String>{},
   }) async {
     _validateRadius(radiusKm);
+    await _ensureChanceAvailable();
 
     final position =
     await _locationDataSource.getCurrentLocation();
@@ -204,11 +248,19 @@ class BlindBoxController {
       description: description,
     );
 
-    /// Then create one history row for every draw/redraw.
-    await _supabaseDataSource.saveBlindBoxHistory(
+    /// Atomically:
+    /// 1. confirms the authenticated user still has a chance,
+    /// 2. deducts exactly 1 chance,
+    /// 3. saves this draw/redraw into that user's history.
+    final remainingChances =
+    await _supabaseDataSource.recordBlindBoxDraw(
       destinationId: destinationId,
       radiusKm: radiusKm,
       drawType: drawType,
+    );
+
+    debugLog(
+      '[BLIND BOX] Remaining chances: $remainingChances',
     );
 
     debugLog(
@@ -501,6 +553,16 @@ class BlindBoxController {
 void debugLog(String message) {
   // ignore: avoid_print
   print(message);
+}
+
+class BlindBoxBalance {
+  final int explorationPoints;
+  final int chances;
+
+  const BlindBoxBalance({
+    required this.explorationPoints,
+    required this.chances,
+  });
 }
 
 /// Application-layer result returned after DRAW / REDRAW.
