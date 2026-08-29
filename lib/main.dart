@@ -6,7 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/supabase_config.dart';
 import 'presentation/screens/auth/welcome_screen.dart';
 import 'presentation/screens/auth/login_screen.dart';
-import 'presentation/screens/auth/reset_password_screen.dart';
+import 'presentation/screens/profile/reset_password_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,7 +20,8 @@ class MysteryLaneApp extends StatefulWidget {
   const MysteryLaneApp({super.key});
 
   @override
-  State<MysteryLaneApp> createState() => _MysteryLaneAppState();
+  State<MysteryLaneApp> createState() =>
+      _MysteryLaneAppState();
 }
 
 class _MysteryLaneAppState extends State<MysteryLaneApp> {
@@ -31,26 +32,26 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
 
   bool _handlingVerification = false;
 
+  bool _resetPasswordScreenOpen = false;
+
   @override
   void initState() {
     super.initState();
-
     _listenToAuthChanges();
   }
 
   void _listenToAuthChanges() {
     _authSubscription =
         SupabaseConfig.client.auth.onAuthStateChange.listen(
-              (data) async {
+              (AuthState data) async {
             final AuthChangeEvent event = data.event;
             final Session? session = data.session;
 
             debugPrint('AUTH EVENT: $event');
 
-            // Handle Password Recovery Event
             if (event == AuthChangeEvent.passwordRecovery) {
               debugPrint('PASSWORD RECOVERY EVENT DETECTED');
-              _navigateToResetPassword();
+              _openResetPasswordScreen();
               return;
             }
 
@@ -58,9 +59,8 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
               return;
             }
 
-            final user = session.user;
+            final User user = session.user;
 
-            // Handle email verification flow:
             if ((event == AuthChangeEvent.signedIn ||
                 event == AuthChangeEvent.initialSession) &&
                 user.emailConfirmedAt != null) {
@@ -70,74 +70,133 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
         );
   }
 
-  void _navigateToResetPassword() {
-    navigatorKey.currentState?.pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => const ResetPasswordScreen(),
-      ),
+  void _openResetPasswordScreen() {
+    if (_resetPasswordScreenOpen) {
+      return;
+    }
+
+    _resetPasswordScreenOpen = true;
+
+    WidgetsBinding.instance.addPostFrameCallback(
+          (_) {
+        if (!mounted) {
+          _resetPasswordScreenOpen = false;
+          return;
+        }
+
+        final NavigatorState? navigator =
+            navigatorKey.currentState;
+
+        if (navigator == null) {
+          _resetPasswordScreenOpen = false;
+
+          Future<void>.delayed(
+            const Duration(milliseconds: 300),
+                () {
+              if (mounted) {
+                _openResetPasswordScreen();
+              }
+            },
+          );
+
+          return;
+        }
+
+        navigator
+            .push(
+          MaterialPageRoute(
+            builder: (_) =>
+            const ResetPasswordScreen(),
+          ),
+        )
+            .then(
+              (_) {
+            _resetPasswordScreenOpen = false;
+          },
+        );
+      },
     );
   }
 
-  Future<void> _handleVerifiedUser(User user) async {
+  Future<void> _handleVerifiedUser(
+      User user,
+      ) async {
     if (_handlingVerification) {
+      return;
+    }
+
+    if (_resetPasswordScreenOpen) {
       return;
     }
 
     _handlingVerification = true;
 
     try {
-      final existingProfile =
+      final Map<String, dynamic>? existingProfile =
       await SupabaseConfig.client
           .from('profiles')
           .select('id')
           .eq('id', user.id)
           .maybeSingle();
 
-      if (existingProfile == null) {
-        final metadata = user.userMetadata ?? {};
-        final fullName = metadata['full_name']?.toString().trim() ?? '';
-        final phoneNumber = metadata['phone_number']?.toString().trim() ?? '';
-        final email = user.email ?? '';
+      if (existingProfile != null) {
+        return;
+      }
 
-        await SupabaseConfig.client.from('profiles').insert({
-          'id': user.id,
-          'full_name': fullName,
-          'email': email,
-          'phone_number': phoneNumber,
-          'profile_picture_url': null,
-          'language_preference': 'English',
-          'current_city': null,
-          'progress_level': 1,
-          'exploration_points': 0,
-          'free_redraw_credits': 0,
-          'team_status': null,
-        });
+      final Map<String, dynamic> metadata =
+          user.userMetadata ?? {};
 
-        await SupabaseConfig.client.auth.signOut();
+      final String fullName =
+          metadata['full_name']?.toString().trim() ?? '';
 
-        final context = navigatorKey.currentContext;
-        if (context != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Email verified successfully. Please log in.',
-              ),
-              duration: Duration(seconds: 4),
-            ),
-          );
+      final String phoneNumber =
+          metadata['phone_number']?.toString().trim() ?? '';
 
-          navigatorKey.currentState?.pushAndRemoveUntil(
+      await SupabaseConfig.client
+          .from('profiles')
+          .insert({
+        'id': user.id,
+        'full_name': fullName,
+        'phone_number': phoneNumber,
+        'profile_picture_url': null,
+        'language_preference': 'English',
+        'current_city': null,
+        'progress_level': 1,
+        'exploration_points': 0,
+        'free_redraw_credits': 0,
+        'team_status': null,
+      });
+
+      await SupabaseConfig.client.auth.signOut();
+
+      if (!mounted) {
+        return;
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback(
+            (_) {
+          if (!mounted) {
+            return;
+          }
+
+          navigatorKey.currentState
+              ?.pushAndRemoveUntil(
             MaterialPageRoute(
-              builder: (context) => const LoginScreen(),
+              builder: (_) =>
+              const LoginScreen(),
             ),
                 (route) => false,
           );
-        }
-      }
+        },
+      );
     } on PostgrestException catch (error) {
-      debugPrint('PROFILE CREATION ERROR: ${error.message}');
+      debugPrint(
+        'PROFILE CREATION ERROR: ${error.message}',
+      );
     } catch (error) {
-      debugPrint('VERIFICATION HANDLER ERROR: $error');
+      debugPrint(
+        'VERIFICATION HANDLER ERROR: $error',
+      );
     } finally {
       _handlingVerification = false;
     }
