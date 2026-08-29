@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  geolocator: ^14.0.3
+  http: ^1.6.0
   supabase_flutter: ^2.17.2
   image_picker: ^1.1.2
   intl_phone_field: ^3.2.0
