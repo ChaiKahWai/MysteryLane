@@ -55,11 +55,16 @@ class _LeaderboardScreenState
   // ============================================================
   // LOAD REAL USERS FROM SUPABASE
   //
-  // Uses only confirmed columns from public.profiles:
+  // SECURITY:
+  // The leaderboard does NOT read public.profiles directly.
+  // It calls the restricted get_leaderboard() RPC, which returns
+  // only:
   // id
   // full_name
   // profile_picture_url
   // exploration_points
+  //
+  // Sensitive profile fields such as phone_number are not exposed.
   // ============================================================
 
   Future<void> _loadLeaderboard() async {
@@ -83,14 +88,8 @@ class _LeaderboardScreenState
       _currentUserId = user.id;
 
       final List<dynamic> response =
-      await SupabaseConfig.client
-          .from('profiles')
-          .select(
-        'id, full_name, profile_picture_url, exploration_points',
-      )
-          .order(
-        'exploration_points',
-        ascending: false,
+      await SupabaseConfig.client.rpc(
+        'get_leaderboard',
       );
 
       final List<LeaderboardEntry> built = [];

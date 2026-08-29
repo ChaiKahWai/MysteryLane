@@ -32,19 +32,13 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
 
   bool _handlingVerification = false;
 
-  // Prevent the reset page from being opened more than once.
   bool _resetPasswordScreenOpen = false;
 
   @override
   void initState() {
     super.initState();
-
     _listenToAuthChanges();
   }
-
-  // ============================================================
-  // AUTH LISTENER
-  // ============================================================
 
   void _listenToAuthChanges() {
     _authSubscription =
@@ -55,23 +49,11 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
 
             debugPrint('AUTH EVENT: $event');
 
-            // ======================================================
-            // PASSWORD RECOVERY
-            // ======================================================
-
             if (event == AuthChangeEvent.passwordRecovery) {
-              debugPrint(
-                'PASSWORD RECOVERY EVENT DETECTED',
-              );
-
+              debugPrint('PASSWORD RECOVERY EVENT DETECTED');
               _openResetPasswordScreen();
-
               return;
             }
-
-            // ======================================================
-            // NORMAL AUTH
-            // ======================================================
 
             if (session == null) {
               return;
@@ -79,23 +61,14 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
 
             final User user = session.user;
 
-            // ======================================================
-            // EMAIL VERIFICATION
-            // ======================================================
-
             if ((event == AuthChangeEvent.signedIn ||
-                event ==
-                    AuthChangeEvent.initialSession) &&
+                event == AuthChangeEvent.initialSession) &&
                 user.emailConfirmedAt != null) {
               await _handleVerifiedUser(user);
             }
           },
         );
   }
-
-  // ============================================================
-  // OPEN RESET PASSWORD SCREEN
-  // ============================================================
 
   void _openResetPasswordScreen() {
     if (_resetPasswordScreenOpen) {
@@ -104,9 +77,6 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
 
     _resetPasswordScreenOpen = true;
 
-    // Do NOT navigate directly inside the auth callback.
-    //
-    // Wait until Flutter has finished the current frame.
     WidgetsBinding.instance.addPostFrameCallback(
           (_) {
         if (!mounted) {
@@ -120,8 +90,6 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
         if (navigator == null) {
           _resetPasswordScreenOpen = false;
 
-          // Navigator may not be ready yet when app is launched
-          // from the email link.
           Future<void>.delayed(
             const Duration(milliseconds: 300),
                 () {
@@ -150,10 +118,6 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
     );
   }
 
-  // ============================================================
-  // EMAIL VERIFICATION HANDLER
-  // ============================================================
-
   Future<void> _handleVerifiedUser(
       User user,
       ) async {
@@ -161,11 +125,6 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
       return;
     }
 
-    // Very important:
-    //
-    // During password recovery Supabase creates/updates an auth
-    // session. We don't want registration/profile creation logic
-    // interfering with the recovery screen.
     if (_resetPasswordScreenOpen) {
       return;
     }
@@ -180,8 +139,6 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
           .eq('id', user.id)
           .maybeSingle();
 
-      // Existing user.
-      // Nothing needs to be created.
       if (existingProfile != null) {
         return;
       }
@@ -190,26 +147,16 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
           user.userMetadata ?? {};
 
       final String fullName =
-          metadata['full_name']
-              ?.toString()
-              .trim() ??
-              '';
+          metadata['full_name']?.toString().trim() ?? '';
 
       final String phoneNumber =
-          metadata['phone_number']
-              ?.toString()
-              .trim() ??
-              '';
-
-      final String email =
-          user.email ?? '';
+          metadata['phone_number']?.toString().trim() ?? '';
 
       await SupabaseConfig.client
           .from('profiles')
           .insert({
         'id': user.id,
         'full_name': fullName,
-        'email': email,
         'phone_number': phoneNumber,
         'profile_picture_url': null,
         'language_preference': 'English',
@@ -220,11 +167,6 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
         'team_status': null,
       });
 
-      // This signOut belongs ONLY to your registration/email
-      // verification flow.
-      //
-      // Password recovery NEVER comes here because the recovery
-      // event returns earlier above.
       await SupabaseConfig.client.auth.signOut();
 
       if (!mounted) {
@@ -263,7 +205,6 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
   @override
   void dispose() {
     _authSubscription?.cancel();
-
     super.dispose();
   }
 
