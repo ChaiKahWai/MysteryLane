@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/config/supabase_config.dart';
-
+import '../Blindbox/BlindBox_Screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/leaderboard_screen.dart';
@@ -245,9 +245,6 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(
           width: 12,
         ),
-        const SizedBox(width: 6),
-        _ProfileButton(onTap: _openProfile),
-        const SizedBox(width: 12),
       ],
       bottom: const PreferredSize(
         preferredSize: Size.fromHeight(1),
