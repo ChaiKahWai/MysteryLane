@@ -1,5 +1,15 @@
 import 'package:flutter/material.dart';
 import 'checkpoint_mission_screen.dart';
+import '../Blindbox/BlindBox_Screen.dart';
+import '../home/home_screen.dart';
+
+enum _CheckpointTab {
+  blindBox,
+  missions,
+  home,
+  plan,
+  teams,
+}
 
 class CheckpointScreen extends StatefulWidget {
   const CheckpointScreen({super.key});
