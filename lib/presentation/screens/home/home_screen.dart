@@ -5,6 +5,7 @@ import '../Blindbox/BlindBox_Screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/leaderboard_screen.dart';
+import '../group/group_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -605,7 +606,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.groups_2_outlined,
                 label: 'TEAMS',
                 active: _selectedItem == 'Teams',
-                onTap: () => _showPressedMessage('Teams'),
+                onTap: () {
+                  setState(() => _selectedItem = 'Teams');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const GroupScreen()),
+                  ).then((_) {
+                    if (mounted) setState(() => _selectedItem = 'Home');
+                  });
+                },
               ),
             ),
           ],
