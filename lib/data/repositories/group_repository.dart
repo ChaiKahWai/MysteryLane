@@ -2,14 +2,12 @@
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/travel_group_model.dart';
-import '../models/group_member_model.dart';
-import '../models/join_request_model.dart';
 import '../../core/config/supabase_config.dart';
 
 class GroupRepository {
   final SupabaseClient _client = SupabaseConfig.client;
 
-  // 1. Fetch groups the user is a member of (with role)
+  // 1. Fetch user teams
   Future<List<Map<String, dynamic>>> fetchUserTeams(String userId) async {
     final response = await _client
         .from('travel_group_members')
@@ -28,64 +26,73 @@ class GroupRepository {
           )
         ''')
         .eq('user_id', userId)
-        .eq('membership_status', 'ACTIVE'); // ✅ uppercase
-
+        .eq('membership_status', 'ACTIVE');
     return response as List<Map<String, dynamic>>;
   }
 
-  // 2. Fetch public teams (available to join)
+  // 2. Fetch public teams
   Future<List<TravelGroup>> fetchPublicTeams() async {
     final response = await _client
         .from('travel_groups')
         .select('*')
-        .eq('team_type', 'PUBLIC')      // ✅ uppercase
-        .eq('group_status', 'ACTIVE')   // ✅ uppercase
+        .eq('team_type', 'PUBLIC')
+        .eq('group_status', 'ACTIVE')
         .limit(50);
-
     return (response as List).map((json) => TravelGroup.fromJson(json)).toList();
   }
 
-  // 3. Fetch a single team by id (with members)
-  Future<Map<String, dynamic>> fetchTeamDetails(String groupId) async {
-    // Fetch team info
-    final teamResponse = await _client
+  // 3. Fetch team info only (no members)
+  Future<TravelGroup> fetchTeamInfo(String groupId) async {
+    final response = await _client
         .from('travel_groups')
         .select('*')
         .eq('group_id', groupId)
         .single();
-
-    // Fetch members with user profile info (join with profiles if needed)
-    final membersResponse = await _client
-        .from('travel_group_members')
-        .select('''
-          *,
-          profiles!inner (
-            full_name,
-            profile_picture_url
-          )
-        ''')
-        .eq('group_id', groupId)
-        .eq('membership_status', 'ACTIVE'); // ✅ uppercase
-
-    return {
-      'team': TravelGroup.fromJson(teamResponse),
-      'members': membersResponse as List<dynamic>,
-    };
+    return TravelGroup.fromJson(response);
   }
 
-  // 4. Fetch pending join requests for a team (only if user is owner/admin)
-  Future<List<JoinRequest>> fetchPendingRequests(String groupId) async {
+  // 4. Fetch members of a team (raw, without profile)
+  Future<List<Map<String, dynamic>>> fetchTeamMembers(String groupId) async {
+    final response = await _client
+        .from('travel_group_members')
+        .select('*')
+        .eq('group_id', groupId)
+        .eq('membership_status', 'ACTIVE');
+    return response as List<Map<String, dynamic>>;
+  }
+
+  // 5. Fetch profiles for multiple user IDs
+  Future<List<Map<String, dynamic>>> getProfiles(List<String> userIds) async {
+    if (userIds.isEmpty) return [];
+    final response = await _client
+        .from('profiles')
+        .select('id, full_name, profile_picture_url')
+        .inFilter('id', userIds);
+    return response as List<Map<String, dynamic>>;
+  }
+
+  // 6. Fetch a single profile
+  Future<Map<String, dynamic>?> getProfile(String userId) async {
+    final response = await _client
+        .from('profiles')
+        .select('full_name, profile_picture_url')
+        .eq('id', userId)
+        .maybeSingle();
+    return response as Map<String, dynamic>?;
+  }
+
+  // 7. Fetch pending join requests (raw)
+  Future<List<Map<String, dynamic>>> fetchPendingRequests(String groupId) async {
     final response = await _client
         .from('team_join_requests')
         .select('*')
         .eq('group_id', groupId)
-        .eq('request_status', 'PENDING') // ✅ uppercase
+        .eq('request_status', 'PENDING')
         .order('requested_at', ascending: false);
-
-    return (response as List).map((json) => JoinRequest.fromJson(json)).toList();
+    return response as List<Map<String, dynamic>>;
   }
 
-  // 5. Insert a new team
+  // 8. Create team
   Future<TravelGroup> createTeam({
     required String ownerId,
     required String teamName,
@@ -99,106 +106,94 @@ class GroupRepository {
         .insert({
       'owner_id': ownerId,
       'team_name': teamName,
-      'team_type': teamType,          // must be 'PUBLIC' or 'PRIVATE'
+      'team_type': teamType,
       'preferred_language': preferredLanguage,
       'invitation_code': invitationCode,
       'max_capacity': maxCapacity ?? 10,
-      'group_status': 'ACTIVE',       // ✅ uppercase
+      'group_status': 'ACTIVE',
     })
         .select()
         .single();
-
     return TravelGroup.fromJson(response);
   }
 
-  // 6. Add the creator as a member (owner role)
+  // 9. Add team member
   Future<void> addTeamMember({
     required String groupId,
     required String userId,
-    required String role, // must be 'OWNER' or 'MEMBER'
+    required String role,
   }) async {
     await _client.from('travel_group_members').insert({
       'group_id': groupId,
       'user_id': userId,
-      'member_role': role,                // e.g. 'OWNER'
-      'membership_status': 'ACTIVE',      // ✅ uppercase
+      'member_role': role,
+      'membership_status': 'ACTIVE',
       'joined_at': DateTime.now().toIso8601String(),
     });
   }
 
-  // 7. Submit a join request (if private) or join directly (if public, we handle via service)
+  // 10. Insert join request
   Future<void> insertJoinRequest({
     required String groupId,
     required String userId,
   }) async {
-    // Check if already a member or pending
     final existing = await _client
         .from('travel_group_members')
         .select('group_member_id')
         .eq('group_id', groupId)
         .eq('user_id', userId)
         .maybeSingle();
-
     if (existing != null) {
       throw Exception('You are already a member of this team.');
     }
-
     final pending = await _client
         .from('team_join_requests')
         .select('request_id')
         .eq('group_id', groupId)
         .eq('user_id', userId)
-        .eq('request_status', 'PENDING') // ✅ uppercase
+        .eq('request_status', 'PENDING')
         .maybeSingle();
-
     if (pending != null) {
       throw Exception('You already have a pending request.');
     }
-
     await _client.from('team_join_requests').insert({
       'group_id': groupId,
       'user_id': userId,
-      'request_status': 'PENDING',        // ✅ uppercase
+      'request_status': 'PENDING',
       'requested_at': DateTime.now().toIso8601String(),
     });
   }
 
-  // 8. Approve or reject a join request (owner/admin only)
+  // 11. Handle join request
   Future<void> handleJoinRequest({
     required String requestId,
     required bool approve,
   }) async {
-    // Get the request details to know group_id and user_id
     final request = await _client
         .from('team_join_requests')
         .select('group_id, user_id')
         .eq('request_id', requestId)
         .single();
-
     if (approve) {
-      // Add user to members
       await _client.from('travel_group_members').insert({
         'group_id': request['group_id'],
         'user_id': request['user_id'],
-        'member_role': 'MEMBER',          // ✅ uppercase
-        'membership_status': 'ACTIVE',    // ✅ uppercase
+        'member_role': 'MEMBER',
+        'membership_status': 'ACTIVE',
         'joined_at': DateTime.now().toIso8601String(),
       });
     }
-
-    // Update the request status
     await _client.from('team_join_requests').update({
-      'request_status': approve ? 'APPROVED' : 'REJECTED', // ✅ uppercase
+      'request_status': approve ? 'APPROVED' : 'REJECTED',
       'responded_at': DateTime.now().toIso8601String(),
     }).eq('request_id', requestId);
   }
 
-  // 9. Leave a team (delete membership)
+  // 12. Leave team
   Future<void> leaveTeam({
     required String groupId,
     required String userId,
   }) async {
-    // Prevent owner from leaving? You can add a check.
     await _client
         .from('travel_group_members')
         .delete()
@@ -206,15 +201,14 @@ class GroupRepository {
         .eq('user_id', userId);
   }
 
-  // 10. Find group by invitation code (for join by code)
+  // 13. Find group by invitation code
   Future<TravelGroup?> findGroupByInvitationCode(String code) async {
     final response = await _client
         .from('travel_groups')
         .select('*')
         .eq('invitation_code', code)
-        .eq('group_status', 'ACTIVE') // ✅ uppercase
+        .eq('group_status', 'ACTIVE')
         .maybeSingle();
-
     if (response == null) return null;
     return TravelGroup.fromJson(response);
   }

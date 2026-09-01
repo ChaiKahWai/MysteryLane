@@ -17,8 +17,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   final GroupService _service = GroupService();
   bool _loading = true;
   TravelGroup? _team;
-  List<dynamic> _members = [];
-  List<dynamic> _pendingRequests = [];
+  List<Map<String, dynamic>> _members = [];
+  List<Map<String, dynamic>> _pendingRequests = [];
   String? _myRole;
 
   @override
@@ -32,26 +32,43 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     try {
       final data = await _service.getTeamDetails(widget.groupId);
       final user = Supabase.instance.client.auth.currentUser;
+
       if (data['team'] != null) {
         setState(() {
           _team = data['team'] as TravelGroup;
-          _members = data['members'] as List<dynamic>;
+          final rawMembers = data['members'] as List<dynamic>? ?? [];
+          _members = rawMembers
+              .map((m) => Map<String, dynamic>.from(m as Map<dynamic, dynamic>))
+              .toList();
         });
+        print('✅ Team loaded: ${_team?.teamName}, members: ${_members.length}');
       }
+
       // Determine my role
       if (user != null) {
-        final myMember = _members.firstWhere(
-              (m) => m['user_id'] == user.id,
-          orElse: () => null,
-        );
-        _myRole = myMember?['member_role']; // e.g. 'OWNER'
+        Map<String, dynamic>? myMember;
+        for (var m in _members) {
+          if (m['user_id'] == user.id) {
+            myMember = m;
+            break;
+          }
+        }
+        _myRole = myMember?['member_role']?.toString();
+        print('👤 My role: $_myRole');
       }
+
       // If owner, load pending requests
       if (_myRole == 'OWNER') {
         final requests = await _service.getPendingRequests(widget.groupId);
-        setState(() => _pendingRequests = requests);
+        print('📨 Pending requests count: ${requests.length}');
+        setState(() {
+          _pendingRequests = requests
+              .map((r) => Map<String, dynamic>.from(r as Map<dynamic, dynamic>))
+              .toList();
+        });
       }
     } catch (e) {
+      print('❌ Error loading team: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error loading team: $e')),
       );
@@ -68,17 +85,34 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     }
   }
 
+  String _formatTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
+    if (diff.inDays > 0) {
+      return '${diff.inDays}d ago';
+    } else if (diff.inHours > 0) {
+      return '${diff.inHours}h ago';
+    } else if (diff.inMinutes > 0) {
+      return '${diff.inMinutes}m ago';
+    } else {
+      return 'Just now';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_team?.teamName ?? 'Team Detail'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        foregroundColor: Colors.black,
         actions: [
           if (_myRole == 'OWNER')
             IconButton(
               icon: const Icon(Icons.edit),
               onPressed: () {
-                // TODO: Navigate to edit team screen
+                // TODO: Edit team screen
               },
             ),
         ],
@@ -90,6 +124,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Team info card
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -101,7 +136,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
-                    Text('Type: ${_team?.teamType}'),
+                    Text('Type: ${_team?.teamType ?? 'N/A'}'),
                     Text('Members: ${_members.length}'),
                     const SizedBox(height: 12),
                     Row(
@@ -123,29 +158,41 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
+            // Members list
             const Text(
               'Members',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             ..._members.map((member) {
+              final profile = member['profiles'] as Map<dynamic, dynamic>?;
+              final fullName = profile?['full_name']?.toString() ?? 'Unknown';
+              final initial = fullName.isNotEmpty ? fullName[0].toUpperCase() : '?';
+              final role = member['member_role']?.toString() ?? 'MEMBER';
               return ListTile(
                 leading: CircleAvatar(
-                  child: Text(
-                    member['profiles']?['full_name']?.substring(0, 1) ?? '?',
-                  ),
+                  child: Text(initial),
                 ),
-                title: Text(member['profiles']?['full_name'] ?? 'Unknown'),
-                trailing: Text(
-                  member['member_role'] ?? 'MEMBER',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: member['member_role'] == 'OWNER'
-                        ? Colors.amber[800]
-                        : Colors.grey,
+                title: Text(fullName),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: role == 'OWNER' ? Colors.amber[100] : Colors.grey[200],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    role,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: role == 'OWNER' ? Colors.brown[700] : Colors.grey[700],
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               );
             }).toList(),
+
+            // Pending requests (only for owner)
             if (_pendingRequests.isNotEmpty) ...[
               const SizedBox(height: 16),
               const Text(
@@ -153,8 +200,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               ..._pendingRequests.map((req) {
+                final profile = req['profiles'] as Map<dynamic, dynamic>?;
+                final requesterName = profile?['full_name']?.toString() ?? 'Unknown User';
+                final requestedAt = req['requested_at'] != null
+                    ? DateTime.parse(req['requested_at']).toLocal()
+                    : null;
                 return ListTile(
-                  title: Text('User ID: ${req['user_id']}'),
+                  leading: CircleAvatar(
+                    child: Text(requesterName.isNotEmpty ? requesterName[0].toUpperCase() : '?'),
+                  ),
+                  title: Text(requesterName),
+                  subtitle: requestedAt != null
+                      ? Text('Requested ${_formatTimeAgo(requestedAt)}')
+                      : null,
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -177,14 +235,17 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 );
               }).toList(),
             ],
+
             const SizedBox(height: 16),
+
+            // Leave Team button
             ElevatedButton(
               onPressed: () async {
                 final user = Supabase.instance.client.auth.currentUser;
                 if (user == null) return;
                 try {
                   await _service.leaveTeam(widget.groupId, user.id);
-                  Navigator.pop(context);
+                  if (mounted) Navigator.pop(context);
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Error leaving: $e')),
@@ -194,6 +255,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
               ),
               child: const Text('Leave Team'),
             ),

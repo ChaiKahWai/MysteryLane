@@ -6,6 +6,7 @@ import '../checkpoint/checkpoint_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/leaderboard_screen.dart';
 import '../group/group_screen.dart';
+import '../group/chat_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -224,10 +225,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           foreground:
           skyBlue,
-          onTap: () =>
-              _showPressedMessage(
-                'Chat',
-              ),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ChatListScreen()),
+            );
+          },
         ),
 
         const SizedBox(

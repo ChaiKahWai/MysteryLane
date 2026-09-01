@@ -6,6 +6,7 @@ import '../../../application/services/group_service.dart';
 import '../../../data/models/travel_group_model.dart';
 import 'team_detail_screen.dart';
 import 'join_team_screen.dart';
+import 'chat_list_screen.dart';      // ✅ added import
 import '../profile/profile_screen.dart';
 import '../profile/leaderboard_screen.dart';
 
@@ -70,6 +71,13 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
+    );
+  }
+
+  void _openChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ChatListScreen()),
     );
   }
 
@@ -218,13 +226,13 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
           onTap: _openLeaderboard,
         ),
         const SizedBox(width: 6),
-        // Chat (placeholder)
+        // Chat – now opens ChatListScreen
         _TopActionButton(
           tooltip: 'Chat',
           icon: Icons.chat_bubble_outline_rounded,
           background: const Color(0xFFF0F9FF),
           foreground: skyBlue,
-          onTap: () => _showPressedMessage('Chat'),
+          onTap: _openChat,                         // ✅ fixed
         ),
         const SizedBox(width: 6),
         // Join with code (custom action for this screen)
@@ -248,7 +256,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
         ),
         const SizedBox(width: 12),
       ],
-      // 👇 The TabBar is placed here, below the header
+      // TabBar below the header
       bottom: TabBar(
         controller: _tabController,
         tabs: const [

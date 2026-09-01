@@ -7,7 +7,6 @@ import '../../data/models/travel_group_model.dart';
 class GroupService {
   final GroupRepository _repository = GroupRepository();
 
-  // Generate a random 6-character invitation code
   String generateInvitationCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final random = Random();
@@ -16,7 +15,6 @@ class GroupService {
     );
   }
 
-  // Create a new team (including adding owner as member)
   Future<TravelGroup> createTeam({
     required String ownerId,
     required String teamName,
@@ -24,7 +22,6 @@ class GroupService {
     String? preferredLanguage,
     int? maxCapacity,
   }) async {
-    // Generate a unique invitation code
     String code;
     bool exists;
     do {
@@ -36,23 +33,21 @@ class GroupService {
     final newGroup = await _repository.createTeam(
       ownerId: ownerId,
       teamName: teamName,
-      teamType: teamType, // must be 'PUBLIC' or 'PRIVATE'
+      teamType: teamType,
       preferredLanguage: preferredLanguage,
       maxCapacity: maxCapacity,
       invitationCode: code,
     );
 
-    // Add the owner as a member with role 'OWNER'
     await _repository.addTeamMember(
       groupId: newGroup.groupId,
       userId: ownerId,
-      role: 'OWNER',  // ✅ uppercase
+      role: 'OWNER',
     );
 
     return newGroup;
   }
 
-  // Request to join a team by invitation code
   Future<void> requestToJoinByCode({
     required String code,
     required String userId,
@@ -61,39 +56,66 @@ class GroupService {
     if (group == null) {
       throw Exception('Invalid or inactive invitation code');
     }
-
     await _repository.insertJoinRequest(
       groupId: group.groupId,
       userId: userId,
     );
   }
 
-  // Get user's teams (with role info)
   Future<List<Map<String, dynamic>>> getUserTeams(String userId) async {
     return await _repository.fetchUserTeams(userId);
   }
 
-  // Get public teams
   Future<List<TravelGroup>> getPublicTeams() async {
     return await _repository.fetchPublicTeams();
   }
 
-  // Get team details (including members)
+  // Get team details with members enriched with profiles
   Future<Map<String, dynamic>> getTeamDetails(String groupId) async {
-    return await _repository.fetchTeamDetails(groupId);
+    // Fetch team info
+    final team = await _repository.fetchTeamInfo(groupId);
+
+    // Fetch members (raw)
+    final members = await _repository.fetchTeamMembers(groupId);
+
+    // Collect all user IDs from members
+    final userIds = members.map((m) => m['user_id'] as String).toList();
+    // Fetch profiles for these users
+    final profiles = await _repository.getProfiles(userIds);
+    // Build a map for quick lookup
+    final profileMap = {for (var p in profiles) p['id']: p};
+
+    // Attach profile to each member
+    final enrichedMembers = members.map((m) {
+      final profile = profileMap[m['user_id']];
+      m['profiles'] = profile; // may be null
+      return m;
+    }).toList();
+
+    return {
+      'team': team,
+      'members': enrichedMembers,
+    };
   }
 
-  // Get pending join requests for a team
-  Future<List<dynamic>> getPendingRequests(String groupId) async {
-    return await _repository.fetchPendingRequests(groupId);
+  // Get pending join requests with profile data
+  Future<List<Map<String, dynamic>>> getPendingRequests(String groupId) async {
+    final requests = await _repository.fetchPendingRequests(groupId);
+    final userIds = requests.map((r) => r['user_id'] as String).toList();
+    final profiles = await _repository.getProfiles(userIds);
+    final profileMap = {for (var p in profiles) p['id']: p};
+
+    final enriched = requests.map((req) {
+      req['profiles'] = profileMap[req['user_id']];
+      return req;
+    }).toList();
+    return enriched;
   }
 
-  // Handle join request (approve/reject)
   Future<void> handleJoinRequest(String requestId, bool approve) async {
     await _repository.handleJoinRequest(requestId: requestId, approve: approve);
   }
 
-  // Leave team
   Future<void> leaveTeam(String groupId, String userId) async {
     await _repository.leaveTeam(groupId: groupId, userId: userId);
   }
