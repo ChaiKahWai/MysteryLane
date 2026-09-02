@@ -36,6 +36,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signIn() async {
+    FocusScope.of(context).unfocus();
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -45,52 +47,137 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final email = _emailController.text.trim();
-      final password = _passwordController.text;
+      final email =
+      _emailController.text.trim().toLowerCase();
+      final password =
+          _passwordController.text;
 
-      final response = await SupabaseConfig.client.auth.signInWithPassword(
+      final AuthResponse response =
+      await SupabaseConfig.client.auth.signInWithPassword(
         email: email,
         password: password,
       );
 
-      if (!mounted) return;
+      final User? signedInUser =
+          response.user ??
+              SupabaseConfig.client.auth.currentUser;
 
-      if (response.session != null) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const HomeScreen(),
-          ),
+      final Session? signedInSession =
+          response.session ??
+              SupabaseConfig.client.auth.currentSession;
+
+      // SECURITY:
+      // Never allow a traveller into MYsteryLane unless Supabase has
+      // recorded that the registration email was confirmed.
+      //
+      // Supabase should already block an unverified account when
+      // "Confirm email" is enabled. This second check is intentional
+      // defence in depth so the Flutter app cannot accidentally navigate
+      // to Home if a session is ever returned for an unverified account.
+      if (signedInUser == null ||
+          signedInSession == null) {
+        throw const AuthException(
+          'Unable to create an authenticated session.',
         );
       }
-    } on AuthException catch (error) {
+
+      if (signedInUser.emailConfirmedAt == null) {
+        // Remove any session that may have been returned.
+        await SupabaseConfig.client.auth.signOut();
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Email verification is required. Please open the verification email sent during registration and click the verification link before signing in.',
+              ),
+              backgroundColor: Colors.redAccent,
+              duration: Duration(seconds: 5),
+            ),
+          );
+
+        return;
+      }
+
       if (!mounted) return;
-      
-      String message = 'Unable to sign in';
-      
-      if (error.message.contains('Invalid login credentials')) {
-        message = 'Invalid email or password. Please try again.';
-      } else if (error.message.contains('Email not confirmed')) {
-        message = 'Please verify your email before logging in.';
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+          const HomeScreen(),
+        ),
+      );
+    } on AuthException catch (error) {
+      final String errorCode =
+          error.code?.toLowerCase() ?? '';
+      final String errorMessage =
+      error.message.toLowerCase();
+
+      final bool emailNotConfirmed =
+          errorCode == 'email_not_confirmed' ||
+              errorMessage.contains(
+                'email not confirmed',
+              ) ||
+              errorMessage.contains(
+                'email_not_confirmed',
+              );
+
+      if (emailNotConfirmed &&
+          SupabaseConfig.client.auth.currentSession != null) {
+        try {
+          await SupabaseConfig.client.auth.signOut();
+        } catch (_) {
+          // Keep the original verification error as the user-facing result.
+        }
+      }
+
+      if (!mounted) return;
+
+      String message =
+          'Unable to sign in. Please try again.';
+
+      if (emailNotConfirmed) {
+        message =
+        'Email verification is required. Please open the verification email sent during registration and click the verification link before signing in.';
+      } else if (errorCode ==
+          'invalid_credentials' ||
+          errorMessage.contains(
+            'invalid login credentials',
+          )) {
+        message =
+        'Invalid email or password. Please try again.';
       } else {
         message = error.message;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(
+              seconds: 5,
+            ),
+          ),
+        );
     } catch (error) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('An unexpected error occurred: $error'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'An unexpected error occurred: $error',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
     } finally {
       if (mounted) {
         setState(() {
