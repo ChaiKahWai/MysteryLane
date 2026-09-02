@@ -1,314 +1,988 @@
 import 'package:flutter/material.dart';
 
-import 'complete_mission_screen.dart';
+import '../../../data/models/checkpoint_destination.dart';
+import '../../../data/models/checkpoint_mission.dart';
+import '../../../data/repositories/checkpoint_repository.dart';
+import 'mission_execution_screen.dart';
 
-class CheckpointMissionScreen extends StatefulWidget {
+class CheckpointMissionScreen
+    extends StatefulWidget {
+  final CheckpointDestination destination;
+
   const CheckpointMissionScreen({
     super.key,
-    required this.title,
-    required this.description,
-    required this.reward,
-    required this.distance,
-    required this.duration,
-    required this.currentPoints,
+    required this.destination,
   });
 
-  final String title;
-  final String description;
-  final int reward;
-  final String distance;
-  final String duration;
-  final int currentPoints;
-
   @override
-  State<CheckpointMissionScreen> createState() =>
+  State<CheckpointMissionScreen>
+  createState() =>
       _CheckpointMissionScreenState();
 }
 
-class _CheckpointMissionScreenState extends State<CheckpointMissionScreen> {
-  static const Color skyBlue = Color(0xFF0284C7);
-  static const Color pageBackground = Color(0xFFF8FAFC);
-  static const Color darkText = Color(0xFF0F172A);
-  static const Color bodyText = Color(0xFF64748B);
+class _CheckpointMissionScreenState
+    extends State<CheckpointMissionScreen> {
+  final CheckpointRepository _repository =
+  CheckpointRepository();
 
-  bool _photoAttached = false;
+  CheckpointMission? _mission;
 
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-      );
+  bool _isLoading = true;
+
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _loadMission();
   }
 
-  void _submitMission() {
-    if (!_photoAttached) {
-      _showMessage('Please attach mission evidence first.');
-      return;
-    }
+  Future<void> _loadMission() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CompleteMissionScreen(
-          title: widget.title,
-          reward: widget.reward,
-          totalPoints: widget.currentPoints + widget.reward,
-        ),
-      ),
-    );
+    try {
+      debugPrint(
+        'Loading mission for destination: '
+            '${widget.destination.destinationId}',
+      );
+
+      final CheckpointMission? result =
+      await _repository
+          .getMissionByDestinationId(
+        widget.destination.destinationId,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _mission = result;
+        _isLoading = false;
+      });
+
+      if (result == null) {
+        debugPrint(
+          'No mission found for '
+              '${widget.destination.name}',
+        );
+      } else {
+        debugPrint(
+          'Mission loaded: '
+              '${result.missionName}',
+        );
+      }
+    } catch (error) {
+      debugPrint(
+        'MISSION LOAD ERROR: $error',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _errorMessage =
+            error.toString();
+
+        _isLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: pageBackground,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 16),
-              _buildProgressCard(),
-              const SizedBox(height: 13),
-              _buildMissionDetailCard(),
-              const SizedBox(height: 13),
-              _buildStatusCard(),
-              const SizedBox(height: 13),
-              _buildEvidenceBox(),
-              const SizedBox(height: 18),
-              SizedBox(
-                height: 52,
-                child: FilledButton.icon(
-                  onPressed: _submitMission,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: skyBlue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                  ),
-                  icon: const Icon(Icons.check_circle_rounded),
-                  label: const Text(
-                    'SUBMIT MISSION',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+      backgroundColor:
+      const Color(0xFFF4F7FB),
+
+      appBar: AppBar(
+        backgroundColor:
+        Colors.white,
+
+        surfaceTintColor:
+        Colors.white,
+
+        elevation: 0,
+
+        leading: IconButton(
+          onPressed: () {
+            Navigator.pop(
+              context,
+            );
+          },
+
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color:
+            Color(0xFF0F172A),
           ),
         ),
+
+        title: const Text(
+          'Mission Details',
+          style: TextStyle(
+            color:
+            Color(0xFF0F172A),
+            fontSize: 20,
+            fontWeight:
+            FontWeight.w700,
+          ),
+        ),
+
+        centerTitle: true,
+      ),
+
+      body: SafeArea(
+        child: _buildBody(),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisSize:
+          MainAxisSize.min,
+
+          children: [
+            CircularProgressIndicator(),
+
+            SizedBox(
+              height: 16,
+            ),
+
+            Text(
+              'Loading mission...',
+              style: TextStyle(
+                color:
+                Color(0xFF64748B),
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return _buildErrorState();
+    }
+
+    if (_mission == null) {
+      return _buildNoMissionState();
+    }
+
+    final CheckpointMission mission =
+    _mission!;
+
+    return SingleChildScrollView(
+      padding:
+      const EdgeInsets.fromLTRB(
+        18,
+        20,
+        18,
+        30,
+      ),
+
+      child: Column(
+        crossAxisAlignment:
+        CrossAxisAlignment.start,
+
+        children: [
+          _buildDestinationHeader(),
+
+          const SizedBox(
+            height: 18,
+          ),
+
+          _buildMissionHeader(
+            mission,
+          ),
+
+          const SizedBox(
+            height: 18,
+          ),
+
+          _buildInformationCard(
+            icon:
+            Icons.flag_rounded,
+
+            title:
+            'Mission Objective',
+
+            value:
+            mission.objective,
+          ),
+
+          const SizedBox(
+            height: 14,
+          ),
+
+          _buildInformationCard(
+            icon:
+            Icons
+                .format_list_bulleted_rounded,
+
+            title:
+            'Instructions',
+
+            value:
+            mission
+                .completionInstructions ??
+                'Follow the checkpoint mission instructions.',
+          ),
+
+          const SizedBox(
+            height: 14,
+          ),
+
+          if (mission.photoRequired)
+            _buildInformationCard(
+              icon:
+              Icons
+                  .photo_camera_rounded,
+
+              title:
+              'Photo Requirement',
+
+              value:
+              mission
+                  .photoRequirement ??
+                  'Capture a clear photo at the checkpoint.',
+            ),
+
+          if (mission.photoRequired)
+            const SizedBox(
+              height: 14,
+            ),
+
+          _buildMissionRules(
+            mission,
+          ),
+
+          const SizedBox(
+            height: 22,
+          ),
+
+          _buildSafetyNotice(),
+
+          const SizedBox(
+            height: 24,
+          ),
+
+          SizedBox(
+            width: double.infinity,
+
+            child:
+            ElevatedButton.icon(
+              onPressed: () {
+                _startMission(
+                  mission,
+                );
+              },
+
+              icon: const Icon(
+                Icons
+                    .play_arrow_rounded,
+              ),
+
+              label: const Text(
+                'Start Mission',
+              ),
+
+              style:
+              ElevatedButton.styleFrom(
+                backgroundColor:
+                const Color(
+                  0xFF2563EB,
+                ),
+
+                foregroundColor:
+                Colors.white,
+
+                padding:
+                const EdgeInsets
+                    .symmetric(
+                  vertical: 16,
+                ),
+
+                shape:
+                RoundedRectangleBorder(
+                  borderRadius:
+                  BorderRadius
+                      .circular(
+                    14,
+                  ),
+                ),
+
+                textStyle:
+                const TextStyle(
+                  fontSize: 16,
+                  fontWeight:
+                  FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // DESTINATION HEADER
+  // ============================================================
+
+  Widget _buildDestinationHeader() {
+    return Container(
+      width: double.infinity,
+
+      padding:
+      const EdgeInsets.all(
+        18,
+      ),
+
+      decoration: BoxDecoration(
+        color:
+        const Color(
+          0xFFEFF6FF,
+        ),
+
+        borderRadius:
+        BorderRadius.circular(
+          20,
+        ),
+
+        border: Border.all(
+          color:
+          const Color(
+            0xFFBFDBFE,
+          ),
+        ),
+      ),
+
+      child: Row(
+        crossAxisAlignment:
+        CrossAxisAlignment.start,
+
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+
+            decoration:
+            BoxDecoration(
+              color:
+              const Color(
+                0xFF2563EB,
+              ),
+
+              borderRadius:
+              BorderRadius
+                  .circular(
+                15,
+              ),
+            ),
+
+            child:
+            const Icon(
+              Icons
+                  .location_on_rounded,
+
+              color:
+              Colors.white,
+
+              size: 29,
+            ),
+          ),
+
+          const SizedBox(
+            width: 14,
+          ),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+              CrossAxisAlignment
+                  .start,
+
+              children: [
+                Text(
+                  widget
+                      .destination
+                      .name,
+
+                  style:
+                  const TextStyle(
+                    color:
+                    Color(
+                      0xFF0F172A,
+                    ),
+                    fontSize: 19,
+                    fontWeight:
+                    FontWeight
+                        .w700,
+                  ),
+                ),
+
+                if (widget
+                    .destination
+                    .category !=
+                    null) ...[
+                  const SizedBox(
+                    height: 5,
+                  ),
+
+                  Text(
+                    widget
+                        .destination
+                        .category!,
+
+                    style:
+                    const TextStyle(
+                      color:
+                      Color(
+                        0xFF2563EB,
+                      ),
+                      fontSize: 13,
+                      fontWeight:
+                      FontWeight
+                          .w600,
+                    ),
+                  ),
+                ],
+
+                if (widget
+                    .destination
+                    .address !=
+                    null) ...[
+                  const SizedBox(
+                    height: 7,
+                  ),
+
+                  Text(
+                    widget
+                        .destination
+                        .address!,
+
+                    style:
+                    const TextStyle(
+                      color:
+                      Color(
+                        0xFF64748B,
+                      ),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // MISSION HEADER
+  // ============================================================
+
+  Widget _buildMissionHeader(
+      CheckpointMission mission,
+      ) {
+    return Container(
+      width: double.infinity,
+
+      padding:
+      const EdgeInsets.all(
+        18,
+      ),
+
+      decoration:
+      BoxDecoration(
+        color:
+        Colors.white,
+
+        borderRadius:
+        BorderRadius.circular(
+          20,
+        ),
+
+        border: Border.all(
+          color:
+          const Color(
+            0xFFE2E8F0,
+          ),
+        ),
+      ),
+
+      child: Column(
+        crossAxisAlignment:
+        CrossAxisAlignment.start,
+
+        children: [
+          Row(
+            children: [
+              Container(
+                padding:
+                const EdgeInsets
+                    .symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+
+                decoration:
+                BoxDecoration(
+                  color:
+                  _difficultyColor(
+                    mission
+                        .difficultyLevel,
+                  ).withValues(
+                    alpha: 0.12,
+                  ),
+
+                  borderRadius:
+                  BorderRadius
+                      .circular(
+                    30,
+                  ),
+                ),
+
+                child: Text(
+                  mission
+                      .difficultyLevel,
+
+                  style:
+                  TextStyle(
+                    color:
+                    _difficultyColor(
+                      mission
+                          .difficultyLevel,
+                    ),
+
+                    fontSize: 11,
+
+                    fontWeight:
+                    FontWeight
+                        .w700,
+                  ),
+                ),
+              ),
+
+              const Spacer(),
+
+              if (mission.generatedBy ==
+                  'GEMINI')
+                Container(
+                  padding:
+                  const EdgeInsets
+                      .symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+
+                  decoration:
+                  BoxDecoration(
+                    color:
+                    const Color(
+                      0xFFF3E8FF,
+                    ),
+
+                    borderRadius:
+                    BorderRadius
+                        .circular(
+                      30,
+                    ),
+                  ),
+
+                  child:
+                  const Text(
+                    'AI Generated',
+                    style:
+                    TextStyle(
+                      color:
+                      Color(
+                        0xFF7C3AED,
+                      ),
+                      fontSize: 11,
+                      fontWeight:
+                      FontWeight
+                          .w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(
+            height: 14,
+          ),
+
+          Text(
+            mission.missionName,
+
+            style:
+            const TextStyle(
+              color:
+              Color(
+                0xFF0F172A,
+              ),
+
+              fontSize: 22,
+
+              fontWeight:
+              FontWeight
+                  .w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // INFO CARD
+  // ============================================================
+
+  Widget _buildInformationCard({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
+    return Container(
+      width: double.infinity,
+
+      padding:
+      const EdgeInsets.all(
+        17,
+      ),
+
+      decoration:
+      BoxDecoration(
+        color: Colors.white,
+
+        borderRadius:
+        BorderRadius.circular(
+          18,
+        ),
+
+        border: Border.all(
+          color:
+          const Color(
+            0xFFE2E8F0,
+          ),
+        ),
+      ),
+
+      child: Row(
+        crossAxisAlignment:
+        CrossAxisAlignment.start,
+
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+
+            decoration:
+            BoxDecoration(
+              color:
+              const Color(
+                0xFFEFF6FF,
+              ),
+
+              borderRadius:
+              BorderRadius
+                  .circular(
+                12,
+              ),
+            ),
+
+            child: Icon(
+              icon,
+
+              color:
+              const Color(
+                0xFF2563EB,
+              ),
+
+              size: 22,
+            ),
+          ),
+
+          const SizedBox(
+            width: 13,
+          ),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+              CrossAxisAlignment
+                  .start,
+
+              children: [
+                Text(
+                  title,
+
+                  style:
+                  const TextStyle(
+                    color:
+                    Color(
+                      0xFF0F172A,
+                    ),
+
+                    fontSize: 14,
+
+                    fontWeight:
+                    FontWeight
+                        .w700,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 7,
+                ),
+
+                Text(
+                  value,
+
+                  style:
+                  const TextStyle(
+                    color:
+                    Color(
+                      0xFF64748B,
+                    ),
+
+                    fontSize: 13,
+
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // MISSION RULES
+  // ============================================================
+
+  Widget _buildMissionRules(
+      CheckpointMission mission,
+      ) {
+    return Container(
+      padding:
+      const EdgeInsets.all(
+        18,
+      ),
+
+      decoration:
+      BoxDecoration(
+        color: Colors.white,
+
+        borderRadius:
+        BorderRadius.circular(
+          18,
+        ),
+
+        border: Border.all(
+          color:
+          const Color(
+            0xFFE2E8F0,
+          ),
+        ),
+      ),
+
+      child: Column(
+        children: [
+          _buildRuleRow(
+            icon:
+            Icons
+                .my_location_rounded,
+
+            title:
+            'Verification Radius',
+
+            value:
+            '${mission.verificationRadiusM} metres',
+          ),
+
+          const Divider(
+            height: 26,
+          ),
+
+          _buildRuleRow(
+            icon:
+            Icons
+                .stars_rounded,
+
+            title:
+            'Mission Reward',
+
+            value:
+            '${mission.rewardPoints} Exploration Points',
+          ),
+
+          const Divider(
+            height: 26,
+          ),
+
+          _buildRuleRow(
+            icon:
+            Icons
+                .photo_camera_outlined,
+
+            title:
+            'Photo Required',
+
+            value:
+            mission.photoRequired
+                ? 'Yes'
+                : 'No',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRuleRow({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
     return Row(
       children: [
-        _roundButton(
-          icon: Icons.arrow_back_rounded,
-          onTap: () => Navigator.pop(context),
+        Icon(
+          icon,
+
+          color:
+          const Color(
+            0xFF2563EB,
+          ),
+
+          size: 22,
         ),
-        const Expanded(
+
+        const SizedBox(
+          width: 12,
+        ),
+
+        Expanded(
           child: Text(
-            'Checkpoint Mission',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: darkText,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
+            title,
+
+            style:
+            const TextStyle(
+              color:
+              Color(
+                0xFF475569,
+              ),
+
+              fontSize: 13,
             ),
           ),
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F9FF),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFBAE6FD)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.toll_rounded, size: 16, color: skyBlue),
-              const SizedBox(width: 4),
-              Text(
-                '${widget.currentPoints}',
-                style: const TextStyle(
-                  color: skyBlue,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
+
+        Text(
+          value,
+
+          textAlign:
+          TextAlign.right,
+
+          style:
+          const TextStyle(
+            color:
+            Color(
+              0xFF0F172A,
+            ),
+
+            fontSize: 13,
+
+            fontWeight:
+            FontWeight.w700,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildProgressCard() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: const Row(
-        children: [
-          Text(
-            'Solo',
-            style: TextStyle(
-              color: darkText,
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.all(Radius.circular(20)),
-              child: LinearProgressIndicator(
-                value: 0.60,
-                minHeight: 9,
-                backgroundColor: Color(0xFFF1F5F9),
-                valueColor: AlwaysStoppedAnimation<Color>(skyBlue),
-              ),
-            ),
-          ),
-          SizedBox(width: 12),
-          Text(
-            '60%',
-            style: TextStyle(
-              color: skyBlue,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // ============================================================
+  // SAFETY NOTICE
+  // ============================================================
 
-  Widget _buildMissionDetailCard() {
+  Widget _buildSafetyNotice() {
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0F0F172A),
-            blurRadius: 14,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0F9FF),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.terrain_rounded,
-                  color: skyBlue,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: const TextStyle(
-                    color: darkText,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              _rewardPill(widget.reward),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            widget.description,
-            style: const TextStyle(
-              color: bodyText,
-              fontSize: 12,
-              height: 1.5,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 15),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
-          const SizedBox(height: 13),
-          Row(
-            children: [
-              _missionMeta(
-                Icons.directions_walk_rounded,
-                widget.distance,
-              ),
-              const SizedBox(width: 12),
-              _missionMeta(
-                Icons.schedule_rounded,
-                widget.duration,
-              ),
-              const SizedBox(width: 12),
-              _missionMeta(
-                Icons.camera_alt_outlined,
-                'Photo',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+      width:
+      double.infinity,
 
-  Widget _buildStatusCard() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0F9FF),
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: const Color(0xFFE0F2FE)),
+      padding:
+      const EdgeInsets.all(
+        15,
       ),
-      child: const Row(
+
+      decoration:
+      BoxDecoration(
+        color:
+        const Color(
+          0xFFFFFBEB,
+        ),
+
+        borderRadius:
+        BorderRadius.circular(
+          15,
+        ),
+
+        border: Border.all(
+          color:
+          const Color(
+            0xFFFDE68A,
+          ),
+        ),
+      ),
+
+      child:
+      const Row(
+        crossAxisAlignment:
+        CrossAxisAlignment.start,
+
         children: [
           Icon(
-            Icons.check_circle_rounded,
-            color: skyBlue,
-            size: 19,
+            Icons
+                .info_outline_rounded,
+
+            color:
+            Color(
+              0xFFD97706,
+            ),
+
+            size: 21,
           ),
-          SizedBox(width: 8),
+
+          SizedBox(
+            width: 10,
+          ),
+
           Expanded(
             child: Text(
-              'In Progress • You are within the 80 m radius. Capture the required photo.',
-              style: TextStyle(
-                color: Color(0xFF334155),
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
+              'Only complete the mission from a safe and publicly accessible location. Follow local rules and restrictions.',
+              style:
+              TextStyle(
+                color:
+                Color(
+                  0xFF92400E,
+                ),
+
+                fontSize: 12,
+
+                height: 1.45,
               ),
             ),
           ),
@@ -317,182 +991,267 @@ class _CheckpointMissionScreenState extends State<CheckpointMissionScreen> {
     );
   }
 
-  Widget _buildEvidenceBox() {
-    return InkWell(
-      borderRadius: BorderRadius.circular(25),
-      onTap: () {
-        setState(() {
-          _photoAttached = !_photoAttached;
-        });
+  // ============================================================
+  // START MISSION
+  // ============================================================
 
-        _showMessage(
-          _photoAttached
-              ? 'Mock mission photo attached.'
-              : 'Mock mission photo removed.',
+  Future<void> _startMission(
+      CheckpointMission mission,
+      ) async {
+    try {
+      final String userMissionId =
+      await _repository.startUserMission(
+        missionId: mission.missionId,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MissionExecutionScreen(
+            destination: widget.destination,
+            mission: mission,
+            userMissionId: userMissionId,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error
+                .toString()
+                .replaceFirst(
+              'Exception: ',
+              '',
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildNoMissionState() {
+    return Center(
+      child: Padding(
+        padding:
+        const EdgeInsets.all(
+          30,
+        ),
+
+        child: Column(
+          mainAxisSize:
+          MainAxisSize.min,
+
+          children: [
+            const Icon(
+              Icons
+                  .flag_outlined,
+
+              color:
+              Color(
+                0xFF94A3B8,
+              ),
+
+              size: 70,
+            ),
+
+            const SizedBox(
+              height: 18,
+            ),
+
+            const Text(
+              'No Mission Available',
+
+              style:
+              TextStyle(
+                color:
+                Color(
+                  0xFF0F172A,
+                ),
+
+                fontSize: 20,
+
+                fontWeight:
+                FontWeight
+                    .w700,
+              ),
+            ),
+
+            const SizedBox(
+              height: 8,
+            ),
+
+            Text(
+              'No active checkpoint mission was found for ${widget.destination.name}.',
+
+              textAlign:
+              TextAlign.center,
+
+              style:
+              const TextStyle(
+                color:
+                Color(
+                  0xFF64748B,
+                ),
+
+                fontSize: 14,
+              ),
+            ),
+
+            const SizedBox(
+              height: 20,
+            ),
+
+            ElevatedButton.icon(
+              onPressed:
+              _loadMission,
+
+              icon:
+              const Icon(
+                Icons.refresh,
+              ),
+
+              label:
+              const Text(
+                'Try Again',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // ERROR
+  // ============================================================
+
+  Widget _buildErrorState() {
+    return Center(
+      child:
+      SingleChildScrollView(
+        padding:
+        const EdgeInsets.all(
+          30,
+        ),
+
+        child: Column(
+          mainAxisSize:
+          MainAxisSize.min,
+
+          children: [
+            const Icon(
+              Icons
+                  .error_outline_rounded,
+
+              color:
+              Color(
+                0xFFEF4444,
+              ),
+
+              size: 70,
+            ),
+
+            const SizedBox(
+              height: 18,
+            ),
+
+            const Text(
+              'Unable to Load Mission',
+
+              style:
+              TextStyle(
+                color:
+                Color(
+                  0xFF0F172A,
+                ),
+
+                fontSize: 20,
+
+                fontWeight:
+                FontWeight
+                    .w700,
+              ),
+            ),
+
+            const SizedBox(
+              height: 10,
+            ),
+
+            Text(
+              _errorMessage ??
+                  'Unknown error',
+
+              textAlign:
+              TextAlign.center,
+
+              style:
+              const TextStyle(
+                color:
+                Color(
+                  0xFF64748B,
+                ),
+
+                fontSize: 13,
+              ),
+            ),
+
+            const SizedBox(
+              height: 20,
+            ),
+
+            ElevatedButton.icon(
+              onPressed:
+              _loadMission,
+
+              icon:
+              const Icon(
+                Icons.refresh,
+              ),
+
+              label:
+              const Text(
+                'Retry',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // DIFFICULTY COLOUR
+  // ============================================================
+
+  Color _difficultyColor(
+      String difficulty,
+      ) {
+    switch (
+    difficulty.toUpperCase()) {
+      case 'HARD':
+        return const Color(
+          0xFFDC2626,
         );
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        height: 190,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(25),
-          border: Border.all(
-            color: _photoAttached
-                ? const Color(0xFF86EFAC)
-                : const Color(0xFFCBD5E1),
-            width: 2,
-          ),
-        ),
-        child: _photoAttached
-            ? const Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircleAvatar(
-              radius: 34,
-              backgroundColor: Color(0xFFECFDF5),
-              child: Icon(
-                Icons.photo_camera_back_rounded,
-                color: Color(0xFF059669),
-                size: 32,
-              ),
-            ),
-            SizedBox(height: 12),
-            Text(
-              'Photo Attached!',
-              style: TextStyle(
-                color: Color(0xFF047857),
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'Tap again to remove mock evidence',
-              style: TextStyle(
-                color: bodyText,
-                fontSize: 11,
-              ),
-            ),
-          ],
-        )
-            : const Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.cloud_upload_outlined,
-              color: skyBlue,
-              size: 43,
-            ),
-            SizedBox(height: 10),
-            Text(
-              'Tap to capture mission evidence',
-              style: TextStyle(
-                color: darkText,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            SizedBox(height: 5),
-            Text(
-              'JPG, JPEG, PNG • max 10 MB',
-              style: TextStyle(
-                color: bodyText,
-                fontSize: 11,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'UI demo: tap this box to attach a mock photo',
-              style: TextStyle(
-                color: skyBlue,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _missionMeta(IconData icon, String text) {
-    return Expanded(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: skyBlue),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              text,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF475569),
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+      case 'MEDIUM':
+        return const Color(
+          0xFFD97706,
+        );
 
-  Widget _rewardPill(int points) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 9,
-        vertical: 6,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0F9FF),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE0F2FE)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.star_rounded,
-            color: skyBlue,
-            size: 15,
-          ),
-          const SizedBox(width: 3),
-          Text(
-            '+$points pts',
-            style: const TextStyle(
-              color: skyBlue,
-              fontSize: 10.5,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _roundButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 1,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 42,
-          height: 42,
-          child: Icon(
-            icon,
-            size: 21,
-            color: const Color(0xFF334155),
-          ),
-        ),
-      ),
-    );
+      case 'EASY':
+      default:
+        return const Color(
+          0xFF16A34A,
+        );
+    }
   }
 }
