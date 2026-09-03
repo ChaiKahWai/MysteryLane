@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../application/controller/BlindBox_Controller.dart';
+import '../../../data/models/blind_box_history.dart';
 import '../home/home_screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import 'package:flutter/services.dart';
