@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../application/controller/trip_planner_controller.dart';
+import '../../../application/controller/BlindBox_Controller.dart';
 import '../../../data/models/place_candidate.dart';
 import '../../../data/models/trip_plan.dart';
 import '../Blindbox/BlindBox_Screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import '../profile/profile_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class PlanScreen extends StatefulWidget {
   const PlanScreen({super.key});
+
   @override
   State<PlanScreen> createState() => _PlanScreenState();
 }
@@ -20,20 +26,33 @@ class _PlanScreenState extends State<PlanScreen> {
       ink = Color(0xFF0F172A),
       border = Color(0xFFDCE6EE);
   static const int destinationsPerDay = 5;
+  static const int maxTripDays = 14;
+  int dashboardPage = 0;
+  static const int itemsPerPage = 5; //
 
   final name = TextEditingController(),
       placeSearch = TextEditingController(),
       planSearch = TextEditingController();
 
+  final FocusNode _placeSearchFocus = FocusNode();
+
   TripPlannerController? api;
   String? error;
+  String? _lastViewedPlanId;
   List<TripPlan> plans = [];
+  List<TripPlan> _allPlans = [];
+  List<TripPlan> _displayedPlans = [];
+  TripPlan? _currentPlan;
+  DateTime? _selectedFilterDate;
   List<PlaceCandidate> places = [];
   List<PlaceCandidate> nearbyPlaces = [];
+  BlindBoxController? blindBoxController;
+  List<PlaceCandidate> blindBoxPlaces = [];
   List<ItineraryStop> stops = [];
   RoutePreview? route;
   PlaceCandidate? _selectedPlace;
   GoogleMapController? _mapController;
+  LatLng? _userLocation;
 
   int page = 0, routeDay = 0;
   bool history = false,
@@ -45,6 +64,9 @@ class _PlanScreenState extends State<PlanScreen> {
   String filter = 'All Pins', mode = 'solo';
   DateTime start = DateTime.now(),
       end = DateTime.now().add(const Duration(days: 3));
+  // Maps to store routes and accepted status for each day (or 0 for All Days)
+  final Map<int, RoutePreview?> _dayRoutes = {};
+  final Map<int, bool> _dayAccepted = {};
 
   @override
   void initState() {
@@ -52,6 +74,9 @@ class _PlanScreenState extends State<PlanScreen> {
     try {
       _initController();
       load();
+      nearby();
+      blindBoxController = BlindBoxController.production();
+      _loadBlindBoxPlaces(); // Fetch the history
     } catch (e) {
       error = '$e';
     }
@@ -83,7 +108,11 @@ class _PlanScreenState extends State<PlanScreen> {
     setState(() => loading = true);
     try {
       final r = await api!.loadMyPlans();
-      if (mounted) setState(() => plans = r);
+      if (mounted) setState(() {
+        plans = r;
+        _allPlans = r;
+        _displayedPlans = r; // Initialize to show everything
+      });
     } catch (e) {
       note('Unable to load plans: $e');
     } finally {
@@ -109,6 +138,7 @@ class _PlanScreenState extends State<PlanScreen> {
         stops = [];
         route = null;
         accepted = false;
+        nearby();
       });
 
   void viewPlan(TripPlan p) {
@@ -116,6 +146,7 @@ class _PlanScreenState extends State<PlanScreen> {
     final today = DateTime(now.year, now.month, now.day);
     setState(() {
       isCreating = false;
+      _currentPlan = p;
       name.text = p.name;
       start = p.startDate;
       end = p.endDate;
@@ -124,6 +155,15 @@ class _PlanScreenState extends State<PlanScreen> {
       accepted = p.routeAccepted;
       history = end.isBefore(today);
       route = null; // reset first
+
+      // CHANGE HERE: Only clear maps if this is a DIFFERENT plan
+      if (_lastViewedPlanId != p.id) {
+        _dayRoutes.clear();
+        _dayAccepted.clear();
+        _lastViewedPlanId = p.id;
+      }
+
+      routeDay = days > 1 ? 1 : 0;
       page = 3;
     });
     // If accepted and has at least 2 stops, fetch the route asynchronously
@@ -145,20 +185,79 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   Future<void> pick(bool first) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // CHANGE HERE: Allow starting a trip up to 2 years in advance!
+    final lastAllowedDate = today.add(const Duration(days: 730));
+
+    final safeInitial = first ? start : end;
+    final initialDate = safeInitial.isBefore(today) ? today : safeInitial;
+
     final d = await showDatePicker(
-        context: context,
-        initialDate: first ? start : end,
-        firstDate: DateTime.now().subtract(const Duration(days: 1)),
-        lastDate: DateTime.now().add(const Duration(days: 730)));
+      context: context,
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: lastAllowedDate,
+    );
+
     if (d != null) {
       setState(() {
         if (first) {
           start = d;
-          if (end.isBefore(d)) end = d;
+          // FIX: Use maxTripDays - 1 so the total count is 14 days (not 15)
+          final maxEndDate = start.add(Duration(days: maxTripDays - 1));
+          if (end.isAfter(maxEndDate)) {
+            end = maxEndDate;
+            note('Trip end date adjusted to the maximum of $maxTripDays days.');
+          } else if (end.isBefore(d)) {
+            end = d;
+          }
         } else {
-          end = d.isBefore(start) ? start : d;
+          // FIX: Use maxTripDays - 1 so the total count is 14 days (not 15)
+          final maxEndDate = start.add(Duration(days: maxTripDays - 1));
+          if (d.isAfter(maxEndDate)) {
+            note('Your trip cannot exceed $maxTripDays days.');
+            end = maxEndDate; // Force it to the maximum allowed
+          } else {
+            end = d.isBefore(start) ? start : d;
+          }
         }
+        final newTotalDays = end.difference(start).inDays + 1;
+
+        // NEW LOGIC: Remove stops that are now out of range
+        if (stops.any((stop) => stop.dayNumber > newTotalDays)) {
+          stops.removeWhere((stop) => stop.dayNumber > newTotalDays);
+          note('One or more destinations were removed because they fell outside the new trip dates.');
+        }
+
+        normalizeStops();
+
       });
+    }
+  }
+
+  Future<void> _loadBlindBoxPlaces() async {
+    if (blindBoxController == null) return;
+    try {
+      final history = await blindBoxController!.loadBlindBoxHistory();
+      if (mounted) {
+        setState(() {
+          // Map the BlindBoxHistoryResult to PlaceCandidate for the map
+          blindBoxPlaces = history.map((h) => PlaceCandidate(
+            placeId: h.placeId,
+            name: h.name,
+            formattedAddress: h.address,
+            latitude: h.latitude,
+            longitude: h.longitude,
+            primaryType: h.category,
+            rating: h.rating,
+            userRatingCount: h.userRatingCount,
+          )).toList();
+        });
+      }
+    } catch (e) {
+      note('Unable to load Blind Box history: $e');
     }
   }
 
@@ -182,12 +281,14 @@ class _PlanScreenState extends State<PlanScreen> {
     if (api == null) return;
     setState(() => loading = true);
     try {
+      // 1. Capture the user's current location
+      _userLocation = await api!.getCurrentLocation();
+
       final r = await api!.exploreNearby();
       if (mounted) setState(() {
-        nearbyPlaces = r; // ← ensure this is set
+        nearbyPlaces = r;
         print('📍 Nearby places: ${nearbyPlaces.length}');
       });
-
     } catch (e) {
       note('Nearby search failed: $e');
     } finally {
@@ -195,20 +296,27 @@ class _PlanScreenState extends State<PlanScreen> {
     }
   }
 
+
+
   void add(PlaceCandidate p) {
+    if (history) {
+      note('You cannot edit a past trip.');
+      return;
+    }
+
     if (stops.any((x) => x.placeId == p.placeId)) {
       note('This destination is already in your itinerary.');
       return;
     }
     final day = List.generate(days, (i) => i + 1).cast<int?>().firstWhere(
-        (d) => stops.where((x) => x.dayNumber == d).length < destinationsPerDay,
+            (d) => stops.where((x) => x.dayNumber == d).length < destinationsPerDay,
         orElse: () => null);
     if (day == null) {
       note(
           'All $days days already have $destinationsPerDay destinations. Remove a destination or extend the trip.');
       return;
     }
-    final position = stops.where((x) => x.dayNumber == day).length + 1; // Fix: 1-based for DB
+    final position = stops.where((x) => x.dayNumber == day).length + 1;
     setState(() {
       stops.add(ItineraryStop(
           placeId: p.placeId,
@@ -219,10 +327,25 @@ class _PlanScreenState extends State<PlanScreen> {
           dayNumber: day,
           sortOrder: position,
           source: 'GOOGLE'));
+
+      // ✨ NEW CODE: Remove it from the search/nearby lists so the red pin disappears
+      places.removeWhere((element) => element.placeId == p.placeId);
+      nearbyPlaces.removeWhere((element) => element.placeId == p.placeId);
+      blindBoxPlaces.removeWhere((element) => element.placeId == p.placeId);
+
       route = null;
       accepted = false;
     });
+
+    _placeSearchFocus.unfocus();
+    placeSearch.clear();
+
     note('${p.name} added to Day $day, position $position.');
+
+    note('${p.name} added to Day $day, position $position.');
+
+    FocusManager.instance.primaryFocus?.unfocus(); // Force close keyboard
+    placeSearch.clear(); // Clear the search box so it loses focus
   }
 
   void next() {
@@ -236,6 +359,8 @@ class _PlanScreenState extends State<PlanScreen> {
     }
     setState(() {
       normalizeStops();
+      // Starts on Day 1 if it's a multi-day trip (instead of "All Days")
+      routeDay = days > 1 ? 1 : 0;
       page = 2;
     });
   }
@@ -246,17 +371,44 @@ class _PlanScreenState extends State<PlanScreen> {
       return;
     }
     setState(() => loading = true);
+
+    // 1. Get the user's current location
+    // (Ensure your TripPlannerController has a getCurrentLocation method or use LocationDataSource directly)
+    final position = await api!.getCurrentLocation();
+
+    // 2. Get the stops for the selected day
     final s = routeDay == 0
         ? stops
         : stops.where((x) => x.dayNumber == routeDay).toList();
+
+    // 3. Create a "Start" stop representing the current location
+    final startStop = ItineraryStop(
+      placeId: 'current_location',
+      name: 'My Location',
+      address: 'Your current location', // <--- ADD THIS
+      latitude: position.latitude,
+      longitude: position.longitude,
+      dayNumber: routeDay == 0 ? 1 : routeDay,
+      sortOrder: 0,
+      source: 'GPS', // <--- ADD THIS
+    );
+
+    // 4. Combine the start point with the actual destinations
+    final fullRouteStops = [startStop, ...s];
+
     try {
-      final newRoute = await api!.planEfficientRoute(s);
+      // 5. Plan the route including the start location
+      final newRoute = await api!.planEfficientRoute(fullRouteStops);
       if (mounted) {
         setState(() {
           route = newRoute;
           accepted = false;
           loading = false;
+          // SAVE to map so it persists when switching days
+          _dayRoutes[routeDay] = newRoute;
+          _dayAccepted[routeDay] = false;
         });
+        _focusOnStart();
       }
     } catch (e) {
       note('$e');
@@ -266,8 +418,107 @@ class _PlanScreenState extends State<PlanScreen> {
 
   void accept() {
     if (route == null) return;
-    setState(() => accepted = true);
+    setState(() {
+      accepted = true;
+      _dayAccepted[routeDay] = true;
+
+      // Update the local plan object so we remember it
+      if (_currentPlan != null) {
+        _currentPlan = TripPlan(
+          id: _currentPlan!.id,
+          name: _currentPlan!.name,
+          startDate: _currentPlan!.startDate,
+          endDate: _currentPlan!.endDate,
+          mode: _currentPlan!.mode,
+          visibility: _currentPlan!.visibility,
+          inviteCode: _currentPlan!.inviteCode,
+          routeAccepted: true, // Only this changes
+          stops: _currentPlan!.stops,
+        );
+
+        // Find the plan in the main list and update it too
+        final index = plans.indexWhere((x) => x.id == _currentPlan?.id);
+        if (index != -1) {
+          plans[index] = _currentPlan!;
+        }
+      }
+    });
+    reorderStopsFromRoute();
+
+    _focusOnStart();
     note('Route accepted.');
+  }
+
+  void reorderStopsFromRoute() {
+    if (route == null || route!.points.isEmpty) return;
+
+    // Get only the stops for the currently selected day (0 means all days)
+    final currentStops = stops.where((s) => routeDay == 0 || s.dayNumber == routeDay).toList();
+    if (currentStops.length < 2) return;
+
+    List<ItineraryStop> reorderedStops = [];
+
+    // Walk through the polyline points and find which stop is closest (within 50 meters)
+    // This gives us the actual driving order from the map
+    for (final point in route!.points) {
+      for (final stop in currentStops) {
+        final dist = _calculateDistance(point, LatLng(stop.latitude, stop.longitude));
+        if (dist < 0.05) { // 50 meters threshold
+          if (!reorderedStops.contains(stop)) {
+            reorderedStops.add(stop);
+          }
+        }
+      }
+    }
+
+    // Safety: Add any stops that were somehow missed by the map matching
+    for (final stop in currentStops) {
+      if (!reorderedStops.contains(stop)) {
+        reorderedStops.add(stop);
+      }
+    }
+
+    setState(() {
+      // Remove the current day's stops from the main list
+      stops.removeWhere((s) => routeDay == 0 || s.dayNumber == routeDay);
+
+      // Add the stops back in the optimized map order with new sort numbers
+      for (var i = 0; i < reorderedStops.length; i++) {
+        stops.add(reorderedStops[i].copyWith(sortOrder: i + 1));
+      }
+
+      // Sort the whole list so Day 1, Day 2, etc. are still grouped correctly
+      stops.sort((a, b) {
+        if (a.dayNumber == b.dayNumber) {
+          return a.sortOrder.compareTo(b.sortOrder);
+        }
+        return a.dayNumber.compareTo(b.dayNumber);
+      });
+    });
+  }
+
+  void _focusOnStart() {
+    if (_mapController == null) return;
+
+    // The first point of the route is always the "current location" start point
+    if (route != null && route!.points.isNotEmpty) {
+      final startPoint = route!.points.first;
+      _mapController!.animateCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: LatLng(startPoint.latitude, startPoint.longitude),
+          zoom: 15, // Good zoom level to see the dot and first destination
+        ),
+      ));
+    } else if (stops.isNotEmpty) {
+      // Fallback if route isn't loaded yet
+      final firstStop = stops.first;
+      _mapController!.animateCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: LatLng(firstStop.latitude, firstStop.longitude),
+          zoom: 14,
+        ),
+      ));
+    }
   }
 
   Future<void> remove(int i) async {
@@ -301,6 +552,13 @@ class _PlanScreenState extends State<PlanScreen> {
       note('Add at least one destination first.');
       return;
     }
+
+    final newName = name.text.trim().toLowerCase();
+    if (plans.any((p) => p.name.toLowerCase() == newName)) {
+      note('A plan with this name already exists. Please choose a different name.');
+      return;
+    }
+
     setState(() => loading = true);
     try {
       normalizeStops();
@@ -316,13 +574,23 @@ class _PlanScreenState extends State<PlanScreen> {
           stops: stops));
       if (mounted) {
         setState(() {
-          plans = [p, ...plans];
+          plans = [p, ...plans];              // Keep this
+          _allPlans = [p, ..._allPlans];      // ADD THIS
+          _displayedPlans = [p, ..._displayedPlans]; // ADD THIS
           page = 3;
           history = false;
-          isCreating = false;   // <-- ADD THIS
+          isCreating = false;
+          dashboardPage = 0;                  // ADD THIS: Takes you back to Page 1
         });
       }
       note('Trip plan created successfully.');
+    } on PostgrestException catch (e) {
+      // 23505 is the "Unique Violation" error code in PostgreSQL
+      if (e.code == '23505') {
+        note('A plan with this name already exists. Please choose a different name.');
+      } else {
+        note('Unable to save plan: $e');
+      }
     } catch (e) {
       note('Unable to save plan: $e');
     } finally {
@@ -338,6 +606,92 @@ class _PlanScreenState extends State<PlanScreen> {
     } else {
       note('You are already on the main screen.');
     }
+  }
+
+  void _openFilterMenu() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          // Better padding from all sides, especially the bottom
+          padding: const EdgeInsets.fromLTRB(20.0, 24.0, 20.0, 32.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            // This is the key change: it makes the children span the full width
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                "Filter by Date",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                // Adding padding and rounded corners to the button
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                onPressed: () async {
+                  DateTime? pickedDate = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                  );
+                  if (pickedDate != null) {
+                    _applyFilter(pickedDate);
+                    Navigator.pop(context);
+                  }
+                },
+                child: const Text("Pick a Specific Day"),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () {
+                  _clearFilter();
+                  Navigator.pop(context);
+                },
+                child: const Text("Show All Days", style: TextStyle(color: Colors.grey)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _applyFilter(DateTime selectedDate) {
+    setState(() {
+      _selectedFilterDate = selectedDate;
+      _displayedPlans = _allPlans.where((plan) {
+        // Normalize to just the day (remove time)
+        DateTime pStart = DateTime(plan.startDate.year, plan.startDate.month, plan.startDate.day);
+        DateTime pEnd = DateTime(plan.endDate.year, plan.endDate.month, plan.endDate.day);
+        DateTime nSelected = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+
+        // Check if the selected day falls inside the trip dates
+        return !nSelected.isBefore(pStart) && !nSelected.isAfter(pEnd);
+      }).toList();
+    });
+  }
+
+  void _clearFilter() {
+    setState(() {
+      _selectedFilterDate = null;
+      _displayedPlans = _allPlans;
+    });
   }
 
   @override
@@ -358,7 +712,7 @@ class _PlanScreenState extends State<PlanScreen> {
           Column(children: [header(), Expanded(child: body)]),
           Align(alignment: Alignment.bottomCenter, child: bottom()),
           if (page == 0)
-            Positioned(right: 10, bottom: 132, child: createButton())
+            Positioned(right: 10, bottom: 200, child: createButton())
         ])));
   }
 
@@ -434,7 +788,7 @@ class _PlanScreenState extends State<PlanScreen> {
     children: [
       banner(),
       const SizedBox(height: 18),
-      tabs(active: false),
+      tabs(active: false, enabled: true),
       const SizedBox(height: 18),
       Container(
         padding: const EdgeInsets.all(20),
@@ -489,38 +843,51 @@ class _PlanScreenState extends State<PlanScreen> {
             const SizedBox(height: 12),
             routePreview(stops),
             const SizedBox(height: 15),
+
+            // ADD THIS BLOCK
+            if (days > 1) ...[
+              label('PLAN ROUTE BY DAY'),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: [
+                    for (int i = 1; i <= days; i++) routePill('Day $i', i),
+                  ])),
+              const SizedBox(height: 16),
+            ],
+            // End of added block
+
             if (route == null)
               primary('PLAN ROUTE', generate)
             else if (!accepted)
               Row(children: [
                 Expanded(
-                  child: FilledButton.icon(
+                  child: OutlinedButton.icon(
                     onPressed: accept,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF22C55E),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-                    ),
-                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    icon: const Icon(Icons.thumb_up_alt_outlined, size: 18),
                     label: const Text("Accept Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF00A774), // Green
+                        side: const BorderSide(color: Color(0xFF00A774), width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => setState(() {
-                      route = null;
-                      accepted = false;
-                    }),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFEF4444),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-                    ),
-                    icon: const Icon(Icons.cancel_outlined, size: 18),
+                  child: OutlinedButton.icon(
+                    onPressed: () => setState(() { route = null; accepted = false; }),
+                    icon: const Icon(Icons.thumb_down_alt_outlined, size: 18),
                     label: const Text("Reject Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFFEF4444), // Red
+                        side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                    ),
                   ),
                 ),
               ])
@@ -538,7 +905,7 @@ class _PlanScreenState extends State<PlanScreen> {
                   children: [
                     Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 18),
                     SizedBox(width: 8),
-                    Text('Route Accepted & Optimized', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 13)),
+                    Text('Route Plan Accepted', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 13)),
                   ],
                 ),
               ),
@@ -594,7 +961,8 @@ class _PlanScreenState extends State<PlanScreen> {
                     color: Colors.white,
                     fontWeight: FontWeight.bold)))
       ]));
-  Widget tabs({bool active = true}) => Container(
+
+  Widget tabs({bool active = true, bool enabled = true}) => Container(
     padding: const EdgeInsets.all(7),
     decoration: BoxDecoration(
       color: const Color(0xFFF0F9FF),
@@ -604,20 +972,74 @@ class _PlanScreenState extends State<PlanScreen> {
     child: Row(children: [
       Expanded(
         child: tab('My Plan', Icons.explore_outlined, active && !history, () {
-          if (active) {
-            setState(() { history = false; page = 0; });
+          if (enabled) {
+            // Only show popup if actively creating a new plan (Page 1 or 2)
+            if (page == 1 || page == 2) {
+              showDialog(
+                context: context,
+                builder: (c) => AlertDialog(
+                  title: const Text('Leave this page?'),
+                  content: const Text('Your current unsaved progress will be lost.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.pop(c);
+                        setState(() {
+                          isCreating = false; // Reset it!
+                          history = false;
+                          page = 0;
+                          dashboardPage = 0;
+                        });
+                      },
+                      child: const Text('Leave'),
+                    ),
+                  ],
+                ),
+              );
+            } else {
+              // Dashboard or Viewing a saved plan -> Just switch instantly
+              setState(() { history = false; page = 0; });
+            }
           }
         }),
       ),
       Expanded(
         child: tab('History', Icons.history, active && history, () {
-          if (active) {
-            setState(() { history = true; page = 0; });
+          if (enabled) {
+            if (page == 1 || page == 2) {
+              showDialog(
+                context: context,
+                builder: (c) => AlertDialog(
+                  title: const Text('Leave this page?'),
+                  content: const Text('Your current unsaved progress will be lost.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.pop(c);
+                        setState(() {
+                          isCreating = false; // Reset it!
+                          history = true;
+                          page = 0;
+                          dashboardPage = 0;
+                        });
+                      },
+                      child: const Text('Leave'),
+                    ),
+                  ],
+                ),
+              );
+            } else {
+              // Dashboard or Viewing a saved plan -> Just switch instantly
+              setState(() { history = true; page = 0; });
+            }
           }
         }),
       )
     ]),
   );
+
   Widget tab(String s, IconData i, bool on, VoidCallback f) => InkWell(
       onTap: f,
       borderRadius: BorderRadius.circular(14),
@@ -641,7 +1063,7 @@ class _PlanScreenState extends State<PlanScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final q = planSearch.text.toLowerCase();
 
-    final filteredByDate = plans.where((p) {
+    final filteredByDate = _displayedPlans.where((p) {
       final isHistory = p.endDate.isBefore(today);
       return history ? isHistory : !isHistory;
     }).toList();
@@ -649,6 +1071,14 @@ class _PlanScreenState extends State<PlanScreen> {
     final list = filteredByDate
         .where((p) => q.isEmpty || p.name.toLowerCase().contains(q))
         .toList();
+
+    // Calculate Pagination
+    int totalPages = (list.length / itemsPerPage).ceil();
+    if (totalPages == 0) totalPages = 1; // Prevent division by zero
+    if (dashboardPage >= totalPages) dashboardPage = totalPages - 1;
+
+    // Slice the list for the current page
+    final paginatedList = list.skip(dashboardPage * itemsPerPage).take(itemsPerPage).toList();
 
     return ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 155), children: [
       banner(),
@@ -662,9 +1092,13 @@ class _PlanScreenState extends State<PlanScreen> {
                 history
                     ? 'Search history plans or destination'
                     : 'Search active plans or destination',
-                (_) => setState(() {}))),
+                    (_) => setState(() { dashboardPage = 0; }),
+                suffix: Icons.search)), // <--- ADD THIS
         const SizedBox(width: 8),
-        boxIcon(Icons.tune)
+        InkWell(
+          onTap: _openFilterMenu,
+          child: boxIcon(Icons.tune),
+        ),
       ]),
       const SizedBox(height: 22),
       Row(children: [
@@ -686,22 +1120,59 @@ class _PlanScreenState extends State<PlanScreen> {
                 padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
       else if (list.isEmpty)
         empty()
-      else
-        ...list.map(cardPlan)
+      else ...[
+          ...paginatedList.map(cardPlan),
+
+          // THE NEW PAGINATION BAR
+          if (totalPages > 1) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: border),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: dashboardPage == 0 ? null : () => setState(() => dashboardPage--),
+                    child: const Text('< Prev', style: TextStyle(color: blue, fontWeight: FontWeight.bold)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('Page ${dashboardPage + 1} of $totalPages',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                  TextButton(
+                    onPressed: dashboardPage >= totalPages - 1 ? null : () => setState(() => dashboardPage++),
+                    child: const Text('Next >', style: TextStyle(color: blue, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ]
     ]);
   }
 
   Widget create() => ListView(padding: const EdgeInsets.fromLTRB(18, 20, 18, 102), children: [
         banner(),
         const SizedBox(height: 18),
-        tabs(active: false),
+        tabs(active: false, enabled: true),
         const SizedBox(height: 22),
         surface(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           step('STEP 1 OF 2 • TRIP SETUP', 'Create New Expedition\nPlan'),
           const Divider(height: 28),
           label('TRIP PLAN NAME *'),
           const SizedBox(height: 8),
-          field(name, 'e.g. Kyoto Ancient Secrets Quest', (_) => {}),
+          field(name, 'e.g. Kyoto Ancient Secrets Quest', (val) {
+            // If the name they typed matches an existing plan, show a warning
+            if (plans.any((p) => p.name.toLowerCase() == val.toLowerCase())) {
+              note('Name already exists!');
+            }
+          }),
           const SizedBox(height: 16),
           Row(children: [
             Expanded(child: dateBox('START DATE', start, () => pick(true))),
@@ -730,19 +1201,21 @@ class _PlanScreenState extends State<PlanScreen> {
   Widget mapSection() =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         primary(
-            mapOpen ? '♧  CLOSE INTERACTIVE MAP' : '♧  OPEN INTERACTIVE MAP',
+            mapOpen ? 'CLOSE INTERACTIVE MAP' : 'OPEN INTERACTIVE MAP',
             () => setState(() => mapOpen = !mapOpen)),
         if (mapOpen) ...[
           const SizedBox(height: 18),
           field(placeSearch, 'Search map location, mission or landmark',
               (_) => search(),
-              suffix: Icons.search),
+              suffix: Icons.search,
+              focusNode: _placeSearchFocus),
+
           const SizedBox(height: 12),
           SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(children: [
                 pill('All Pins'),
-                pill('Nearby (<2.5km)', pin: true),
+                pill('Nearby (<5.0km)', pin: true),
                 pill('Planner Pins', tick: true),
                 pill('Blind Box', blind: true)
               ])),
@@ -761,95 +1234,171 @@ class _PlanScreenState extends State<PlanScreen> {
       ]);
 
   Widget itinerary() => ListView(padding: const EdgeInsets.fromLTRB(18, 20, 18, 102), children: [
-        banner(),
-        const SizedBox(height: 18),
-        tabs(),
-        const SizedBox(height: 18),
+    banner(),
+    const SizedBox(height: 18),
+    tabs(),
+    const SizedBox(height: 18),
+    if(page == 3)
+      outline('Print Trip Plan', const Color(0xFF00A774), _generateTripPdf),
+    const SizedBox(height: 18),
+    surface(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: step('EXPEDITION DETAILS & ROUTE', name.text)),
+        badge(history ? 'COMPLETED' : 'ACTIVE')
+      ]),
+      const SizedBox(height: 20),
+      Row(children: [
+        Expanded(
+            child: detailBox(
+                'DATES', '${date(start)} →\n${date(end)}', '$days Days Trip')),
+        const SizedBox(width: 12),
+        Expanded(child: detailBox('TEAM CODE', '#123456', 'TEAM MODE')),
+      ]),
+      const SizedBox(height: 24),
+      Row(children: [
+        Expanded(child: label('SQUAD MEMBERS (3)')),
+        TextButton(
+            onPressed: () {},
+            child: const Text('Manage Squad Members',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)))
+      ]),
+      const SizedBox(height: 8),
+      SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            member('AV', 'Alex Vance (Host)', ink, true),
+            const SizedBox(width: 8),
+            member('SL', 'Sophia L.', const Color(0xFFFACC15), false),
+            const SizedBox(width: 8),
+            member('KT', 'Kenji T.', ink, false),
+          ])),
+      const Divider(height: 40),
+      Row(children: [
+        Expanded(child: label('DAY-BY-DAY ITINERARY')),
+        const Text('Tap pencil to edit place\nlocation',
+            textAlign: TextAlign.right,
+            style: TextStyle(fontSize: 8, color: Colors.grey))
+      ]),
+      const SizedBox(height: 16),
+      ...stops.asMap().entries.map((e) => stopTile(e.key, e.value)),
+      const SizedBox(height: 28),
+      label('CONNECTED PLAN ROUTE MAP'),
+      const Text('Connected waypoints route map preview',
+          style: TextStyle(fontSize: 9, color: Colors.grey)),
+      const SizedBox(height: 16),
+      Stack(children: [
+        routePreview(routeDay == 0 ? stops : stops.where((x) => x.dayNumber == routeDay).toList()),
+        Positioned(
+            right: 10,
+            top: 10,
+            child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(.85),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFBAE6FD))),
+                child: const Row(children: [
+                  Icon(Icons.hub_outlined, size: 14, color: blue),
+                  SizedBox(width: 4),
+                  Text('Fit Route View',
+                      style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: blue))
+                ])))
+      ]),
+      const SizedBox(height: 16),
+
+      // ADD THE DAY SELECTOR HERE (This is the new part)
+      if (days > 1) ...[
+        label('PLAN ROUTE BY DAY'),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              for (int i = 1; i <= days; i++) routePill('Day $i', i),
+            ])),
+        const SizedBox(height: 16),
+      ],
+
+      if (route == null)
+        primary('PLAN ROUTE', generate)
+      else if (!accepted)
         Row(children: [
-          const Spacer(),
-          if(page == 3)
-            outline('Print Report', const Color(0xFF00A774), () => note('Report generation pending.'))
-        ]),
-        const SizedBox(height: 18),
-        surface(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: step('EXPEDITION DETAILS & ROUTE', name.text)),
-            badge(history ? 'COMPLETED' : 'ACTIVE')
-          ]),
-          const SizedBox(height: 20),
-          Row(children: [
-            Expanded(
-                child: detailBox(
-                    'DATES', '${date(start)} →\n${date(end)}', '$days Days Trip')),
-            const SizedBox(width: 12),
-            Expanded(child: detailBox('TEAM CODE', '#123456', 'TEAM MODE')),
-          ]),
-          const SizedBox(height: 24),
-          Row(children: [
-            Expanded(child: label('SQUAD MEMBERS (3)')),
-            TextButton(
-                onPressed: () {},
-                child: const Text('Manage Squad Members',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)))
-          ]),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(children: [
-                member('AV', 'Alex Vance (Host)', ink, true),
-                const SizedBox(width: 8),
-                member('SL', 'Sophia L.', const Color(0xFFFACC15), false),
-                const SizedBox(width: 8),
-                member('KT', 'Kenji T.', ink, false),
-              ])),
-          const Divider(height: 40),
-          Row(children: [
-            Expanded(child: label('DAY-BY-DAY ITINERARY')),
-            const Text('Tap pencil to edit place\nlocation',
-                textAlign: TextAlign.right,
-                style: TextStyle(fontSize: 8, color: Colors.grey))
-          ]),
-          const SizedBox(height: 16),
-          ...stops.asMap().entries.map((e) => stopTile(e.key, e.value)),
-          const SizedBox(height: 28),
-          label('CONNECTED PLAN ROUTE MAP'),
-          const Text('Connected waypoints route map preview',
-              style: TextStyle(fontSize: 9, color: Colors.grey)),
-          const SizedBox(height: 16),
-          Stack(children: [
-            routePreview(stops),
-            Positioned(
-                right: 10,
-                top: 10,
-                child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(.85),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFBAE6FD))),
-                    child: const Row(children: [
-                      Icon(Icons.hub_outlined, size: 14, color: blue),
-                      SizedBox(width: 4),
-                      Text('Fit Route View',
-                          style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              color: blue))
-                    ])))
-          ]),
-          const SizedBox(height: 22),
-          if (isCreating) primary('◉  START YOUR ADVENTURE', loading ? null : save),
-          const SizedBox(height: 12),
-          Center(
-            child: TextButton.icon(
-              onPressed: () => setState(() => page = 0),
-              icon: const Icon(Icons.arrow_back, size: 16),
-              label: const Text('Back to Dashboard'),
-              style: TextButton.styleFrom(foregroundColor: Colors.grey),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: accept,
+              style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white, // White background
+                  foregroundColor: const Color(0xFF00A774), // Green text
+                  side: const BorderSide(color: Color(0xFF00A774), width: 1.5), // Green border
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+              ),
+              icon: const Icon(Icons.check_circle_outline, size: 18),
+              label: const Text("Accept Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ),
           ),
-        ]))
-      ]);
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => setState(() {
+                route = null;
+                accepted = false;
+                _dayRoutes.remove(routeDay);
+                _dayAccepted[routeDay] = false;
+              }),
+              style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white, // White background
+                  foregroundColor: const Color(0xFFEF4444), // Red text
+                  side: const BorderSide(color: Color(0xFFEF4444), width: 1.5), // Red border
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+              ),
+              icon: const Icon(Icons.cancel_outlined, size: 18),
+              label: const Text("Reject Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ])
+      else
+        Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 18),
+                  SizedBox(width: 8),
+                  Text('Route Accepted & Optimized', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            primary('RE-PLAN ROUTE', generate)
+          ],
+        ),
+      // Removed the duplicate SizedBox here
+      const SizedBox(height: 22),
+
+      if (isCreating) primary('◉  START YOUR ADVENTURE', loading ? null : save),
+      const SizedBox(height: 12),
+      Center(
+        child: TextButton.icon(
+          onPressed: () => setState(() => page = 0),
+          icon: const Icon(Icons.arrow_back, size: 16),
+          label: const Text('Back to Plan Listing'),
+          style: TextButton.styleFrom(foregroundColor: Colors.grey),
+        ),
+      ),
+    ]))
+  ]);
 
   void normalizeStops() {
     for (var day = 1; day <= days; day++) {
@@ -876,9 +1425,14 @@ class _PlanScreenState extends State<PlanScreen> {
     var selectedDay = originalDay;
     var selectedPosition = originalPosition;
     int countFor(int day) => stops.where((x) => x.dayNumber == day).length;
-    int maxPosition(int day) => day == originalDay
-        ? countFor(day)
-        : countFor(day).clamp(1, destinationsPerDay);
+    int maxPosition(int day) {
+      if (day == originalDay) {
+        return countFor(day);
+      } else {
+
+        return (countFor(day) + 1).clamp(1, destinationsPerDay);
+      }
+    }
     await showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
@@ -925,11 +1479,13 @@ class _PlanScreenState extends State<PlanScreen> {
                         setState(() {
                           final moved = stops[index];
                           final targetIndex = stops.indexWhere((x) =>
-                              x.dayNumber == selectedDay &&
+                          x.dayNumber == selectedDay &&
                               x.sortOrder == selectedPosition);
                           final targetFull = selectedDay != originalDay &&
                               countFor(selectedDay) >= destinationsPerDay;
+
                           if (targetFull && targetIndex >= 0) {
+                            // Swap logic (for moving to a full different day)
                             final displaced = stops[targetIndex];
                             stops[index] = displaced.copyWith(
                                 dayNumber: originalDay,
@@ -939,24 +1495,28 @@ class _PlanScreenState extends State<PlanScreen> {
                                 sortOrder: selectedPosition);
                             swapped = true;
                           } else {
+                            // Robust Reorder Logic (Fixes your issue)
                             stops.removeAt(index);
-                            for (var i = 0; i < stops.length; i++) {
-                              final stop = stops[i];
-                              if (stop.dayNumber == originalDay &&
-                                  stop.sortOrder > originalPosition) {
-                                stops[i] =
-                                    stop.copyWith(sortOrder: stop.sortOrder - 1);
-                              }
-                              if (stop.dayNumber == selectedDay &&
-                                  stop.sortOrder >= selectedPosition) {
-                                stops[i] =
-                                    stop.copyWith(sortOrder: stop.sortOrder + 1);
-                              }
-                            }
-                            stops.add(moved.copyWith(
-                                dayNumber: selectedDay,
-                                sortOrder: selectedPosition));
+
+                            // Extract all items for the target day and remove them temporarily
+                            final dayItems = stops.where((x) => x.dayNumber == selectedDay).toList();
+                            stops.removeWhere((x) => x.dayNumber == selectedDay);
+
+                            // Calculate 0-based index for insertion
+                            var pos = selectedPosition - 1;
+                            if (pos < 0) pos = 0;
+                            if (pos > dayItems.length) pos = dayItems.length;
+
+                            // Insert the moved item with its proper temporary sortOrder
+                            dayItems.insert(pos, moved.copyWith(dayNumber: selectedDay, sortOrder: pos + 1));
+
+                            // Sort the day items to ensure correct relative order
+                            dayItems.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+                            // Add them back to the main list
+                            stops.addAll(dayItems);
                           }
+
                           normalizeStops();
                           route = null;
                           accepted = false;
@@ -992,20 +1552,22 @@ class _PlanScreenState extends State<PlanScreen> {
           ],
         ),
       ),
-      Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: () => editSequence(i),
-            child: Icon(Icons.edit_outlined, size: 20, color: Colors.blueGrey.withValues(alpha: 0.6)),
-          ),
-          const SizedBox(width: 12),
-          InkWell(
-            onTap: () => remove(i),
-            child: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 20),
-          ),
-        ],
-      ),
+      // NEW: Only show edit/delete icons if it is NOT a history plan
+      if (!history)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: () => editSequence(i),
+              child: Icon(Icons.edit_outlined, size: 20, color: Colors.blueGrey.withValues(alpha: 0.6)),
+            ),
+            const SizedBox(width: 12),
+            InkWell(
+              onTap: () => remove(i),
+              child: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 20),
+            ),
+          ],
+        ),
     ]),
   );
 
@@ -1138,33 +1700,47 @@ class _PlanScreenState extends State<PlanScreen> {
         const Positioned(right: 12, top: 12, child: Icon(Icons.zoom_in_map, size: 34)),
         const Positioned(bottom: 8, right: 10, child: Text('Google Maps SDK pending', style: TextStyle(fontSize: 9, color: Color(0xFF475569))))
       ]));
+
+
   Widget _buildMapWidget() {
+    final searchPinColor = BitmapDescriptor.hueRed;
+
     final markers = <Marker>{};
+    // NEW: Only show blue Planner pins for the selected day
+    final currentDayStops = routeDay == 0
+        ? stops
+        : stops.where((x) => x.dayNumber == routeDay).toList();
 
     // 1. Planner pins (blue) – from stops (already added to itinerary)
     if (filter == 'All Pins' || filter == 'Planner Pins') {
-      for (final stop in stops) {
+      for (final stop in currentDayStops) {
         markers.add(Marker(
           markerId: MarkerId('stop_${stop.placeId}'),
           position: LatLng(stop.latitude, stop.longitude),
           infoWindow: InfoWindow(title: stop.name),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue), // BLUE
         ));
-      }
-      // Also show search results as blue (optional)
-      if (filter == 'All Pins') {
-        for (final p in places) {
-          markers.add(Marker(
-            markerId: MarkerId('search_${p.placeId}'),
-            position: LatLng(p.latitude, p.longitude),
-            infoWindow: InfoWindow(title: p.name, snippet: p.formattedAddress),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-          ));
-        }
       }
     }
 
-    // 2. Nearby pins (red)
+    // 1.5 Search pins (RED - Uses the variable at the top)
+    if (filter == 'All Pins') {
+      for (final p in places) {
+        markers.add(Marker(
+          markerId: MarkerId('search_${p.placeId}'),
+          position: LatLng(p.latitude, p.longitude),
+          infoWindow: InfoWindow(title: p.name, snippet: p.formattedAddress),
+          icon: BitmapDescriptor.defaultMarkerWithHue(searchPinColor),
+
+          onTap: () {
+            FocusManager.instance.primaryFocus?.unfocus();
+            _showAddPlaceDialog(p);
+          },
+        ));
+      }
+    }
+
+    // 2. Nearby pins (RED - Same color as Search)
     if (filter == 'All Pins' || filter == 'Nearby') {
       for (final p in nearbyPlaces) {
         markers.add(Marker(
@@ -1172,30 +1748,33 @@ class _PlanScreenState extends State<PlanScreen> {
           position: LatLng(p.latitude, p.longitude),
           infoWindow: InfoWindow(title: p.name, snippet: p.formattedAddress),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          // ADD THIS: Opens the dialog with the "Add to Trip" button
+          onTap: () => _showAddPlaceDialog(p),
         ));
       }
     }
 
-    // 3. Blind Box pins (purple) – add if you have a list, e.g., blindBoxPlaces
-
-    if (markers.isEmpty) {
-      return Container(
-        height: 245,
-        decoration: BoxDecoration(
-          color: const Color(0xFFD9EFF5),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFBAE6FD)),
-        ),
-        child: const Center(child: Text('No pins to display.')),
-      );
+    // 3. Blind Box pins (PURPLE)
+    if (filter == 'All Pins' || filter == 'Blind Box') {
+      for (final p in blindBoxPlaces) {
+        markers.add(Marker(
+          markerId: MarkerId('blind_${p.placeId}'),
+          position: LatLng(p.latitude, p.longitude),
+          infoWindow: InfoWindow(title: p.name, snippet: p.formattedAddress),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
+          // ADD THIS: Opens the dialog with the "Add to Trip" button
+          onTap: () => _showAddPlaceDialog(p),
+        ));
+      }
     }
 
-    // Use the first marker as camera target
-    final first = markers.first;
+    // Logic for initial camera view based on the selected filter
     final initialPosition = CameraPosition(
-      target: first.position,
-      zoom: 13,
+      target: _getInitialMapTarget(markers),
+      zoom: 15, // Zoomed in a bit more to see the immediate area
     );
+
+
 
     return Container(
       height: 245,
@@ -1203,61 +1782,85 @@ class _PlanScreenState extends State<PlanScreen> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFBAE6FD)),
       ),
-      child: GoogleMap(
-        initialCameraPosition: initialPosition,
-        markers: markers,
-        onMapCreated: (controller) {
-          _mapController = controller;
-        },
-        onTap: (latLng) async {
-          if (_mapController == null) return;
+      // Stack allows us to put the legend ON TOP of the map
+      child: Stack(
+        children: [
+          // 1. Wrap map in GestureDetector to stop ListView from stealing vertical swipes
+          GestureDetector(
+            onVerticalDragUpdate: (details) {},
+            child: GoogleMap(
+              initialCameraPosition: initialPosition,
+              markers: markers, // If empty, it just shows an empty map!
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
+              onMapCreated: (controller) {
+                _mapController = controller;
+              },
+              onTap: (latLng) async {
+                // Find the closest pin within 50 meters (0.05 km)
+                PlaceCandidate? found;
+                double closestDistance = 0.05; // 50 meters threshold
 
-          // Get the current zoom level
-          final zoom = await _mapController!.getZoomLevel();
+                // Check Nearby
+                for (final p in nearbyPlaces) {
+                  double distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
+                  if (distance < closestDistance) { found = p; closestDistance = distance; }
+                }
 
-          // Calculate a dynamic threshold (in km) based on zoom
-          double thresholdKm;
-          if (zoom > 16) {
-            thresholdKm = 0.05; // 50 meters (very close)
-          } else if (zoom > 14) {
-            thresholdKm = 0.1;  // 100 meters
-          } else if (zoom > 12) {
-            thresholdKm = 0.2;  // 200 meters
-          } else {
-            thresholdKm = 0.5;  // 500 meters (zoomed out)
-          }
+                // Check Search
+                if (found == null) {
+                  for (final p in places) {
+                    double distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
+                    if (distance < closestDistance) { found = p; closestDistance = distance; }
+                  }
+                }
 
-          PlaceCandidate? found;
+                // Check Blind Box
+                if (found == null) {
+                  for (final p in blindBoxPlaces) {
+                    double distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
+                    if (distance < closestDistance) { found = p; closestDistance = distance; }
+                  }
+                }
 
-          // Check search results
-          for (final p in places) {
-            final distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
-            if (distance < thresholdKm) {
-              found = p;
-              break;
-            }
-          }
+                if (found != null) {
+                  _showAddPlaceDialog(found);
+                } else {
+                  // Optional: Show a message if they tap empty space
+                  // note('Tap directly on a pin to add it.');
+                }
+              },
+            ),
+          ),
 
-          // Check nearby results
-          if (found == null) {
-            for (final p in nearbyPlaces) {
-              final distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
-              if (distance < thresholdKm) {
-                found = p;
-                break;
-              }
-            }
-          }
-
-          if (found != null) {
-            print('✅ Found: ${found.name} (zoom: $zoom)');
-            _showAddPlaceDialog(found);
-          } else {
-            print('❌ No place found (zoom: $zoom)');
-          }
-        },
+          // 2. Legend moved to BOTTOM LEFT to not cover the pin's popup
+          Positioned(
+            bottom: 10,
+            left: 10,
+            child: IgnorePointer(
+              child: _mapLegend(),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+
+
+  LatLng _getInitialMapTarget(Set<Marker> markers) {
+    // 1. If "All Pins", primarily redirect to the User Location
+    if (filter == 'All Pins') {
+      if (_userLocation != null) return _userLocation!;
+      if (markers.isNotEmpty) return markers.first.position; // Fallback to pin
+    } else {
+      // 2. If a specific filter (Planner, Blind Box, Nearby), primarily redirect to the Pin
+      if (markers.isNotEmpty) return markers.first.position;
+      if (_userLocation != null) return _userLocation!; // Fallback to user location
+    }
+
+    // 3. Fallback if neither exists
+    return const LatLng(3.1390, 101.6869); // Default to KL
   }
 
   double _calculateDistance(LatLng a, LatLng b) {
@@ -1271,8 +1874,12 @@ class _PlanScreenState extends State<PlanScreen> {
     return earthRadius * 2 * atan2(sqrt(h), sqrt(1 - h));
   }
 
+
+
   // Helper to show a bottom sheet with Add button
   void _showAddPlaceDialog(PlaceCandidate place) {
+
+    FocusScope.of(context).unfocus();
     showModalBottomSheet(
       context: context,
       builder: (context) => Container(
@@ -1294,6 +1901,9 @@ class _PlanScreenState extends State<PlanScreen> {
                 FilledButton(
                   onPressed: () {
                     add(place);
+
+                    FocusManager.instance.primaryFocus?.unfocus();
+
                     Navigator.pop(context);
                   },
                   child: const Text('Add to Trip'),
@@ -1304,6 +1914,47 @@ class _PlanScreenState extends State<PlanScreen> {
         ),
       ),
     );
+  }
+
+  // Universal handler for tapping any marker
+  void _handleMarkerTap(Marker marker) {
+    String id = marker.markerId.value;
+    PlaceCandidate? found;
+
+    // Look in Nearby pins
+    if (id.startsWith('nearby_')) {
+      String placeId = id.substring(8); // removes "nearby_"
+      for (var p in nearbyPlaces) {
+        if (p.placeId == placeId) {
+          found = p;
+          break;
+        }
+      }
+    }
+    // Look in Search pins
+    else if (id.startsWith('search_')) {
+      String placeId = id.substring(8); // removes "search_"
+      for (var p in places) {
+        if (p.placeId == placeId) {
+          found = p;
+          break;
+        }
+      }
+    }
+    // Look in Blind Box pins
+    else if (id.startsWith('blind_')) {
+      String placeId = id.substring(7); // removes "blind_"
+      for (var p in blindBoxPlaces) {
+        if (p.placeId == placeId) {
+          found = p;
+          break;
+        }
+      }
+    }
+
+    if (found != null) {
+      _showAddPlaceDialog(found);
+    }
   }
 
   Widget routePreview(List<ItineraryStop> s) {
@@ -1321,23 +1972,42 @@ class _PlanScreenState extends State<PlanScreen> {
       );
     }
 
+    // 1. Identify the Start Point (Current Location)
+    final bool hasStart = s.isNotEmpty && s.first.placeId == 'current_location';
+    // If there is a start point, get the actual destinations (everything after it)
+    final List<ItineraryStop> destinations = hasStart ? s.sublist(1) : s;
+
+    // 2. Use the start point as the initial camera target
     final first = s.first;
     final initialPosition = CameraPosition(
       target: LatLng(first.latitude, first.longitude),
       zoom: 12,
     );
 
-    // Markers
-    final markers = s.map((stop) {
-      return Marker(
+    // 3. Build Markers (Azure Blue for Start, Blue for Destinations)
+    final markers = <Marker>{};
+
+    // Add the Start Point marker (GPS Blue)
+    if (hasStart) {
+      markers.add(Marker(
+        markerId: const MarkerId('current_location'),
+        position: LatLng(s.first.latitude, s.first.longitude),
+        infoWindow: const InfoWindow(title: "Start Point"),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+      ));
+    }
+
+    // Add the Blue Destination markers
+    for (final stop in destinations) {
+      markers.add(Marker(
         markerId: MarkerId(stop.placeId),
         position: LatLng(stop.latitude, stop.longitude),
         infoWindow: InfoWindow(title: stop.name),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-      );
-    }).toSet();
+      ));
+    }
 
-    // Polylines
+    // 4. Polylines
     Set<Polyline> polylines = {};
     if (route != null && route!.points.isNotEmpty) {
       polylines.add(
@@ -1360,12 +2030,15 @@ class _PlanScreenState extends State<PlanScreen> {
         initialCameraPosition: initialPosition,
         markers: markers,
         polylines: polylines,
+        myLocationEnabled: true, // <--- THIS adds the real GPS Blue Dot on top
+        myLocationButtonEnabled: true, // <--- This adds the crosshair button to center on yourself
         onMapCreated: (controller) {
           _mapController = controller;
         },
       ),
     );
   }
+
   Widget pill(String s, {bool pin = false, bool tick = false, bool blind = false}) {
     final on = filter == s || (s.startsWith('Nearby') && filter == 'Nearby');
     return Padding(
@@ -1373,8 +2046,51 @@ class _PlanScreenState extends State<PlanScreen> {
         child: InkWell(
             onTap: () async {
               setState(() => filter = s.startsWith('Nearby') ? 'Nearby' : s);
-              if (s.startsWith('Nearby')) await nearby();
+
+              if (s.startsWith('Nearby')) {
+                await nearby();
+                // Move to first nearby pin if it loaded, otherwise fallback to user location
+                if (_mapController != null) {
+                  if (nearbyPlaces.isNotEmpty) {
+                    _mapController!.animateCamera(CameraUpdate.newLatLng(
+                        LatLng(nearbyPlaces.first.latitude, nearbyPlaces.first.longitude)
+                    ));
+                  } else if (_userLocation != null) {
+                    _mapController!.animateCamera(CameraUpdate.newLatLng(_userLocation!));
+                  }
+                }
+              } else if (s == 'All Pins') {
+                // All Pins: Move to user location
+                if (_mapController != null && _userLocation != null) {
+                  _mapController!.animateCamera(CameraUpdate.newLatLng(_userLocation!));
+                }
+              } else if (s == 'Blind Box') {
+                await _loadBlindBoxPlaces();
+                // Move to first blind box pin if it loaded, otherwise fallback to user location
+                if (_mapController != null) {
+                  if (blindBoxPlaces.isNotEmpty) {
+                    _mapController!.animateCamera(CameraUpdate.newLatLng(
+                        LatLng(blindBoxPlaces.first.latitude, blindBoxPlaces.first.longitude)
+                    ));
+                  } else if (_userLocation != null) {
+                    _mapController!.animateCamera(CameraUpdate.newLatLng(_userLocation!));
+                  }
+                }
+              }
+              // If Planner Pins selected
+              else if (s == 'Planner Pins') {
+                if (_mapController != null) {
+                  if (stops.isNotEmpty) {
+                    _mapController!.animateCamera(CameraUpdate.newLatLng(
+                        LatLng(stops.first.latitude, stops.first.longitude)
+                    ));
+                  } else if (_userLocation != null) {
+                    _mapController!.animateCamera(CameraUpdate.newLatLng(_userLocation!));
+                  }
+                }
+              }
             },
+
             borderRadius: BorderRadius.circular(22),
             child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1412,10 +2128,11 @@ class _PlanScreenState extends State<PlanScreen> {
               fontWeight: FontWeight.bold,
               fontSize: 12),
           onSelected: (_) => setState(() {
-                routeDay = d;
-                route = null;
-                accepted = false;
-              })));
+            routeDay = d;
+            // Load the saved state for this day, or default to null/false
+            route = _dayRoutes[d];
+            accepted = _dayAccepted[d] ?? false;
+          })));
   Widget modeButton(String s, String v) => InkWell(
       onTap: () => setState(() => mode = v),
       borderRadius: BorderRadius.circular(13),
@@ -1476,25 +2193,111 @@ class _PlanScreenState extends State<PlanScreen> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(children: [
-                          Expanded(
-                              child: Text(p.name,
+                        // Title & Badge Row
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                                child: Text(p.name,
+                                    style: const TextStyle(
+                                        fontFamily: 'serif',
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w900))),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0F2FE),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFBAE6FD)),
+                              ),
+                              // Uses the actual mode (TEAM or SOLO)
+                              child: Text(p.mode.toUpperCase(),
                                   style: const TextStyle(
-                                      fontFamily: 'serif',
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900))),
-                          const Icon(Icons.arrow_forward, color: blue)
-                        ]),
+                                      fontSize: 9,
+                                      color: blue,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.arrow_forward, color: blue)
+                          ],
+                        ),
                         const SizedBox(height: 7),
-                        Text(
-                            '▣ ${date(p.startDate)} → ${date(p.endDate)} (${p.totalDays} Days)',
-                            style: const TextStyle(fontSize: 11, color: blue)),
+                        // Dates Row
+                        Row(children: [
+                          const Icon(Icons.calendar_month_outlined, size: 14, color: blue),
+                          const SizedBox(width: 6),
+                          Text(
+                              '${date(p.startDate)} → ${date(p.endDate)}  (${p.totalDays} Days)',
+                              style: const TextStyle(fontSize: 11, color: blue)),
+                        ]),
                         const SizedBox(height: 12),
-                        ...p.stops.take(4).map((s) => Text(
-                            'Day ${s.dayNumber}: ${s.name}',
-                            style: const TextStyle(
-                                fontSize: 10, fontWeight: FontWeight.w700)))
-                      ])))));
+                        // Inner Grey Highlights Box
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('ITINERARY HIGHLIGHTS:',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      color: Color(0xFF527090),
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.3)),
+                              const SizedBox(height: 8),
+                              // White boxes for each day
+                              ...p.stops.take(4).map((s) => Container(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: border),
+                                  ),
+                                  child: Text(
+                                      'Day ${s.dayNumber}: ${s.name}',
+                                      maxLines: 2, // Prevents long names from breaking the card
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 10,
+                                          color: ink,
+                                          fontWeight: FontWeight.w700)
+                                  )
+                              )),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // Footer Row (Squad & Code)
+                        Row(children: [
+                          const Icon(Icons.people_alt_outlined, size: 14, color: Color(0xFF64748B)),
+                          const SizedBox(width: 6),
+                          // Note: Hardcoding "3" to match the prototype.
+                          // If you have a dynamic member list, you can use `${p.members.length}` here.
+                          const Text('Squad: 3 Members',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0F9FF),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFBAE6FD)),
+                            ),
+                            child: Text('Code: #${p.inviteCode ?? '123456'}',
+                                style: const TextStyle(fontSize: 10, color: blue, fontWeight: FontWeight.bold)),
+                          )
+                        ]),
+                      ])
+              )
+          )
+      )
+  );
 
   Widget empty() => Container(
       padding: const EdgeInsets.all(28),
@@ -1509,9 +2312,10 @@ class _PlanScreenState extends State<PlanScreen> {
         Text('Create your next expedition to see it here.')
       ]));
   Widget field(TextEditingController c, String h, ValueChanged<String> f,
-          {IconData? suffix}) =>
+      {IconData? suffix, FocusNode? focusNode}) =>
       TextField(
           controller: c,
+          focusNode: focusNode,
           onChanged: f,
           onSubmitted: f,
           decoration: InputDecoration(
@@ -1520,12 +2324,12 @@ class _PlanScreenState extends State<PlanScreen> {
               suffixIcon: suffix == null
                   ? null
                   : IconButton(
-                      icon: Icon(suffix, color: const Color(0xFF64748B)),
-                      onPressed: search),
+                  icon: Icon(suffix, color: const Color(0xFF64748B)),
+                  onPressed: search),
               filled: true,
               fillColor: const Color(0xFFFBFDFF),
               contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+              const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: const BorderSide(color: border)),
@@ -1623,17 +2427,244 @@ class _PlanScreenState extends State<PlanScreen> {
               style: const TextStyle(
                   fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.1))));
 
-  Widget outline(String s, Color c, VoidCallback f) => OutlinedButton.icon(
-    onPressed: f,
-    icon: const Icon(Icons.print_outlined, size: 18),
-    label: Text(s, style: const TextStyle(fontWeight: FontWeight.bold)),
-    style: OutlinedButton.styleFrom(
-        foregroundColor: c,
-        side: BorderSide(color: c, width: 1.5),   // <-- thicker border
-        backgroundColor: Colors.white,            // <-- white background
-        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+  Future<void> _generateTripPdf() async {
+    // Safety check
+    if (_currentPlan == null) {
+      note('Please save the trip first before printing.');
+      return;
+    }
+
+    final plan = _currentPlan!;
+    final doc = pw.Document();
+
+    // Reusable style for the little grid boxes
+    pw.Widget gridBox(String label, String value) => pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300, width: 1),
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(label, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600, letterSpacing: 1)),
+          pw.SizedBox(height: 6),
+          pw.Text(value, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+        ],
+      ),
+    );
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        build: (pw.Context context) => [
+          // 1. The Hero "Dossier" Header
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            decoration: pw.BoxDecoration(
+              gradient: pw.LinearGradient(
+                begin: pw.Alignment.centerLeft,
+                end: pw.Alignment.centerRight,
+                colors: [
+                  PdfColor.fromHex('#0284C7'),
+                  PdfColor.fromHex('#069A9B')
+                ],
+              ),
+              borderRadius: pw.BorderRadius.circular(16),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('✦ MYSTERYLANE DOSSIER', style: pw.TextStyle(color: PdfColors.white, fontSize: 12, letterSpacing: 1.5)),
+                    pw.Container(
+                      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.white, width: 1),
+                        borderRadius: pw.BorderRadius.circular(10),
+                      ),
+                      child: pw.Text('VERIFIED', style: pw.TextStyle(color: PdfColors.white, fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 20),
+                pw.Text(plan.name, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                pw.SizedBox(height: 6),
+                pw.Text('Curated Dynamic Expedition Plan', style: pw.TextStyle(color: PdfColors.white, fontSize: 12, fontStyle: pw.FontStyle.italic)),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 20),
+
+          // 2. The 4 Grid Boxes (Dates, Duration, Mode, Code)
+          pw.Row(
+            children: [
+              pw.Expanded(child: gridBox('TRAVEL DATES', '${date(plan.startDate)} - ${date(plan.endDate)}')),
+              pw.SizedBox(width: 10),
+              pw.Expanded(child: gridBox('DURATION', '${plan.totalDays} Days\nExpedition')),
+            ],
+          ),
+          pw.SizedBox(height: 10),
+          pw.Row(
+            children: [
+              pw.Expanded(child: gridBox('SQUAD MODE', plan.mode.toUpperCase())),
+              pw.SizedBox(width: 10),
+              pw.Expanded(child: gridBox('TEAM CODE', '#123456')),
+            ],
+          ),
+          pw.SizedBox(height: 20),
+
+          // 3. Registered Squad Members
+          pw.Container(
+            padding: const pw.EdgeInsets.all(16),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey300, width: 1),
+              borderRadius: pw.BorderRadius.circular(12),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('REGISTERED SQUAD MEMBERS (3)', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600, letterSpacing: 1)),
+                pw.SizedBox(height: 12),
+                pw.Row(
+                  children: [
+                    _avatarPdf('AV', PdfColor.fromHex('#0F172A'), 'Alex Vance (Host)', true),
+                    pw.SizedBox(width: 8),
+                    _avatarPdf('SL', PdfColor.fromHex('#FACC15'), 'Sophia L.', false),
+                    pw.SizedBox(width: 8),
+                    _avatarPdf('KT', PdfColor.fromHex('#0F172A'), 'Kenji T.', false),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 20),
+
+          // 4. Day-by-Day Route Schedule
+          pw.Container(
+            padding: const pw.EdgeInsets.all(16),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey300, width: 1),
+              borderRadius: pw.BorderRadius.circular(12),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('DAY-BY-DAY ROUTE SCHEDULE', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600, letterSpacing: 1)),
+                pw.SizedBox(height: 12),
+                for (final stop in plan.stops)
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 8),
+                    child: pw.Row(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.blue700,
+                            borderRadius: pw.BorderRadius.circular(8),
+                          ),
+                          child: pw.Text(
+                            'Day\n${stop.dayNumber}',
+                            textAlign: pw.TextAlign.center,
+                            style: pw.TextStyle(fontSize: 8, color: PdfColors.white, letterSpacing: 1),
+                          ),
+                        ),
+                        pw.SizedBox(width: 12),
+                        pw.Expanded(
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text(stop.name, style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600, letterSpacing: 1)),
+                              pw.SizedBox(height: 2),
+                              pw.Text(
+                                stop.dayNumber % 2 == 0 ? 'Historical Code' : 'Secret Mission',
+                                style: const pw.TextStyle(fontSize: 9, color: PdfColors.black),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 20),
+          pw.Text('Report generated by MysteryLane', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey400)),
+        ],
+      ),
+    );
+
+    try {
+      await Printing.layoutPdf(
+        onLayout: (format) async => doc.save(),
+        name: '${plan.name.replaceAll(' ', '_')}_Trip_Plan.pdf',
+      );
+      if (mounted) note('PDF Preview Closed.');
+    } catch (e) {
+      if (mounted) note('Failed to generate PDF: $e');
+    }
+  }
+
+  pw.Widget _avatarPdf(String initials, PdfColor color, String name, bool isHost) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300, width: 1),
+        borderRadius: pw.BorderRadius.circular(20),
+      ),
+      child: pw.Row(
+        children: [
+          pw.Container(
+            width: 16,
+            height: 16,
+            decoration: pw.BoxDecoration(color: color, shape: pw.BoxShape.circle),
+            child: pw.Center(
+              // REMOVED "const" from style:
+              child: pw.Text(initials, style: pw.TextStyle(color: PdfColors.white, fontSize: 8, fontWeight: pw.FontWeight.bold)),
+            ),
+          ),
+          pw.SizedBox(width: 6),
+          // REMOVED "const" from style:
+          pw.Text(name, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+          if (isHost) ...[
+            pw.SizedBox(width: 4),
+            // REMOVED "const" from style:
+            pw.Text('👑', style: pw.TextStyle(fontSize: 10)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget outline(String s, Color c, VoidCallback f) => Container(
+    width: double.infinity,
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: border),
+    ),
+    padding: const EdgeInsets.all(6),
+    child: Align(
+      alignment: Alignment.centerRight,
+      child: FilledButton.icon(
+          onPressed: f,
+          icon: const Icon(Icons.print_outlined, size: 18),
+          label: Text(s, style: const TextStyle(fontWeight: FontWeight.bold)),
+          style: FilledButton.styleFrom(
+              backgroundColor: c,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))
+          )
+      ),
+    ),
   );
+
   Widget badge(String s) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration:
@@ -1655,6 +2686,60 @@ class _PlanScreenState extends State<PlanScreen> {
           BoxDecoration(color: ink, borderRadius: BorderRadius.circular(12)),
       child: Text(s,
           style: TextStyle(fontSize: 9, color: c, fontWeight: FontWeight.bold)));
+
+  // Main Legend Container
+  Widget _mapLegend() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFBAE6FD)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x22000000), blurRadius: 4, offset: Offset(0, 2))
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _legendItem(const Color(0xFF2196F3), 'Planner Pins'),
+          _legendItem(const Color(0xFFF44336), 'Nearby / Search'),
+          _legendItem(const Color(0xFF9C27B0), 'Blind Box'),
+        ],
+      ),
+    );
+  }
+
+  // Individual Legend Row
+  Widget _legendItem(Color color, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A)
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _RoutePainter extends CustomPainter {

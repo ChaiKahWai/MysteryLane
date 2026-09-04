@@ -12,23 +12,73 @@ class TripPlanDataSource {
     final user = _client.auth.currentUser;
     if (user == null) return const [];
 
-    final rows = await _client
+    final planRows = await _client
         .from('trip_plans')
-        .select('''
-          trip_id, trip_name, start_date, end_date, route_status,
-          trip_plan_destinations (
-            destination_id, travel_day, sequence_order,
-            blind_box_destinations (
-              google_place_id, name, address, latitude, longitude
-            )
-          )
-        ''')
+        .select('trip_id, trip_name, start_date, end_date, route_status')
         .eq('user_id', user.id)
         .order('created_at', ascending: false);
 
-    return List<Map<String, dynamic>>.from(rows)
-        .map(_planFromRow)
-        .toList();
+    print('📊 Found ${planRows.length} plan rows');
+
+    final plans = <TripPlan>[];
+    for (final planRow in planRows) {
+      final planId = planRow['trip_id'] as String;
+      print('🔍 Processing plan: $planId (${planRow['trip_name']})');
+
+      final stopRows = await _client
+          .from('trip_plan_destinations')
+          .select('destination_id, travel_day, sequence_order, source')
+          .eq('trip_id', planId)
+          .order('travel_day', ascending: true)
+          .order('sequence_order', ascending: true);
+
+      print('  📦 Found ${stopRows.length} stop rows');
+
+      final stops = <ItineraryStop>[];
+      for (final stopRow in stopRows) {
+        final destId = stopRow['destination_id'];
+        print('    🛑 Dest ID: $destId');
+        final destRow = await _client
+            .from('blind_box_destinations')
+            .select('google_place_id, name, address, latitude, longitude')
+            .eq('destination_id', destId)
+            .maybeSingle();
+
+        if (destRow != null) {
+          print('    ✅ Found destination: ${destRow['name']}');
+          stops.add(ItineraryStop(
+            placeId: destRow['google_place_id'] as String? ?? destId.toString(),
+            name: destRow['name'] as String,
+            address: destRow['address'] as String? ?? '',
+            latitude: (destRow['latitude'] as num).toDouble(),
+            longitude: (destRow['longitude'] as num).toDouble(),
+            dayNumber: stopRow['travel_day'] as int? ?? 1,
+            sortOrder: stopRow['sequence_order'] as int? ?? 0,
+            source: stopRow['source'] as String? ?? 'SEARCH',
+          ));
+        } else {
+          print('    ❌ Destination NOT found for ID $destId');
+        }
+      }
+
+      plans.add(TripPlan(
+        id: planId,
+        name: planRow['trip_name'] as String,
+        startDate: DateTime.parse(planRow['start_date'] as String),
+        endDate: DateTime.parse(planRow['end_date'] as String),
+        mode: 'solo',
+        visibility: 'private',
+        inviteCode: null,
+        routeAccepted: planRow['route_status'] == 'ACCEPTED' || planRow['route_status'] == 'GENERATED',
+        stops: stops,
+      ));
+    }
+
+    print('📋 Loaded ${plans.length} plans');
+    for (final plan in plans) {
+      print('  ${plan.name}: ${plan.stops.length} stops');
+    }
+    return plans;
   }
 
   Future<TripPlan> savePlan(TripPlan plan) async {
@@ -80,6 +130,7 @@ class TripPlanDataSource {
         });
       }
       await _client.from('trip_plan_destinations').insert(rows);
+      print('✅ Inserted ${rows.length} destinations for plan $planId');
     }
     return TripPlan(
       id: planId,

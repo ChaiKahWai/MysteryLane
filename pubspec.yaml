@@ -17,6 +17,8 @@ dependencies:
   google_maps_flutter: ^2.5.0
   google_maps_apis: ^5.1.0
   flutter_polyline_points: ^2.0.0
+  pdf: ^3.10.4
+  printing: ^5.11.0
 
 dev_dependencies:
   flutter_test:

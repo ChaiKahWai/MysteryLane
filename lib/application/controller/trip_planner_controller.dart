@@ -9,6 +9,7 @@ import '../../data/datasources/trip_plan_data_source.dart';
 import '../../data/datasources/trip_places_data_source.dart';
 import '../../data/models/place_candidate.dart';
 import '../../data/models/trip_plan.dart';
+import 'BlindBox_Controller.dart';
 
 class RoutePreview {
   final List<ItineraryStop> stops;
@@ -74,7 +75,8 @@ class TripPlannerController {
     return _places.searchNearby(
       latitude: position.latitude,
       longitude: position.longitude,
-      radiusMeters: 2500,
+      radiusMeters: 5000,
+      maxResultCount: 15, // limit
     );
   }
 
@@ -108,6 +110,21 @@ class TripPlannerController {
       points: routePoints,
     );
   }
+
+  // Inside TripPlannerController class
+  Future<List<BlindBoxHistoryResult>> getBlindBoxHistory() async {
+    // Using the production factory is the easiest way to get it
+    return BlindBoxController.production().loadBlindBoxHistory();
+  }
+
+  Future<LatLng> getCurrentLocation() async {
+    final locationDataSource = LocationDataSource();
+    final position = await locationDataSource.getCurrentLocation();
+    return LatLng(position.latitude, position.longitude);
+  }
+
+
+
 
   // ✅ Fallback: nearest‑neighbor with straight lines (for when Directions API fails)
   RoutePreview _fallbackRoute(List<ItineraryStop> stops) {
