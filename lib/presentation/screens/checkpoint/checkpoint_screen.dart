@@ -10,6 +10,7 @@ import '../../navigation/mysterylane_bottom_navigation.dart';
 
 import '../Blindbox/BlindBox_Screen.dart';
 import '../home/home_screen.dart';
+import '../puzzle/puzzle_screen.dart';
 
 import 'checkpoint_mission_screen.dart';
 
@@ -975,14 +976,9 @@ class _CheckpointScreenState
                       ),
 
                       onTap: () {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(
-                          const SnackBar(
-                            content:
-                            Text(
-                              'Puzzle Challenge will be connected later.',
-                            ),
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const PuzzleScreen(),
                           ),
                         );
                       },
