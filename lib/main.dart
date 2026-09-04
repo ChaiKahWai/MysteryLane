@@ -167,6 +167,32 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
         'team_status': null,
       });
 
+      // [M8] Registration is now complete because the email is
+      // verified and the corresponding traveller profile exists.
+      final NavigatorState? navigator =
+          navigatorKey.currentState;
+
+      if (navigator != null) {
+        final BuildContext? appContext =
+            navigatorKey.currentContext;
+
+        if (appContext != null) {
+          ScaffoldMessenger.of(appContext)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Email verification completed successfully. '
+                      'Your MYsteryLane account has been created.',
+                ),
+                duration: Duration(seconds: 3),
+              ),
+            );
+        }
+      }
+
+      // Terminate the temporary verification session before
+      // returning the traveller to Login.
       await SupabaseConfig.client.auth.signOut();
 
       if (!mounted) {

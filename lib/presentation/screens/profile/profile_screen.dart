@@ -4,8 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl_phone_field/countries.dart';
-import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:intl_phone_number_input/intl_phone_number_input.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/config/supabase_config.dart';
@@ -493,20 +492,12 @@ return;
 try {
 XFile? image;
 
-// ========================================================
-// CAMERA
-// ========================================================
-
 if (source ==
 ImageSource.camera) {
 image =
 await _imagePickerService
     .pickImageFromCamera();
 }
-
-// ========================================================
-// GALLERY
-// ========================================================
 
 if (source ==
 ImageSource.gallery) {
@@ -522,25 +513,15 @@ return;
 final Uint8List bytes =
 await image.readAsBytes();
 
-// ========================================================
-// MAX FILE SIZE 5MB
-// ========================================================
-
 const int maxFileSize =
 5 * 1024 * 1024;
 
-if (bytes.length >
-maxFileSize) {
+if (bytes.length > maxFileSize) {
 _showMessage(
-'Profile picture must be 5MB or smaller.',
+'Please select a valid Profile Picture in JPG, JPEG, PNG, or WEBP format with a file size of 5 MB or smaller.',
 );
-
 return;
 }
-
-// ========================================================
-// FILE TYPE
-// ========================================================
 
 final String fileName =
 image.name.toLowerCase();
@@ -553,23 +534,19 @@ fileName.endsWith('.webp');
 
 if (!validFile) {
 _showMessage(
-'Please choose a JPG, JPEG, PNG or WEBP image.',
+'Please select a valid Profile Picture in JPG, JPEG, PNG, or WEBP format with a file size of 5 MB or smaller.',
 );
-
 return;
 }
 
-// ========================================================
-// PREVIEW IMAGE
-// ========================================================
-
 setDialogState(() {
-_selectedImage =
-image;
-
-_selectedImageBytes =
-bytes;
+_selectedImage = image;
+_selectedImageBytes = bytes;
 });
+
+_showMessage(
+'Profile picture selected. Save your profile to apply the change.',
+);
 } catch (error) {
 debugPrint(
 'IMAGE PICKER ERROR: $error',
@@ -582,188 +559,41 @@ _showMessage(
 }
 
 // ============================================================
-// PHONE VALIDATION
-// ============================================================
-
-bool _validatePhoneNumber({
-required String countryCode,
-required String phoneNumber,
-}) {
-final String digits = phoneNumber.replaceAll(
-RegExp(r'\D'),
-'',
-);
-
-if (digits.isEmpty) {
-_phoneError = 'Please enter your phone number.';
-return false;
-}
-
-// Malaysia local mobile format:
-// 0101234567  = 10 digits
-// 0123456789  = 10 digits
-// 01112345678 = 11 digits
-if (countryCode == 'MY') {
-if (!digits.startsWith('01')) {
-_phoneError = 'Malaysia phone number must start with 01.';
-return false;
-}
-
-if (digits.length < 10 || digits.length > 11) {
-_phoneError =
-'Malaysia phone number must contain 10 to 11 digits.';
-return false;
-}
-
-_phoneError = null;
-return true;
-}
-
-// Other countries use the number-length metadata from
-// intl_phone_field's complete country list.
-try {
-final Country country = countries.firstWhere(
-(country) => country.code == countryCode,
-);
-
-final int minLength = country.minLength;
-final int maxLength = country.maxLength;
-
-if (digits.length < minLength || digits.length > maxLength) {
-if (minLength == maxLength) {
-_phoneError =
-'${country.name} phone number must contain $minLength digits.';
-} else {
-_phoneError =
-'${country.name} phone number must contain $minLength to $maxLength digits.';
-}
-
-return false;
-}
-
-_phoneError = null;
-return true;
-} catch (_) {
-_phoneError = 'Please enter a valid phone number.';
-return false;
-}
-}
-
-// ============================================================
-// PREPARE EXISTING PHONE FOR EDITING
-// ============================================================
-
-void _prepareExistingPhone() {
-String storedPhone = _phoneNumber.trim();
-
-_selectedCountryCode = 'MY';
-_selectedDialCode = '+60';
-
-if (storedPhone.isEmpty) {
-_phoneController.clear();
-return;
-}
-
-String compact = storedPhone.replaceAll(
-RegExp(r'[\s\-\(\)]'),
-'',
-);
-
-if (compact.startsWith('+')) {
-Country? matchedCountry;
-
-final List<Country> sortedCountries = List<Country>.from(countries)
-..sort(
-(a, b) => b.dialCode.length.compareTo(a.dialCode.length),
-);
-
-for (final Country country in sortedCountries) {
-final String dialCode = '+${country.dialCode}';
-
-if (compact.startsWith(dialCode)) {
-matchedCountry = country;
-break;
-}
-}
-
-if (matchedCountry != null) {
-_selectedCountryCode = matchedCountry.code;
-_selectedDialCode = '+${matchedCountry.dialCode}';
-
-String localNumber = compact.substring(
-_selectedDialCode.length,
-);
-
-// Stored Malaysia format is +6010..., +6011..., +6012...
-// Show it to the user as 010..., 011..., 012...
-if (_selectedCountryCode == 'MY' &&
-!localNumber.startsWith('0')) {
-localNumber = '0$localNumber';
-}
-
-_phoneController.text = localNumber;
-return;
-}
-}
-
-// Support older records such as +60 0102536945 or 60102536945.
-String digits = compact.replaceAll(
-RegExp(r'\D'),
-'',
-);
-
-if (digits.startsWith('60')) {
-_selectedCountryCode = 'MY';
-_selectedDialCode = '+60';
-digits = digits.substring(2);
-
-if (!digits.startsWith('0')) {
-digits = '0$digits';
-}
-}
-
-_phoneController.text = digits;
-}
-
-// ============================================================
-// BUILD INTERNATIONAL PHONE FOR DATABASE
-// ============================================================
-
-String _buildInternationalPhone() {
-String digits = _phoneController.text.replaceAll(
-RegExp(r'\D'),
-'',
-);
-
-// Malaysia: 0102536945 -> +60102536945
-if (_selectedCountryCode == 'MY' && digits.startsWith('0')) {
-digits = digits.substring(1);
-}
-
-return '$_selectedDialCode$digits';
-}
-
-// ============================================================
 // EDIT PROFILE DIALOG
 // ============================================================
 
 Future<void> _openEditProfile() async {
 _nameController.text = _fullName;
-_prepareExistingPhone();
-
 _selectedImage = null;
 _selectedImageBytes = null;
-_phoneError = null;
+
+PhoneNumber initialPhone = PhoneNumber(
+isoCode: 'MY',
+dialCode: '+60',
+phoneNumber: _phoneNumber,
+);
+
+try {
+if (_phoneNumber.trim().isNotEmpty) {
+initialPhone =
+await PhoneNumber.getRegionInfoFromPhoneNumber(
+_phoneNumber,
+);
+}
+} catch (_) {
+// Keep Malaysia as a safe selector default if an older stored
+// number cannot be parsed by libphonenumber.
+}
+
+bool phoneIsValid = false;
+String normalizedPhone = _phoneNumber.trim();
 
 await showDialog<void>(
 context: context,
 barrierDismissible: false,
 builder: (dialogContext) {
 return StatefulBuilder(
-builder: (
-context,
-setDialogState,
-) {
+builder: (context, setDialogState) {
 return Dialog(
 backgroundColor: pageBackground,
 insetPadding: const EdgeInsets.symmetric(
@@ -773,15 +603,12 @@ vertical: 20,
 shape: RoundedRectangleBorder(
 borderRadius: BorderRadius.circular(22),
 ),
-child: ConstrainedBox(
-constraints: const BoxConstraints(
-maxWidth: 500,
-),
 child: SingleChildScrollView(
 padding: const EdgeInsets.all(22),
 child: Column(
 mainAxisSize: MainAxisSize.min,
-crossAxisAlignment: CrossAxisAlignment.stretch,
+crossAxisAlignment:
+CrossAxisAlignment.stretch,
 children: [
 Row(
 children: [
@@ -800,22 +627,31 @@ IconButton(
 onPressed: _isSaving
 ? null
     : () {
-Navigator.pop(dialogContext);
+_nameController.text =
+_fullName;
+_phoneController.text =
+_phoneNumber;
+_selectedImage = null;
+_selectedImageBytes = null;
+Navigator.pop(
+dialogContext,
+);
 },
-icon: const Icon(Icons.close_rounded),
+icon: const Icon(
+Icons.close_rounded,
+),
 ),
 ],
 ),
-
 const Divider(),
 const SizedBox(height: 14),
 
-// PROFILE PICTURE
 Container(
 padding: const EdgeInsets.all(14),
 decoration: BoxDecoration(
 color: const Color(0xFFF0F9FF),
-borderRadius: BorderRadius.circular(14),
+borderRadius:
+BorderRadius.circular(14),
 border: Border.all(
 color: const Color(0xFFBAE6FD),
 ),
@@ -826,21 +662,24 @@ _buildEditAvatar(),
 const SizedBox(width: 15),
 Expanded(
 child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
+crossAxisAlignment:
+CrossAxisAlignment.start,
 children: [
 SizedBox(
 height: 40,
 child: FilledButton.icon(
 onPressed: _isSaving
 ? null
-    : () {
+    : () =>
 _chooseProfilePhoto(
 setDialogState,
-);
-},
-style: FilledButton.styleFrom(
-backgroundColor: primaryBlue,
-foregroundColor: Colors.white,
+),
+style:
+FilledButton.styleFrom(
+backgroundColor:
+primaryBlue,
+foregroundColor:
+Colors.white,
 ),
 icon: const Icon(
 Icons.add_a_photo_rounded,
@@ -850,7 +689,8 @@ label: const Text(
 'CHANGE PHOTO',
 style: TextStyle(
 fontSize: 10,
-fontWeight: FontWeight.w900,
+fontWeight:
+FontWeight.w900,
 ),
 ),
 ),
@@ -871,8 +711,6 @@ fontSize: 9,
 ),
 
 const SizedBox(height: 22),
-
-// FULL NAME / USERNAME
 const Text(
 'FULL NAME *',
 style: TextStyle(
@@ -884,51 +722,11 @@ fontWeight: FontWeight.w900,
 const SizedBox(height: 7),
 TextField(
 controller: _nameController,
-textCapitalization: TextCapitalization.words,
-decoration: _inputDecoration(
-hint: 'Full Name',
-),
+decoration:
+_inputDecoration(hint: 'Full Name'),
 ),
 
 const SizedBox(height: 20),
-
-// EMAIL IS LOGIN EMAIL - READ ONLY
-const Text(
-'EMAIL ADDRESS (LOGIN EMAIL)',
-style: TextStyle(
-color: greyText,
-fontSize: 10,
-fontWeight: FontWeight.w900,
-),
-),
-const SizedBox(height: 7),
-TextField(
-enabled: false,
-controller: TextEditingController(text: _email),
-decoration: _inputDecoration(
-hint: 'Email Address',
-).copyWith(
-disabledBorder: OutlineInputBorder(
-borderRadius: BorderRadius.circular(12),
-borderSide: const BorderSide(
-color: borderColor,
-),
-),
-fillColor: const Color(0xFFF1F5F9),
-),
-),
-const SizedBox(height: 5),
-const Text(
-'Email cannot be changed because it is used to sign in to the account.',
-style: TextStyle(
-color: greyText,
-fontSize: 9,
-),
-),
-
-const SizedBox(height: 20),
-
-// PHONE NUMBER
 const Text(
 'PHONE NUMBER *',
 style: TextStyle(
@@ -939,186 +737,83 @@ fontWeight: FontWeight.w900,
 ),
 const SizedBox(height: 7),
 
-IntlPhoneField(
-controller: _phoneController,
-initialCountryCode: _selectedCountryCode,
-disableLengthCheck: true,
-keyboardType: TextInputType.phone,
-flagsButtonPadding: const EdgeInsets.only(left: 10),
-dropdownIconPosition: IconPosition.trailing,
-style: const TextStyle(
-color: darkText,
-fontSize: 14,
-fontWeight: FontWeight.w600,
+InternationalPhoneNumberInput(
+textFieldController: _phoneController,
+initialValue: initialPhone,
+selectorConfig:
+const SelectorConfig(
+selectorType:
+PhoneInputSelectorType.BOTTOM_SHEET,
+useEmoji: true,
+setSelectorButtonAsPrefixIcon: true,
+leadingPadding: 12,
 ),
-dropdownTextStyle: const TextStyle(
-color: darkText,
-fontSize: 11,
-fontWeight: FontWeight.w700,
+formatInput: true,
+keyboardType:
+const TextInputType.numberWithOptions(
+signed: false,
+decimal: false,
 ),
-decoration: InputDecoration(
-hintText: 'Phone Number',
-errorText: _phoneError,
-filled: true,
-fillColor: Colors.white,
-contentPadding: const EdgeInsets.symmetric(
-horizontal: 12,
-vertical: 15,
-),
-border: OutlineInputBorder(
-borderRadius: BorderRadius.circular(12),
-borderSide: const BorderSide(
-color: borderColor,
-),
-),
-enabledBorder: OutlineInputBorder(
-borderRadius: BorderRadius.circular(12),
-borderSide: const BorderSide(
-color: borderColor,
-),
-),
-focusedBorder: OutlineInputBorder(
-borderRadius: BorderRadius.circular(12),
-borderSide: const BorderSide(
-color: primaryBlue,
-width: 2,
-),
-),
-errorBorder: OutlineInputBorder(
-borderRadius: BorderRadius.circular(12),
-borderSide: const BorderSide(
-color: Colors.red,
-),
-),
-focusedErrorBorder: OutlineInputBorder(
-borderRadius: BorderRadius.circular(12),
-borderSide: const BorderSide(
-color: Colors.red,
-width: 2,
-),
-),
-),
-onCountryChanged: (country) {
-setDialogState(() {
-_selectedCountryCode = country.code;
-_selectedDialCode = '+${country.dialCode}';
-_phoneError = null;
-});
+autoValidateMode:
+AutovalidateMode.onUserInteraction,
+errorMessage:
+'Please enter a valid phone number for the selected country.',
+onInputChanged:
+(PhoneNumber number) {
+final value =
+number.phoneNumber?.trim() ?? '';
+normalizedPhone =
+value.startsWith('+')
+? value
+    : '';
 },
-onChanged: (phone) {
-_selectedCountryCode = phone.countryISOCode;
-_selectedDialCode = phone.countryCode;
-
-if (_phoneError != null) {
-setDialogState(() {
-_phoneError = null;
-});
-}
+onInputValidated: (bool valid) {
+phoneIsValid = valid;
 },
-),
-
-const SizedBox(height: 4),
-Text(
-_selectedCountryCode == 'MY'
-? 'Malaysia: enter 10 to 11 digits beginning with 01.'
-    : 'Enter the local phone number for the selected country.',
-style: const TextStyle(
-color: greyText,
-fontSize: 9,
+inputDecoration: _inputDecoration(
+hint: 'Phone Number',
 ),
 ),
 
 const SizedBox(height: 25),
-
-Row(
-children: [
-Expanded(
-child: SizedBox(
+SizedBox(
 height: 48,
 child: FilledButton(
 onPressed: _isSaving
 ? null
     : () async {
-final String name =
-_nameController.text.trim();
-
-if (name.isEmpty) {
-_showMessage(
-'Please enter your full name.',
-);
-return;
-}
-
-final String localPhone =
-_phoneController.text.replaceAll(
-RegExp(r'\D'),
-'',
-);
-
-final bool phoneValid =
-_validatePhoneNumber(
-countryCode:
-_selectedCountryCode,
-phoneNumber: localPhone,
-);
-
-if (!phoneValid) {
-setDialogState(() {});
-_showMessage(
-_phoneError ??
-'Please enter a valid phone number.',
-);
-return;
-}
-
-final String internationalPhone =
-_buildInternationalPhone();
-
 final bool saved =
 await _saveProfile(
-phoneNumber:
-internationalPhone,
+normalizedPhone:
+normalizedPhone,
+phoneIsValid:
+phoneIsValid,
 );
 
 if (saved &&
 dialogContext.mounted) {
-Navigator.pop(dialogContext);
+Navigator.pop(
+dialogContext,
+);
+} else if (mounted) {
+setDialogState(() {});
 }
 },
-style: FilledButton.styleFrom(
-backgroundColor: primaryBlue,
-),
 child: _isSaving
-? const SizedBox(
-width: 20,
-height: 20,
-child: CircularProgressIndicator(
-strokeWidth: 2,
+? const CircularProgressIndicator(
 color: Colors.white,
-),
+strokeWidth: 2,
 )
     : const Text(
 'SAVE CHANGES',
 style: TextStyle(
-fontWeight: FontWeight.w900,
+fontWeight:
+FontWeight.w900,
 ),
 ),
 ),
-),
-),
-const SizedBox(width: 10),
-TextButton(
-onPressed: _isSaving
-? null
-    : () {
-Navigator.pop(dialogContext);
-},
-child: const Text('CANCEL'),
 ),
 ],
-),
-],
-),
 ),
 ),
 );
@@ -1133,26 +828,68 @@ child: const Text('CANCEL'),
 // ============================================================
 
 Future<bool> _saveProfile({
-required String phoneNumber,
+required String normalizedPhone,
+required bool phoneIsValid,
 }) async {
-final User? user = SupabaseConfig.client.auth.currentUser;
+final User? user =
+SupabaseConfig.client.auth.currentUser;
 
 if (user == null) {
-_showMessage('Your session has expired.');
+_showMessage(
+'Unable to update the profile. Please try again.',
+);
 return false;
 }
 
-final String newName = _nameController.text.trim();
-final String newPhone = phoneNumber.trim();
+final String newName =
+_nameController.text.trim();
 
-if (newName.isEmpty) {
-_showMessage('Please enter your full name.');
+// [A2][M1][C1]
+if (newName.isEmpty ||
+_phoneController.text.trim().isEmpty) {
+_showMessage(
+'Please complete all required fields before saving your profile.',
+);
 return false;
 }
 
-if (newPhone.isEmpty) {
-_showMessage('Please enter your phone number.');
+// [A3][M2][C2]
+if (newName.length < 2 ||
+newName.length > 50) {
+_showMessage(
+'Please enter a valid full name (2–50 characters).',
+);
 return false;
+}
+
+// [A4][M3][C3][C4]
+if (!phoneIsValid ||
+normalizedPhone.isEmpty ||
+!normalizedPhone.startsWith('+')) {
+_showMessage(
+'Please enter a valid phone number for the selected country.',
+);
+return false;
+}
+
+final bool nameChanged =
+newName != _fullName;
+
+final bool phoneChanged =
+normalizedPhone != _phoneNumber;
+
+final bool pictureChanged =
+_selectedImage != null &&
+_selectedImageBytes != null;
+
+// [A5][M4][C5]
+if (!nameChanged &&
+!phoneChanged &&
+!pictureChanged) {
+_showMessage(
+'No changes were detected in your profile information.',
+);
+return true;
 }
 
 if (mounted) {
@@ -1162,100 +899,81 @@ _isSaving = true;
 }
 
 try {
-// ========================================================
-// 1. SAVE NAME + PHONE FIRST
-//
-// This means a temporary Storage/network problem will NOT
-// prevent the traveller from updating the editable profile
-// information.
-// ========================================================
+final Map<String, dynamic> updates = {};
 
-await SupabaseConfig.client
-    .from('profiles')
-    .update({
-'full_name': newName,
-'phone_number': newPhone,
-'updated_at': DateTime.now().toIso8601String(),
-})
-    .eq('id', user.id);
-
-if (!mounted) {
-return false;
+// [C6] Update only changed fields.
+if (nameChanged) {
+updates['full_name'] = newName;
 }
 
-setState(() {
-_fullName = newName;
-_phoneNumber = newPhone;
-});
+if (phoneChanged) {
+updates['phone_number'] =
+normalizedPhone;
+}
 
-// ========================================================
-// 2. UPLOAD PHOTO ONLY WHEN A NEW PHOTO WAS SELECTED
-// ========================================================
+String? newPhotoUrl =
+_profilePictureUrl;
 
-if (_selectedImage != null &&
-_selectedImageBytes != null) {
-try {
-final String newPictureUrl =
+if (pictureChanged) {
+newPhotoUrl =
 await _uploadProfilePicture(
 userId: user.id,
 image: _selectedImage!,
 bytes: _selectedImageBytes!,
 );
 
+updates['profile_picture_url'] =
+newPhotoUrl;
+}
+
+updates['updated_at'] =
+DateTime.now().toIso8601String();
+
 await SupabaseConfig.client
     .from('profiles')
-    .update({
-'profile_picture_url': newPictureUrl,
-'updated_at': DateTime.now().toIso8601String(),
-})
+    .update(updates)
     .eq('id', user.id);
 
-if (!mounted) {
-return false;
-}
+if (!mounted) return false;
 
 setState(() {
-_profilePictureUrl = newPictureUrl;
+if (nameChanged) {
+_fullName = newName;
+}
+
+if (phoneChanged) {
+_phoneNumber =
+normalizedPhone;
+}
+
+if (pictureChanged) {
+_profilePictureUrl =
+newPhotoUrl;
+}
+
 _selectedImage = null;
 _selectedImageBytes = null;
+_isSaving = false;
 });
-} catch (error) {
-debugPrint('PROFILE PHOTO UPLOAD ERROR: $error');
 
-// Keep the selected photo in the dialog so Save Changes
-// can be tapped again to retry the upload.
+// [M5]
 _showMessage(
-'Name and phone were saved. Photo upload was interrupted by the network. Please tap Save Changes again to retry the photo.',
+'Your profile has been updated successfully.',
 );
 
-return false;
-}
-}
-
-_showMessage('Profile updated successfully.');
 return true;
-} on PostgrestException catch (error) {
-debugPrint('PROFILE DATABASE ERROR: ${error.message}');
-
-_showMessage(
-'Profile update failed: ${error.message}',
-);
-
-return false;
-} catch (error) {
-debugPrint('PROFILE UPDATE ERROR: $error');
-
-_showMessage(
-'Unable to update profile: $error',
-);
-
-return false;
-} finally {
+} catch (_) {
 if (mounted) {
 setState(() {
 _isSaving = false;
 });
 }
+
+_showMessage(
+'Unable to update the profile. Please try again.',
+);
+
+return false;
 }
 }
 
@@ -1336,70 +1054,281 @@ throw Exception(
 // ============================================================
 
 Future<void> _openChangePassword() async {
-final User? user = SupabaseConfig.client.auth.currentUser;
+final currentController =
+TextEditingController();
+final newController =
+TextEditingController();
+final confirmController =
+TextEditingController();
 
-if (user == null) {
-_showMessage('Your session has expired. Please log in again.');
+bool showCurrent = false;
+bool showNew = false;
+bool showConfirm = false;
+bool changing = false;
+
+await showDialog<void>(
+context: context,
+barrierDismissible: false,
+builder: (dialogContext) {
+return StatefulBuilder(
+builder: (context, setDialogState) {
+return AlertDialog(
+title: const Text('Change Password'),
+content: SingleChildScrollView(
+child: Column(
+mainAxisSize: MainAxisSize.min,
+children: [
+TextField(
+controller: currentController,
+obscureText: !showCurrent,
+decoration: InputDecoration(
+labelText: 'Current Password',
+suffixIcon: IconButton(
+onPressed: () {
+setDialogState(() {
+showCurrent =
+!showCurrent;
+});
+},
+icon: Icon(
+showCurrent
+? Icons.visibility_off
+    : Icons.visibility,
+),
+),
+),
+),
+const SizedBox(height: 14),
+TextField(
+controller: newController,
+obscureText: !showNew,
+decoration: InputDecoration(
+labelText: 'New Password',
+suffixIcon: IconButton(
+onPressed: () {
+setDialogState(() {
+showNew = !showNew;
+});
+},
+icon: Icon(
+showNew
+? Icons.visibility_off
+    : Icons.visibility,
+),
+),
+),
+),
+const SizedBox(height: 14),
+TextField(
+controller: confirmController,
+obscureText: !showConfirm,
+decoration: InputDecoration(
+labelText: 'Confirm Password',
+suffixIcon: IconButton(
+onPressed: () {
+setDialogState(() {
+showConfirm =
+!showConfirm;
+});
+},
+icon: Icon(
+showConfirm
+? Icons.visibility_off
+    : Icons.visibility,
+),
+),
+),
+),
+],
+),
+),
+actions: [
+TextButton(
+onPressed: changing
+? null
+    : () =>
+Navigator.pop(dialogContext),
+child: const Text('CANCEL'),
+),
+FilledButton(
+onPressed: changing
+? null
+    : () async {
+final String currentPassword =
+currentController.text;
+final String newPassword =
+newController.text;
+final String confirmPassword =
+confirmController.text;
+
+// [A6d][M13][C12]
+if (currentPassword.isEmpty ||
+newPassword.isEmpty ||
+confirmPassword.isEmpty) {
+_showMessage(
+'Please complete all required password fields.',
+);
 return;
 }
 
-final String? email = user.email;
+final User? user =
+SupabaseConfig
+    .client.auth.currentUser;
 
-if (email == null || email.trim().isEmpty) {
-_showMessage('Unable to find your account email.');
+final String email =
+user?.email ?? '';
+
+if (user == null ||
+email.isEmpty) {
+_showMessage(
+'Unable to change the password. Please try again.',
+);
 return;
 }
+
+setDialogState(() {
+changing = true;
+});
 
 try {
-await SupabaseConfig.client.auth.resetPasswordForEmail(
-email.trim(),
-redirectTo: 'mysterylane://reset-password',
+// [A6a][M8][C8]
+try {
+await SupabaseConfig
+    .client.auth
+    .signInWithPassword(
+email: email,
+password:
+currentPassword,
+);
+} on AuthException {
+if (dialogContext.mounted) {
+setDialogState(() {
+changing = false;
+});
+}
+
+_showMessage(
+'The current password is incorrect. Please try again.',
+);
+return;
+}
+
+final bool strongPassword =
+newPassword.length >= 8 &&
+RegExp(r'[A-Z]')
+    .hasMatch(
+newPassword) &&
+RegExp(r'[a-z]')
+    .hasMatch(
+newPassword) &&
+RegExp(r'[0-9]')
+    .hasMatch(
+newPassword) &&
+RegExp(
+r'[^A-Za-z0-9]',
+).hasMatch(
+newPassword,
+);
+
+// [A6b][M9][C9]
+if (!strongPassword) {
+if (dialogContext.mounted) {
+setDialogState(() {
+changing = false;
+});
+}
+
+_showMessage(
+'Please enter a password that meets the password requirements.',
+);
+return;
+}
+
+// [A6e][M14][C13]
+if (newPassword ==
+currentPassword) {
+if (dialogContext.mounted) {
+setDialogState(() {
+changing = false;
+});
+}
+
+_showMessage(
+'The new password must be different from your current password.',
+);
+return;
+}
+
+// [A6c][M10][C10]
+if (newPassword !=
+confirmPassword) {
+if (dialogContext.mounted) {
+setDialogState(() {
+changing = false;
+});
+}
+
+_showMessage(
+'The new password and confirmation password do not match.',
+);
+return;
+}
+
+await SupabaseConfig.client.auth
+    .updateUser(
+UserAttributes(
+password: newPassword,
+),
 );
 
 if (!mounted) return;
 
-await showDialog<void>(
-context: context,
-builder: (dialogContext) {
-return AlertDialog(
-icon: const Icon(
-Icons.mark_email_read_outlined,
-color: primaryBlue,
-size: 48,
+// [M11]
+_showMessage(
+'Your password has been changed successfully.',
+);
+
+if (dialogContext.mounted) {
+Navigator.pop(
+dialogContext,
+);
+}
+} catch (_) {
+if (dialogContext.mounted) {
+setDialogState(() {
+changing = false;
+});
+}
+
+_showMessage(
+'Unable to change the password. Please try again.',
+);
+}
+},
+child: changing
+? const SizedBox(
+width: 18,
+height: 18,
+child:
+CircularProgressIndicator(
+strokeWidth: 2,
+color: Colors.white,
 ),
-title: const Text(
-'Check Your Email',
-textAlign: TextAlign.center,
+)
+    : const Text(
+'CHANGE PASSWORD',
 ),
-content: Text(
-'A password change link has been sent to:\n\n'
-'$email\n\n'
-'Open the email and tap the password reset link to continue.',
-textAlign: TextAlign.center,
-),
-actionsAlignment: MainAxisAlignment.center,
-actions: [
-FilledButton(
-onPressed: () => Navigator.pop(dialogContext),
-style: FilledButton.styleFrom(
-backgroundColor: primaryBlue,
-),
-child: const Text('OK'),
 ),
 ],
 );
 },
 );
-} on AuthException catch (error) {
-if (!mounted) return;
-_showMessage(error.message);
-} catch (error) {
-debugPrint('PASSWORD EMAIL ERROR: $error');
-if (!mounted) return;
-_showMessage(
-'Unable to send password reset email. Please try again.',
+},
 );
-}
+
+currentController.dispose();
+newController.dispose();
+confirmController.dispose();
 }
 
 // ============================================================
@@ -1407,24 +1336,58 @@ _showMessage(
 // ============================================================
 
 Future<void> _logout() async {
+// [A7][A7a][M12]
+final bool? confirmed =
+await showDialog<bool>(
+context: context,
+builder: (dialogContext) {
+return AlertDialog(
+title: const Text('Log Out'),
+content: const Text(
+'Are you sure you want to log out?',
+),
+actions: [
+TextButton(
+onPressed: () =>
+Navigator.pop(
+dialogContext,
+false,
+),
+child: const Text('CANCEL'),
+),
+FilledButton(
+onPressed: () =>
+Navigator.pop(
+dialogContext,
+true,
+),
+child: const Text('LOG OUT'),
+),
+],
+);
+},
+);
+
+if (confirmed != true) {
+return;
+}
+
 try {
+// [C11]
 await SupabaseConfig.client.auth.signOut();
 
 if (!mounted) return;
 
-Navigator.of(context)
-    .pushAndRemoveUntil(
+Navigator.of(context).pushAndRemoveUntil(
 MaterialPageRoute(
-builder:
-(context) =>
+builder: (context) =>
 const WelcomeScreen(),
 ),
-(route) =>
-false,
+(route) => false,
 );
-} catch (error) {
+} catch (_) {
 _showMessage(
-'Unable to log out: $error',
+'Unable to log out. Please try again.',
 );
 }
 }
@@ -2316,7 +2279,7 @@ FontWeight.w800,
 ),
 SizedBox(height: 4),
 Text(
-'Send a secure password reset link to your account email.',
+'Verify your current password and set a new password.',
 style: TextStyle(
 color: greyText,
 fontSize: 10,
@@ -2884,3 +2847,4 @@ SnackBarBehavior.floating,
 );
 }
 }
+
