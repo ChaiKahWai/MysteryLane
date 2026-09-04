@@ -118,20 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openBlindBoxScreen() {
-    setState(() => _selectedItem = 'Blind Box');
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const BlindBoxPage(
-          userEp: 0,
-          blindBoxChances: 0,
-        ),
-      ),
-    ).then((_) {
-      if (!mounted) return;
-      setState(() => _selectedItem = 'Home');
-    });
+    _showPressedMessage('Blind Box');
   }
 
   void _openCheckpointScreen() {
@@ -211,7 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: Icons.emoji_events_rounded,
           background: const Color(0xFFFFFBEB),
           foreground: const Color(0xFFD97706),
-          onTap: () => _showPressedMessage('Leaderboard'),
+          onTap: _openLeaderboard,
         ),
         const SizedBox(width: 6),
         _TopActionButton(
