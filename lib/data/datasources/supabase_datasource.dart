@@ -5,9 +5,8 @@ import '../models/place_candidate.dart';
 class SupabaseDataSource {
   final SupabaseClient _client;
 
-  SupabaseDataSource({
-    SupabaseClient? client,
-  }) : _client = client ?? Supabase.instance.client;
+  SupabaseDataSource({SupabaseClient? client})
+    : _client = client ?? Supabase.instance.client;
 
   User _requireUser() {
     final user = _client.auth.currentUser;
@@ -38,9 +37,7 @@ class SupabaseDataSource {
     } on SupabaseDataException {
       rethrow;
     } catch (error) {
-      throw SupabaseDataException(
-        'Failed to load Blind Box balance: $error',
-      );
+      throw SupabaseDataException('Failed to load Blind Box balance: $error');
     }
   }
 
@@ -48,9 +45,7 @@ class SupabaseDataSource {
     try {
       _requireUser();
 
-      final response = await _client.rpc(
-        'buy_blind_box_chance',
-      );
+      final response = await _client.rpc('buy_blind_box_chance');
 
       if (response is! Map) {
         throw const SupabaseDataException(
@@ -67,9 +62,7 @@ class SupabaseDataSource {
     } on SupabaseDataException {
       rethrow;
     } catch (error) {
-      throw SupabaseDataException(
-        'Failed to buy Blind Box chance: $error',
-      );
+      throw SupabaseDataException('Failed to buy Blind Box chance: $error');
     }
   }
 
@@ -83,29 +76,23 @@ class SupabaseDataSource {
 
       final response = await _client
           .from('blind_box_destinations')
-          .upsert(
-        {
-          'google_place_id': place.placeId,
-          'name': place.name,
-          'description': description,
-          'category': place.primaryType,
-          'image_url': imageUrl,
-          'latitude': place.latitude,
-          'longitude': place.longitude,
-          'address': place.formattedAddress,
-          'rating': place.rating,
-          'user_rating_count': place.userRatingCount,
-          'updated_at': DateTime.now()
-              .toUtc()
-              .toIso8601String(),
-        },
-        onConflict: 'google_place_id',
-      )
+          .upsert({
+            'google_place_id': place.placeId,
+            'name': place.name,
+            'description': description,
+            'category': place.primaryType,
+            'image_url': imageUrl,
+            'latitude': place.latitude,
+            'longitude': place.longitude,
+            'address': place.formattedAddress,
+            'rating': place.rating,
+            'user_rating_count': place.userRatingCount,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          }, onConflict: 'google_place_id')
           .select('destination_id')
           .single();
 
-      final destinationId =
-      response['destination_id']?.toString();
+      final destinationId = response['destination_id']?.toString();
 
       if (destinationId == null || destinationId.isEmpty) {
         throw const SupabaseDataException(
@@ -140,13 +127,26 @@ class SupabaseDataSource {
         },
       );
 
+      // The draw has already succeeded atomically at this point. Wait for the
+      // destination's Gemini question bank so the puzzle opens with researched
+      // trivia, but never convert a Gemini outage into a failed Blind Box draw.
+      try {
+        await _client.functions.invoke(
+          'generate-destination-questions',
+          body: {'destination_id': destinationId},
+        );
+      } on FunctionException {
+        // Preserve the successful draw. The existing destination bank remains
+        // available and generation can be retried on a later draw.
+      } catch (_) {
+        // Preserve the successful draw during temporary network failures.
+      }
+
       return _toInt(response);
     } on SupabaseDataException {
       rethrow;
     } catch (error) {
-      throw SupabaseDataException(
-        'Failed to record Blind Box draw: $error',
-      );
+      throw SupabaseDataException('Failed to record Blind Box draw: $error');
     }
   }
 
@@ -179,25 +179,16 @@ class SupabaseDataSource {
             )
           ''')
           .eq('user_id', user.id)
-          .order(
-        'drawn_at',
-        ascending: false,
-      )
+          .order('drawn_at', ascending: false)
           .limit(50);
 
       return (response as List)
-          .map(
-            (row) => Map<String, dynamic>.from(
-          row as Map,
-        ),
-      )
+          .map((row) => Map<String, dynamic>.from(row as Map))
           .toList(growable: false);
     } on SupabaseDataException {
       rethrow;
     } catch (error) {
-      throw SupabaseDataException(
-        'Failed to load Blind Box history: $error',
-      );
+      throw SupabaseDataException('Failed to load Blind Box history: $error');
     }
   }
 
