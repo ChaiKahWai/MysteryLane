@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/config/supabase_config.dart';
-
+import '../Blindbox/BlindBox_Screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/leaderboard_screen.dart';
+import '../group/group_screen.dart';
+import '../group/chat_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -210,10 +212,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           foreground:
           skyBlue,
-          onTap: () =>
-              _showPressedMessage(
-                'Chat',
-              ),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ChatListScreen()),
+            );
+          },
         ),
 
         const SizedBox(
@@ -232,7 +236,6 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(
           width: 12,
         ),
-
       ],
       bottom: const PreferredSize(
         preferredSize: Size.fromHeight(1),
@@ -593,7 +596,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.groups_2_outlined,
                 label: 'TEAMS',
                 active: _selectedItem == 'Teams',
-                onTap: () => _showPressedMessage('Teams'),
+                onTap: () {
+                  setState(() => _selectedItem = 'Teams');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const GroupScreen()),
+                  ).then((_) {
+                    if (mounted) setState(() => _selectedItem = 'Home');
+                  });
+                },
               ),
             ),
           ],

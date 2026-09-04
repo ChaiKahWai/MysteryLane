@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../application/controller/BlindBox_Controller.dart';
+import '../../../data/models/blind_box_history.dart';
 import '../home/home_screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import 'package:flutter/services.dart';
@@ -62,8 +63,10 @@ class BlindBoxHistoryUi extends BlindBoxDestinationUi {
 }
 
 class BlindBoxPage extends StatefulWidget {
-  final int userEp;
-  final int blindBoxChances;
+  // Legacy values kept only so older HomeScreen calls still compile.
+  // The real values are loaded from the authenticated user's Supabase profile.
+  final int? userEp;
+  final int? blindBoxChances;
 
   /// Presentation depends only on the Application/Logic layer.
   /// If no controller is injected, production() is used.
@@ -84,8 +87,8 @@ class BlindBoxPage extends StatefulWidget {
 
   const BlindBoxPage({
     super.key,
-    required this.userEp,
-    required this.blindBoxChances,
+    this.userEp,
+    this.blindBoxChances,
     this.controller,
     this.currentDestination,
     this.history = const [],
@@ -117,7 +120,13 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
   bool _historyTab = false;
   bool _isDrawing = false;
   bool _isLoadingHistory = false;
+  bool _isLoadingBalance = true;
+  bool _isBuyingChance = false;
+
   double _radiusKm = 12;
+  int _userEp = 0;
+  int _blindBoxChances = 0;
+
   BlindBoxDestinationUi? _currentDestination;
   List<BlindBoxHistoryUi> _history = [];
 
@@ -140,6 +149,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        _loadBlindBoxBalance();
         _loadBlindBoxHistory();
       }
     });
@@ -163,8 +173,98 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     super.dispose();
   }
 
+  Future<void> _loadBlindBoxBalance({
+    bool showError = false,
+  }) async {
+    if (mounted) {
+      setState(() => _isLoadingBalance = true);
+    }
+
+    try {
+      final balance = await _controller.loadBlindBoxBalance();
+
+      if (!mounted) return;
+
+      setState(() {
+        _userEp = balance.explorationPoints;
+        _blindBoxChances = balance.chances;
+        _isLoadingBalance = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => _isLoadingBalance = false);
+
+      if (showError) {
+        _showError(error);
+      }
+
+      debugPrint(
+        '[BLIND BOX UI] Balance load error: $error',
+      );
+    }
+  }
+
+  Future<void> _buyBlindBoxChance() async {
+    if (_isBuyingChance) return;
+
+    if (_blindBoxChances >= 10) {
+      _showError(
+        const BlindBoxException(
+          'You already have the maximum of 10 Blind Box chances.',
+        ),
+      );
+      return;
+    }
+
+    if (_userEp < BlindBoxController.blindBoxChanceCostEp) {
+      _showError(
+        const BlindBoxException(
+          'You need 200 Exploration Points to get 1 Blind Box chance.',
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isBuyingChance = true);
+
+    try {
+      final balance = await _controller.buyBlindBoxChance();
+
+      if (!mounted) return;
+
+      setState(() {
+        _userEp = balance.explorationPoints;
+        _blindBoxChances = balance.chances;
+      });
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              '1 Blind Box chance added successfully.',
+            ),
+          ),
+        );
+    } catch (error) {
+      if (!mounted) return;
+      _showError(error);
+    } finally {
+      if (mounted) {
+        setState(() => _isBuyingChance = false);
+      }
+    }
+  }
+
   Future<void> _drawBlindBox() async {
-    if (_isDrawing) return;
+    if (_isDrawing || _isLoadingBalance) return;
+
+    if (_blindBoxChances <= 0) {
+      await _showChanceDialog();
+      return;
+    }
 
     setState(() => _isDrawing = true);
 
@@ -183,6 +283,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
         _showResult = true;
       });
 
+      await _loadBlindBoxBalance();
       await _loadBlindBoxHistory();
     } catch (error) {
       if (!mounted) return;
@@ -196,7 +297,12 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
 
   Future<void> _redrawBlindBox() async {
     final current = _currentDestination;
-    if (_isDrawing || current == null) return;
+    if (_isDrawing || _isLoadingBalance || current == null) return;
+
+    if (_blindBoxChances <= 0) {
+      await _showChanceDialog();
+      return;
+    }
 
     setState(() => _isDrawing = true);
 
@@ -216,6 +322,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
         _showResult = true;
       });
 
+      await _loadBlindBoxBalance();
       await _loadBlindBoxHistory();
     } catch (error) {
       if (!mounted) return;
@@ -514,7 +621,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
             style: _heading.copyWith(fontSize: 25),
           ),
         ),
-        _EpChip(ep: widget.userEp),
+        _EpChip(ep: _userEp),
       ],
     );
   }
@@ -576,7 +683,9 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${widget.blindBoxChances} of 10 remaining',
+                    _isLoadingBalance
+                        ? 'Loading chances...'
+                        : '$_blindBoxChances of 10 remaining',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: _bodyStyle.copyWith(
@@ -1105,7 +1214,9 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                     _OutlineActionButton(
                       icon: Icons.refresh_rounded,
                       label: 'REDRAW',
-                      trailingLabel: '200 EP',
+                      trailingLabel: _blindBoxChances > 0
+                          ? '1 CHANCE'
+                          : 'GET CHANCE',
                       isLoading: _isDrawing,
                       loadingLabel: 'SEARCHING NEW LOCATION...',
                       onTap: _redrawBlindBox,
@@ -1352,20 +1463,20 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                     child: Column(
                       children: [
                         _DialogInfoRow(
-                          label: 'Daily Limit:',
+                          label: 'Maximum:',
                           value: '10 chances max',
                           valueColor: const Color(0xFF92400E),
                         ),
                         const SizedBox(height: 9),
                         _DialogInfoRow(
                           label: 'Remaining Chances:',
-                          value: '${widget.blindBoxChances} / 10',
+                          value: '$_blindBoxChances / 10',
                           valueColor: const Color(0xFF92400E),
                         ),
                         const SizedBox(height: 9),
                         _DialogInfoRow(
                           label: 'Your Current Points:',
-                          value: '${widget.userEp} pts',
+                          value: '$_userEp pts',
                           valueColor: _primary,
                         ),
                       ],
@@ -1373,8 +1484,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Deduct 200 Points from your balance to gain '
-                        'Get 1 Blind Box chance.',
+                    'Spend 200 Exploration Points to get 1 additional Blind Box chance.',
                     style: _bodyStyle.copyWith(
                       color: _slate700,
                       fontSize: 11.5,
@@ -1408,9 +1518,11 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () {
+                          onPressed: _isBuyingChance
+                              ? null
+                              : () async {
                             Navigator.of(dialogContext).pop();
-                            widget.onBuyChanceRequested?.call();
+                            await _buyBlindBoxChance();
                           },
                           style: ElevatedButton.styleFrom(
                             elevation: 1,
