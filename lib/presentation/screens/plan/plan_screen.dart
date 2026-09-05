@@ -113,9 +113,18 @@ class _PlanScreenState extends State<PlanScreen> {
       return;
     }
 
-    final newPlanNameCtrl = TextEditingController(text: '${_currentPlan!.name} (Copy)');
+    // Generate a unique default name
+    String baseName = '${_currentPlan!.name} (Copy)';
+    String uniqueName = baseName;
+    int copyNumber = 2;
+    while (plans.any((p) => p.name.toLowerCase() == uniqueName.toLowerCase())) {
+      uniqueName = '${_currentPlan!.name} (Copy $copyNumber)';
+      copyNumber++;
+    }
+
+    final newPlanNameCtrl = TextEditingController(text: uniqueName);
     final squadNameCtrl = TextEditingController(text: '${_currentPlan!.name} Squad');
-    String selectedMode = 'solo'; // 'solo' or 'team'
+    String selectedMode = 'solo';
     bool isPublic = false;
     int maxCap = 5;
 
@@ -280,10 +289,11 @@ class _PlanScreenState extends State<PlanScreen> {
     if (confirmed == true) {
       final finalPlanName = newPlanNameCtrl.text.trim().isNotEmpty
           ? newPlanNameCtrl.text.trim()
-          : '${_currentPlan!.name} (Copy)';
+          : uniqueName;
 
+      // Final uniqueness check (in case user changed to an existing name)
       if (plans.any((p) => p.name.toLowerCase() == finalPlanName.toLowerCase())) {
-        note('A plan named "$finalPlanName" already exists. Choose a different name.');
+        note('A plan named "$finalPlanName" already exists. Please choose a different name.');
         return;
       }
 
@@ -291,6 +301,7 @@ class _PlanScreenState extends State<PlanScreen> {
 
       try {
         String? newCode;
+        String? newGroupId;
 
         // If Team mode was chosen, create the squad in travel_groups
         if (selectedMode == 'team') {
@@ -306,33 +317,39 @@ class _PlanScreenState extends State<PlanScreen> {
           );
 
           newCode = newTeam.invitationCode;
+          newGroupId = newTeam.groupId; // Capture the group_id
         }
 
-        // Save the new cloned plan
-        final clonedPlan = await api!.savePlan(TripPlan(
-          id: '',
-          name: finalPlanName,
-          startDate: _currentPlan!.startDate,
-          endDate: _currentPlan!.endDate,
-          mode: selectedMode,
-          visibility: isPublic ? 'public' : 'private',
-          inviteCode: newCode,
-          routeAccepted: _currentPlan!.routeAccepted,
-          stops: List.from(_currentPlan!.stops),
-        ));
+        // Save the new cloned plan – pass groupId if team mode
+        final clonedPlan = await api!.savePlan(
+          TripPlan(
+            id: '',
+            name: finalPlanName,
+            startDate: _currentPlan!.startDate,
+            endDate: _currentPlan!.endDate,
+            mode: selectedMode,
+            visibility: isPublic ? 'public' : 'private',
+            inviteCode: newCode,
+            groupId: newGroupId, // Now we pass group_id
+            routeAccepted: _currentPlan!.routeAccepted,
+            stops: List.from(_currentPlan!.stops),
+          ),
+        );
 
         if (mounted) {
           setState(() {
             _currentPlan = clonedPlan;
             name.text = clonedPlan.name;
             mode = selectedMode;
+            // Insert at top
             plans = [clonedPlan, ...plans];
             _allPlans = [clonedPlan, ..._allPlans];
             _displayedPlans = [clonedPlan, ..._displayedPlans];
+            _lastViewedPlanId = clonedPlan.id; // reset cache
           });
 
           if (selectedMode == 'team') {
-            await _loadSquadForPlan();
+            await _loadSquadForPlan(); // refresh squad info
             if (newCode != null) {
               _showTeamCodeSuccessDialog(newCode);
             }
@@ -1137,6 +1154,7 @@ class _PlanScreenState extends State<PlanScreen> {
       normalizeStops();
 
       String? generatedCode;
+      String? newGroupId;
 
       // --- CREATE SQUAD IN SUPABASE IF TEAM EXPEDITION ---
       if (mode == 'team') {
@@ -1162,6 +1180,7 @@ class _PlanScreenState extends State<PlanScreen> {
         );
 
         generatedCode = newGroup.invitationCode;
+        newGroupId = newGroup.groupId;
 
         // 2. Update user profile team status
         await Supabase.instance.client
@@ -1179,6 +1198,7 @@ class _PlanScreenState extends State<PlanScreen> {
         mode: mode,
         visibility: openPublic ? 'public' : 'private',
         inviteCode: generatedCode,
+        groupId: newGroupId,
         routeAccepted: accepted,
         stops: stops,
       ));

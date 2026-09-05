@@ -1,5 +1,3 @@
-// lib/data/repositories/group_repository.dart
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/travel_group_model.dart';
 import '../../core/config/supabase_config.dart';
@@ -199,6 +197,74 @@ class GroupRepository {
         .delete()
         .eq('group_id', groupId)
         .eq('user_id', userId);
+
+    try {
+      await _client
+          .from('profiles')
+          .update({'team_status': null})
+          .eq('id', userId);
+    } catch (_) {}
+  }
+
+  // 12a. Disband team
+  Future<void> disbandTeam({
+    required String groupId,
+    required String ownerId,
+  }) async {
+    // 1. Remove all members
+    await _client
+        .from('travel_group_members')
+        .delete()
+        .eq('group_id', groupId);
+
+    // 2. Set group status to CLOSED
+    await _client
+        .from('travel_groups')
+        .update({'group_status': 'CLOSED'})
+        .eq('group_id', groupId);
+
+    // 3. Reset owner profile team status
+    try {
+      await _client
+          .from('profiles')
+          .update({'team_status': null})
+          .eq('id', ownerId);
+    } catch (_) {}
+  }
+
+  // 12b. Transfer ownership and leave
+  Future<void> transferOwnershipAndLeave({
+    required String groupId,
+    required String currentOwnerId,
+    required String newOwnerId,
+  }) async {
+    // 1. Update owner in travel_groups
+    await _client
+        .from('travel_groups')
+        .update({'owner_id': newOwnerId})
+        .eq('group_id', groupId);
+
+    // 2. Promote new owner in travel_group_members
+    await _client
+        .from('travel_group_members')
+        .update({'member_role': 'OWNER'})
+        .eq('group_id', groupId)
+        .eq('user_id', newOwnerId);
+
+    // 3. Remove current owner from travel_group_members
+    await _client
+        .from('travel_group_members')
+        .delete()
+        .eq('group_id', groupId)
+        .eq('user_id', currentOwnerId);
+
+    // 4. Reset previous owner profile team status
+    try {
+      await _client
+          .from('profiles')
+          .update({'team_status': null})
+          .eq('id', currentOwnerId);
+    } catch (_) {}
   }
 
   // 13. Find group by invitation code
@@ -211,5 +277,30 @@ class GroupRepository {
         .maybeSingle();
     if (response == null) return null;
     return TravelGroup.fromJson(response);
+  }
+
+  // -------------------------------------------------------------------------
+  // NEW: Remove a member (for owner)
+  // -------------------------------------------------------------------------
+  Future<void> removeTeamMember({
+    required String groupId,
+    required String userId,
+  }) async {
+    // Delete the member record
+    await _client
+        .from('travel_group_members')
+        .delete()
+        .eq('group_id', groupId)
+        .eq('user_id', userId);
+
+    // Optionally reset the user's profile team_status to null
+    try {
+      await _client
+          .from('profiles')
+          .update({'team_status': null})
+          .eq('id', userId);
+    } catch (_) {
+      // Ignore errors (profile might not exist or column missing)
+    }
   }
 }

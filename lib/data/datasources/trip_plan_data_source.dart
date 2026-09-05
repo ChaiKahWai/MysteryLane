@@ -1,5 +1,4 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 import '../models/trip_plan.dart';
 
 class TripPlanDataSource {
@@ -12,66 +11,121 @@ class TripPlanDataSource {
     final user = _client.auth.currentUser;
     if (user == null) return const [];
 
-    // 1. Find all teams the user belongs to (as owner OR joined member)
-    final memberTeams = <Map<String, dynamic>>[];
+    // 1. Fetch active teams the user currently belongs to
+    final activeGroupIds = <String>{};
+    final activeInviteCodes = <String>{};
+    final groupDetails = <String, Map<String, dynamic>>{}; // <-- NEW map
+
     try {
-      final memberships = await _client
+      final memberRows = await _client
           .from('travel_group_members')
-          .select('group_id, travel_groups(group_id, owner_id, team_name, team_type, invitation_code, group_status)')
+          .select('group_id, membership_status, travel_groups(group_id, group_status, invitation_code, team_type)')
           .eq('user_id', user.id)
           .eq('membership_status', 'ACTIVE');
 
-      for (final m in memberships) {
-        if (m['travel_groups'] != null) {
-          memberTeams.add(m['travel_groups'] as Map<String, dynamic>);
+      for (final m in (memberRows as List? ?? [])) {
+        final g = m['travel_groups'] as Map<String, dynamic>?;
+        if (g != null && g['group_status'] == 'ACTIVE') {
+          final gid = g['group_id']?.toString();
+          final code = g['invitation_code']?.toString();
+          final teamType = g['team_type']?.toString();
+          if (gid != null && gid.isNotEmpty) {
+            activeGroupIds.add(gid);
+            groupDetails[gid] = {
+              'invitation_code': code,
+              'team_type': teamType,
+            };
+          }
+          if (code != null && code.isNotEmpty) {
+            activeInviteCodes.add(code.toUpperCase());
+          }
         }
       }
     } catch (e) {
-      print('Note: Error fetching member teams: $e');
+      print('Notice: Error fetching active user groups: $e');
     }
 
-    // 2. Fetch plans created by this user
+    // 2. Fetch all plans created by the user
     final myPlanRows = await _client
         .from('trip_plans')
-        .select('trip_id, user_id, trip_name, start_date, end_date, route_status, ai_travel_story, created_at')
+        .select('trip_id, trip_name, start_date, end_date, route_status, group_id, status, ai_travel_story')
         .eq('user_id', user.id)
         .order('created_at', ascending: false);
 
-    final allPlanRows = <Map<String, dynamic>>[...myPlanRows];
-    final fetchedTripIds = myPlanRows.map((r) => r['trip_id'] as String).toSet();
+    final allPlanRows = <Map<String, dynamic>>[];
+    final seenTripIds = <String>{};
 
-    // 3. For any joined squads where the user is NOT the owner, fetch the host's team plan!
-    for (final team in memberTeams) {
-      final ownerId = team['owner_id'] as String?;
-      final code = team['invitation_code'] as String?;
-
-      if (ownerId != null && ownerId != user.id && code != null && code.isNotEmpty) {
-        try {
-          // Search for the host's trip plan matching this team's invitation code
-          final hostPlans = await _client
-              .from('trip_plans')
-              .select('trip_id, user_id, trip_name, start_date, end_date, route_status, ai_travel_story, created_at')
-              .eq('user_id', ownerId)
-              .ilike('ai_travel_story', '%CODE:$code%');
-
-          for (final hp in hostPlans) {
-            final tid = hp['trip_id'] as String;
-            if (!fetchedTripIds.contains(tid)) {
-              fetchedTripIds.add(tid);
-              allPlanRows.add(hp);
-            }
-          }
-        } catch (e) {
-          print('Note: Error fetching joined squad plan for code $code: $e');
-        }
+    for (final r in (myPlanRows as List? ?? [])) {
+      final tid = r['trip_id']?.toString();
+      if (tid != null && seenTripIds.add(tid)) {
+        allPlanRows.add(Map<String, dynamic>.from(r));
       }
     }
 
-    print('📊 Total plans to load (own + joined): ${allPlanRows.length}');
+    // Also fetch team plans from active groups (these will have group_id)
+    if (activeGroupIds.isNotEmpty) {
+      try {
+        final teamPlanRows = await _client
+            .from('trip_plans')
+            .select('trip_id, trip_name, start_date, end_date, route_status, group_id, status, ai_travel_story')
+            .inFilter('group_id', activeGroupIds.toList())
+            .order('created_at', ascending: false);
+
+        for (final r in (teamPlanRows as List? ?? [])) {
+          final tid = r['trip_id']?.toString();
+          if (tid != null && seenTripIds.add(tid)) {
+            allPlanRows.add(Map<String, dynamic>.from(r));
+          }
+        }
+      } catch (e) {
+        print('Notice: Error fetching team group plans: $e');
+      }
+    }
+
+    // 3. Filter plans:
+    // - Skip if status is INACTIVE / CLOSED / DELETED
+    // - If a plan has group_id, it's a team plan → only show if group_id is in activeGroupIds
+    // - If no group_id, but has MODE:team in story → fallback to invite-code check
+    final eligibleRows = <Map<String, dynamic>>[];
+    for (final row in allPlanRows) {
+      final status = row['status']?.toString();
+      if (status == 'INACTIVE' || status == 'CLOSED' || status == 'DELETED') continue;
+
+      final groupId = row['group_id']?.toString();
+
+      // CASE 1: Plan is explicitly linked to a group
+      if (groupId != null && groupId.isNotEmpty) {
+        // Only keep if user is still an active member of that group
+        if (activeGroupIds.contains(groupId)) {
+          eligibleRows.add(row);
+        }
+        // else: skip (user left the team)
+        continue;
+      }
+
+      // CASE 2: Plan has no group_id → check metadata for team mode (legacy)
+      final story = row['ai_travel_story']?.toString() ?? '';
+      final isTeamPlan = story.contains('MODE:team');
+
+      if (isTeamPlan) {
+        // Extract invite code from story
+        final match = RegExp(r'CODE:([A-Za-z0-9]+)').firstMatch(story);
+        final planCode = match?.group(1)?.toUpperCase();
+        if (planCode != null && activeInviteCodes.contains(planCode)) {
+          eligibleRows.add(row);
+        }
+        // else: skip (user no longer has a team with that code)
+      } else {
+        // Solo plan – always visible
+        eligibleRows.add(row);
+      }
+    }
+
+    print('📊 Found ${eligibleRows.length} eligible plan rows');
 
     // 4. Map rows to TripPlan models with stops
     final plans = <TripPlan>[];
-    for (final planRow in allPlanRows) {
+    for (final planRow in eligibleRows) {
       final planId = planRow['trip_id'] as String;
 
       final stopRows = await _client
@@ -104,34 +158,40 @@ class TripPlanDataSource {
         }
       }
 
-      // Parse Expedition Mode & Invite Code
-      final story = (planRow['ai_travel_story'] as String?) ?? '';
-      String planMode = 'solo';
+      // --------------------------
+      // Determine mode, visibility, inviteCode
+      // --------------------------
+      final groupId = planRow['group_id']?.toString();
+      String mode = 'solo';
       String? inviteCode;
       String visibility = 'private';
 
-      if (story.contains('MODE:team')) {
-        planMode = 'team';
-        final matchCode = RegExp(r'CODE:([A-Za-z0-9_-]+)').firstMatch(story);
-        if (matchCode != null && matchCode.group(1)!.isNotEmpty) {
-          inviteCode = matchCode.group(1);
-        }
-
-        final matchVis = RegExp(r'VIS:([a-z]+)').firstMatch(story);
-        if (matchVis != null) {
-          visibility = matchVis.group(1)!;
+      if (groupId != null && groupId.isNotEmpty) {
+        // Plan linked to a group – derive from groupDetails
+        final details = groupDetails[groupId];
+        if (details != null) {
+          mode = 'team';
+          inviteCode = details['invitation_code'];
+          visibility = (details['team_type'] == 'PUBLIC') ? 'public' : 'private';
+        } else {
+          // The group might be inactive or user left – we already filtered, but fallback to solo
+          mode = 'solo';
         }
       } else {
-        // Check if this plan matches any team the user joined
-        for (final t in memberTeams) {
-          final tCode = t['invitation_code'] as String?;
-          if (tCode != null && story.contains(tCode)) {
-            planMode = 'team';
-            inviteCode = tCode;
-            visibility = (t['team_type'] == 'PUBLIC') ? 'public' : 'private';
-            break;
+        // No group_id – maybe a legacy team plan stored in ai_travel_story?
+        final story = planRow['ai_travel_story'] as String? ?? '';
+        if (story.contains('MODE:team')) {
+          mode = 'team';
+          final matchCode = RegExp(r'CODE:([A-Za-z0-9_-]+)').firstMatch(story);
+          if (matchCode != null && matchCode.group(1)!.isNotEmpty) {
+            inviteCode = matchCode.group(1);
+          }
+          final matchVis = RegExp(r'VIS:([a-z]+)').firstMatch(story);
+          if (matchVis != null) {
+            visibility = matchVis.group(1)!;
           }
         }
+        // else solo, stays as default
       }
 
       plans.add(TripPlan(
@@ -139,9 +199,10 @@ class TripPlanDataSource {
         name: planRow['trip_name'] as String,
         startDate: DateTime.parse(planRow['start_date'] as String),
         endDate: DateTime.parse(planRow['end_date'] as String),
-        mode: planMode,
+        mode: mode,
         visibility: visibility,
         inviteCode: inviteCode,
+        groupId: groupId,
         routeAccepted: planRow['route_status'] == 'ACCEPTED' ||
             planRow['route_status'] == 'GENERATED',
         stops: stops,
@@ -151,14 +212,12 @@ class TripPlanDataSource {
     return plans;
   }
 
+  // --------------------------------------------------------------------------
+  // SAVE PLAN (ai_travel_story set to null)
+  // --------------------------------------------------------------------------
   Future<TripPlan> savePlan(TripPlan plan) async {
     final user = _client.auth.currentUser;
     if (user == null) throw const TripPlanDataException('Please log in first.');
-
-    // Encode mode, invite code, and visibility into metadata
-    final metadataString = plan.mode == 'team'
-        ? 'MODE:team|CODE:${plan.inviteCode ?? ''}|VIS:${plan.visibility}'
-        : 'MODE:solo';
 
     final planRow = await _client
         .from('trip_plans')
@@ -169,7 +228,8 @@ class TripPlanDataSource {
       'end_date': _date(plan.endDate),
       'route_status': plan.routeAccepted ? 'ACCEPTED' : 'NOT_PLANNED',
       'status': 'ACTIVE',
-      'ai_travel_story': metadataString,
+      'ai_travel_story': null, // ✅ null – metadata is now derived from group_id
+      'group_id': plan.groupId,
     })
         .select()
         .single();
@@ -217,11 +277,13 @@ class TripPlanDataSource {
       mode: plan.mode,
       visibility: plan.visibility,
       inviteCode: plan.inviteCode,
+      groupId: plan.groupId,
       routeAccepted: plan.routeAccepted,
       stops: plan.stops,
     );
   }
 
+  // Helper to format date
   String _date(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 }
