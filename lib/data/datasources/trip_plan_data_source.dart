@@ -12,18 +12,67 @@ class TripPlanDataSource {
     final user = _client.auth.currentUser;
     if (user == null) return const [];
 
-    final planRows = await _client
+    // 1. Find all teams the user belongs to (as owner OR joined member)
+    final memberTeams = <Map<String, dynamic>>[];
+    try {
+      final memberships = await _client
+          .from('travel_group_members')
+          .select('group_id, travel_groups(group_id, owner_id, team_name, team_type, invitation_code, group_status)')
+          .eq('user_id', user.id)
+          .eq('membership_status', 'ACTIVE');
+
+      for (final m in memberships) {
+        if (m['travel_groups'] != null) {
+          memberTeams.add(m['travel_groups'] as Map<String, dynamic>);
+        }
+      }
+    } catch (e) {
+      print('Note: Error fetching member teams: $e');
+    }
+
+    // 2. Fetch plans created by this user
+    final myPlanRows = await _client
         .from('trip_plans')
-        .select('trip_id, trip_name, start_date, end_date, route_status')
+        .select('trip_id, user_id, trip_name, start_date, end_date, route_status, ai_travel_story, created_at')
         .eq('user_id', user.id)
         .order('created_at', ascending: false);
 
-    print('📊 Found ${planRows.length} plan rows');
+    final allPlanRows = <Map<String, dynamic>>[...myPlanRows];
+    final fetchedTripIds = myPlanRows.map((r) => r['trip_id'] as String).toSet();
 
+    // 3. For any joined squads where the user is NOT the owner, fetch the host's team plan!
+    for (final team in memberTeams) {
+      final ownerId = team['owner_id'] as String?;
+      final code = team['invitation_code'] as String?;
+
+      if (ownerId != null && ownerId != user.id && code != null && code.isNotEmpty) {
+        try {
+          // Search for the host's trip plan matching this team's invitation code
+          final hostPlans = await _client
+              .from('trip_plans')
+              .select('trip_id, user_id, trip_name, start_date, end_date, route_status, ai_travel_story, created_at')
+              .eq('user_id', ownerId)
+              .ilike('ai_travel_story', '%CODE:$code%');
+
+          for (final hp in hostPlans) {
+            final tid = hp['trip_id'] as String;
+            if (!fetchedTripIds.contains(tid)) {
+              fetchedTripIds.add(tid);
+              allPlanRows.add(hp);
+            }
+          }
+        } catch (e) {
+          print('Note: Error fetching joined squad plan for code $code: $e');
+        }
+      }
+    }
+
+    print('📊 Total plans to load (own + joined): ${allPlanRows.length}');
+
+    // 4. Map rows to TripPlan models with stops
     final plans = <TripPlan>[];
-    for (final planRow in planRows) {
+    for (final planRow in allPlanRows) {
       final planId = planRow['trip_id'] as String;
-      print('🔍 Processing plan: $planId (${planRow['trip_name']})');
 
       final stopRows = await _client
           .from('trip_plan_destinations')
@@ -32,12 +81,9 @@ class TripPlanDataSource {
           .order('travel_day', ascending: true)
           .order('sequence_order', ascending: true);
 
-      print('  📦 Found ${stopRows.length} stop rows');
-
       final stops = <ItineraryStop>[];
       for (final stopRow in stopRows) {
         final destId = stopRow['destination_id'];
-        print('    🛑 Dest ID: $destId');
         final destRow = await _client
             .from('blind_box_destinations')
             .select('google_place_id, name, address, latitude, longitude')
@@ -45,7 +91,6 @@ class TripPlanDataSource {
             .maybeSingle();
 
         if (destRow != null) {
-          print('    ✅ Found destination: ${destRow['name']}');
           stops.add(ItineraryStop(
             placeId: destRow['google_place_id'] as String? ?? destId.toString(),
             name: destRow['name'] as String,
@@ -56,8 +101,36 @@ class TripPlanDataSource {
             sortOrder: stopRow['sequence_order'] as int? ?? 0,
             source: stopRow['source'] as String? ?? 'SEARCH',
           ));
-        } else {
-          print('    ❌ Destination NOT found for ID $destId');
+        }
+      }
+
+      // Parse Expedition Mode & Invite Code
+      final story = (planRow['ai_travel_story'] as String?) ?? '';
+      String planMode = 'solo';
+      String? inviteCode;
+      String visibility = 'private';
+
+      if (story.contains('MODE:team')) {
+        planMode = 'team';
+        final matchCode = RegExp(r'CODE:([A-Za-z0-9_-]+)').firstMatch(story);
+        if (matchCode != null && matchCode.group(1)!.isNotEmpty) {
+          inviteCode = matchCode.group(1);
+        }
+
+        final matchVis = RegExp(r'VIS:([a-z]+)').firstMatch(story);
+        if (matchVis != null) {
+          visibility = matchVis.group(1)!;
+        }
+      } else {
+        // Check if this plan matches any team the user joined
+        for (final t in memberTeams) {
+          final tCode = t['invitation_code'] as String?;
+          if (tCode != null && story.contains(tCode)) {
+            planMode = 'team';
+            inviteCode = tCode;
+            visibility = (t['team_type'] == 'PUBLIC') ? 'public' : 'private';
+            break;
+          }
         }
       }
 
@@ -66,24 +139,26 @@ class TripPlanDataSource {
         name: planRow['trip_name'] as String,
         startDate: DateTime.parse(planRow['start_date'] as String),
         endDate: DateTime.parse(planRow['end_date'] as String),
-        mode: 'solo',
-        visibility: 'private',
-        inviteCode: null,
-        routeAccepted: planRow['route_status'] == 'ACCEPTED' || planRow['route_status'] == 'GENERATED',
+        mode: planMode,
+        visibility: visibility,
+        inviteCode: inviteCode,
+        routeAccepted: planRow['route_status'] == 'ACCEPTED' ||
+            planRow['route_status'] == 'GENERATED',
         stops: stops,
       ));
     }
 
-    print('📋 Loaded ${plans.length} plans');
-    for (final plan in plans) {
-      print('  ${plan.name}: ${plan.stops.length} stops');
-    }
     return plans;
   }
 
   Future<TripPlan> savePlan(TripPlan plan) async {
     final user = _client.auth.currentUser;
     if (user == null) throw const TripPlanDataException('Please log in first.');
+
+    // Encode mode, invite code, and visibility into metadata
+    final metadataString = plan.mode == 'team'
+        ? 'MODE:team|CODE:${plan.inviteCode ?? ''}|VIS:${plan.visibility}'
+        : 'MODE:solo';
 
     final planRow = await _client
         .from('trip_plans')
@@ -94,6 +169,7 @@ class TripPlanDataSource {
       'end_date': _date(plan.endDate),
       'route_status': plan.routeAccepted ? 'ACCEPTED' : 'NOT_PLANNED',
       'status': 'ACTIVE',
+      'ai_travel_story': metadataString,
     })
         .select()
         .single();
@@ -111,13 +187,13 @@ class TripPlanDataSource {
         destination ??= await _client
             .from('blind_box_destinations')
             .insert({
-              'google_place_id': stop.placeId,
-              'name': stop.name,
-              'address': stop.address,
-              'latitude': stop.latitude,
-              'longitude': stop.longitude,
-              'destination_source': 'GOOGLE',
-            })
+          'google_place_id': stop.placeId,
+          'name': stop.name,
+          'address': stop.address,
+          'latitude': stop.latitude,
+          'longitude': stop.longitude,
+          'destination_source': 'GOOGLE',
+        })
             .select('destination_id')
             .single();
 
@@ -132,6 +208,7 @@ class TripPlanDataSource {
       await _client.from('trip_plan_destinations').insert(rows);
       print('✅ Inserted ${rows.length} destinations for plan $planId');
     }
+
     return TripPlan(
       id: planId,
       name: plan.name,
@@ -142,45 +219,6 @@ class TripPlanDataSource {
       inviteCode: plan.inviteCode,
       routeAccepted: plan.routeAccepted,
       stops: plan.stops,
-    );
-  }
-
-  TripPlan _planFromRow(Map<String, dynamic> row) {
-    final rawStops = List<Map<String, dynamic>>.from(
-      row['trip_plan_destinations'] ?? [],
-    )..sort((a, b) {
-      // Fix the comparator – compare ints correctly
-      final dayA = (a['travel_day'] as int?) ?? 0;
-      final dayB = (b['travel_day'] as int?) ?? 0;
-      if (dayA != dayB) return dayA.compareTo(dayB);
-      final seqA = (a['sequence_order'] as int?) ?? 0;
-      final seqB = (b['sequence_order'] as int?) ?? 0;
-      return seqA.compareTo(seqB);
-    });
-
-    return TripPlan(
-      id: row['trip_id'] as String,
-      name: row['trip_name'] as String,
-      startDate: DateTime.parse(row['start_date'] as String),
-      endDate: DateTime.parse(row['end_date'] as String),
-      mode: 'solo',
-      visibility: 'private',
-      inviteCode: null,
-      routeAccepted: row['route_status'] == 'ACCEPTED' || row['route_status'] == 'GENERATED',
-      stops: rawStops.map((stop) {
-        final dest = stop['blind_box_destinations'] as Map<String, dynamic>;
-        return ItineraryStop(
-          placeId: dest['google_place_id'] as String? ?? stop['destination_id'].toString(),
-          name: dest['name'] as String,
-          address: dest['address'] as String? ?? '',
-          latitude: (dest['latitude'] as num).toDouble(),
-          longitude: (dest['longitude'] as num).toDouble(),
-          dayNumber: stop['travel_day'] as int? ?? 1,
-          sortOrder: stop['sequence_order'] as int? ?? 0,
-          // Add the source field (if needed)
-          source: 'GOOGLE',   // or read from stop['source'] if stored
-        );
-      }).toList(),
     );
   }
 
