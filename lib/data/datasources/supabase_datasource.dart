@@ -191,6 +191,44 @@ class SupabaseDataSource {
     }
   }
 
+  Future<void> savePuzzleLocation({
+    required String destinationId,
+    required String locationSource,
+  }) async {
+    final user = _requireUser();
+    await _client.from('user_puzzle_locations').upsert({
+      'user_id': user.id,
+      'destination_id': destinationId,
+      'location_source': locationSource,
+      'selected_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,destination_id,location_source');
+  }
+
+  Future<List<Map<String, dynamic>>> getSavedPuzzleLocations({
+    required String locationSource,
+  }) async {
+    final user = _requireUser();
+    final response = await _client
+        .from('user_puzzle_locations')
+        .select('''
+          destination_id,
+          selected_at,
+          blind_box_destinations (
+            destination_id,
+            name,
+            category,
+            image_url,
+            address
+          )
+        ''')
+        .eq('user_id', user.id)
+        .eq('location_source', locationSource)
+        .order('selected_at', ascending: false);
+    return (response as List)
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList();
+  }
+
   int _toInt(dynamic value) {
     if (value == null) {
       return 0;

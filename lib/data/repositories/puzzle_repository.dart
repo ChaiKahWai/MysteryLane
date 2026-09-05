@@ -25,6 +25,8 @@ class PuzzleRepository {
         ? await _supabase
               .from('puzzle_questions')
               .select()
+              .isFilter('destination_id', null)
+              .eq('category', 'Malaysia General Knowledge')
               .eq('puzzle_type', puzzleType)
               .eq('is_active', true)
         : await _supabase
