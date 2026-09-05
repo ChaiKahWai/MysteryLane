@@ -1,12 +1,10 @@
-// lib/presentation/screens/group/group_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../application/services/group_service.dart';
 import '../../../data/models/travel_group_model.dart';
 import 'team_detail_screen.dart';
 import 'join_team_screen.dart';
-import 'chat_list_screen.dart';      // ✅ added import
+import 'chat_list_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/leaderboard_screen.dart';
 
@@ -226,27 +224,13 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
           onTap: _openLeaderboard,
         ),
         const SizedBox(width: 6),
-        // Chat – now opens ChatListScreen
+        // Chat
         _TopActionButton(
           tooltip: 'Chat',
           icon: Icons.chat_bubble_outline_rounded,
           background: const Color(0xFFF0F9FF),
           foreground: skyBlue,
-          onTap: _openChat,                         // ✅ fixed
-        ),
-        const SizedBox(width: 6),
-        // Join with code (custom action for this screen)
-        _TopActionButton(
-          tooltip: 'Join with code',
-          icon: Icons.person_add_alt_1,
-          background: const Color(0xFFE0F2FE),
-          foreground: skyBlue,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const JoinTeamScreen()),
-            ).then((_) => _loadData());
-          },
+          onTap: _openChat,
         ),
         const SizedBox(width: 6),
         // Profile picture
@@ -276,38 +260,63 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
   // ---------- List builders ----------
   Widget _buildMyTeamsList() {
     final filtered = _filterMyTeams();
-    if (filtered.isEmpty) {
-      return const Center(child: Text('You are not in any teams yet.'));
-    }
-    return ListView.builder(
-      itemCount: filtered.length,
-      itemBuilder: (ctx, index) {
-        final team = filtered[index];
-        final groupData = team['travel_groups'] as Map<String, dynamic>;
-        final role = team['member_role'] ?? 'MEMBER';
-        return Card(
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        // 🔥 NEW: "Join with code" header card at the top
+        Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          color: const Color(0xFFF0F9FF),
           child: ListTile(
-            title: Text(groupData['team_name'] ?? 'Unnamed'),
-            subtitle: Text('${groupData['team_type']} · ${team['membership_status']}'),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: role == 'OWNER' ? Colors.amber[100] : Colors.grey[200],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                role,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: role == 'OWNER' ? Colors.brown[700] : Colors.grey[700],
-                ),
-              ),
+            leading: const Icon(Icons.add_link, color: Color(0xFF0284C7)),
+            title: const Text(
+              'Join a team with invitation code',
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
-            onTap: () => _navigateToDetail(team),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFF0284C7)),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const JoinTeamScreen()),
+              ).then((_) => _loadData());
+            },
           ),
-        );
-      },
+        ),
+        if (filtered.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(32.0),
+            child: Center(
+              child: Text('You are not in any teams yet.'),
+            ),
+          )
+        else
+          ...filtered.map((team) {
+            final groupData = team['travel_groups'] as Map<String, dynamic>;
+            final role = team['member_role'] ?? 'MEMBER';
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: ListTile(
+                title: Text(groupData['team_name'] ?? 'Unnamed'),
+                subtitle: Text('${groupData['team_type']} · ${team['membership_status']}'),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: role == 'OWNER' ? Colors.amber[100] : Colors.grey[200],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    role,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: role == 'OWNER' ? Colors.brown[700] : Colors.grey[700],
+                    ),
+                  ),
+                ),
+                onTap: () => _navigateToDetail(team),
+              ),
+            );
+          }),
+      ],
     );
   }
 
@@ -369,7 +378,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
   }
 }
 
-// ---------- Reusable widgets (copied from HomeScreen) ----------
+// ---------- Reusable widgets ----------
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 
