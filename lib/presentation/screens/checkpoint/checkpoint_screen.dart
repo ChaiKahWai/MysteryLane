@@ -4,18 +4,35 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../data/models/checkpoint_destination.dart';
 import '../../../data/models/checkpoint_mission.dart';
+import '../../../data/datasources/supabase_datasource.dart';
 import '../../../data/repositories/checkpoint_repository.dart';
-
-import '../../navigation/mysterylane_bottom_navigation.dart';
 
 import '../Blindbox/BlindBox_Screen.dart';
 import '../home/home_screen.dart';
+import '../puzzle/puzzle_screen.dart';
 
 import 'checkpoint_mission_screen.dart';
 
 class CheckpointScreen extends StatefulWidget {
+  /// ============================================================
+  /// PUZZLE HANDOFF
+  ///
+  /// Checkpoint module only passes the selected destination.
+  ///
+  /// Puzzle teammate can later receive:
+  /// - destination.destinationId
+  /// - destination.name
+  /// - destination.latitude
+  /// - destination.longitude
+  /// - destination.address
+  ///
+  /// No puzzle logic is implemented here.
+  /// ============================================================
+  final ValueChanged<CheckpointDestination>? onOpenPuzzle;
+
   const CheckpointScreen({
     super.key,
+    this.onOpenPuzzle,
   });
 
   @override
@@ -23,8 +40,21 @@ class CheckpointScreen extends StatefulWidget {
       _CheckpointScreenState();
 }
 
-class _CheckpointScreenState
-    extends State<CheckpointScreen> {
+class _CheckpointScreenState extends State<CheckpointScreen> {
+  final SupabaseDataSource _supabaseDataSource = SupabaseDataSource();
+  // ============================================================
+  // CONSTANTS
+  // ============================================================
+
+  static const double _maximumDistanceMeters = 5000;
+
+  static const Color _primaryBlue = Color(0xFF0284C7);
+  static const Color _teal = Color(0xFF0D9488);
+  static const Color _darkText = Color(0xFF0F172A);
+  static const Color _greyText = Color(0xFF64748B);
+  static const Color _pageBackground = Color(0xFFF8FAFC);
+  static const Color _purple = Color(0xFF7C3AED);
+
   // ============================================================
   // REPOSITORY
   // ============================================================
@@ -33,7 +63,7 @@ class _CheckpointScreenState
   CheckpointRepository();
 
   // ============================================================
-  // GOOGLE MAP
+  // MAP
   // ============================================================
 
   GoogleMapController? _mapController;
@@ -41,21 +71,25 @@ class _CheckpointScreenState
   Position? _currentPosition;
 
   // ============================================================
-  // DATA
+  // DESTINATIONS
   // ============================================================
 
-  List<CheckpointDestination> _destinations =
-  <CheckpointDestination>[];
+  List<CheckpointDestination> _allDestinations = [];
 
-  Set<String> _completedDestinationIds =
-  <String>{};
+  List<CheckpointDestination> _nearbyDestinations = [];
+
+  Set<String> _completedDestinationIds = {};
+
+  // ============================================================
+  // SELECTED CHECKPOINT
+  // ============================================================
 
   CheckpointDestination? _selectedDestination;
 
   CheckpointMission? _selectedMission;
 
   // ============================================================
-  // UI STATE
+  // PAGE STATE
   // ============================================================
 
   bool _isLoading = true;
@@ -65,22 +99,6 @@ class _CheckpointScreenState
   String? _errorMessage;
 
   // ============================================================
-  // CONFIGURATION
-  // ============================================================
-
-  static const double _searchRadiusMetres =
-  5000;
-
-  static const CameraPosition _initialCamera =
-  CameraPosition(
-    target: LatLng(
-      3.141600,
-      101.697680,
-    ),
-    zoom: 14,
-  );
-
-  // ============================================================
   // INIT
   // ============================================================
 
@@ -88,56 +106,54 @@ class _CheckpointScreenState
   void initState() {
     super.initState();
 
-    _initializeMap();
+    _loadCheckpointData();
   }
 
   // ============================================================
-  // INITIALIZE MAP
+  // LOAD CHECKPOINT DATA
   // ============================================================
 
-  Future<void> _initializeMap() async {
-    if (mounted) {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
+  Future<void> _loadCheckpointData({
+    String? keepSelectedDestinationId,
+  }) async {
+    if (!mounted) {
+      return;
     }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
       // --------------------------------------------------------
-      // 1. Get traveller current location
+      // 1. GET CURRENT GPS
       // --------------------------------------------------------
 
       final Position position =
       await _getCurrentLocation();
 
       // --------------------------------------------------------
-      // 2. Load curated destinations
+      // 2. GET DESTINATIONS
       // --------------------------------------------------------
 
-      final List<CheckpointDestination>
-      allDestinations =
-      await _repository
-          .getHiddenGemDestinations();
+      final List<CheckpointDestination> destinations =
+      await _repository.getHiddenGemDestinations();
 
       // --------------------------------------------------------
-      // 3. Load completed checkpoints
+      // 3. GET COMPLETED DESTINATIONS
       // --------------------------------------------------------
 
-      final Set<String> completedIds =
-      await _repository
-          .getCompletedDestinationIds();
+      final completedIds =
+      await _repository.getCompletedDestinationIds();
 
       // --------------------------------------------------------
-      // 4. Filter within 5 km
+      // 4. FILTER WITHIN 5 KM
       // --------------------------------------------------------
 
-      final List<CheckpointDestination>
-      nearbyDestinations =
-      allDestinations.where(
-            (
-            CheckpointDestination destination,
-            ) {
+      final List<CheckpointDestination> nearby =
+      destinations.where(
+            (CheckpointDestination destination) {
           final double distance =
           Geolocator.distanceBetween(
             position.latitude,
@@ -147,15 +163,15 @@ class _CheckpointScreenState
           );
 
           return distance <=
-              _searchRadiusMetres;
+              _maximumDistanceMeters;
         },
       ).toList();
 
       // --------------------------------------------------------
-      // 5. Sort nearest first
+      // 5. SORT NEAREST FIRST
       // --------------------------------------------------------
 
-      nearbyDestinations.sort(
+      nearby.sort(
             (
             CheckpointDestination a,
             CheckpointDestination b,
@@ -186,40 +202,78 @@ class _CheckpointScreenState
         return;
       }
 
-      setState(() {
-        _currentPosition =
-            position;
+      // --------------------------------------------------------
+      // 6. KEEP CURRENT SELECTED PIN AFTER REFRESH
+      // --------------------------------------------------------
 
-        _destinations =
-            nearbyDestinations;
+      CheckpointDestination? selected;
+
+      final String? selectedId =
+          keepSelectedDestinationId ??
+              _selectedDestination?.destinationId;
+
+      if (selectedId != null) {
+        for (final destination in nearby) {
+          if (destination.destinationId ==
+              selectedId) {
+            selected = destination;
+            break;
+          }
+        }
+      }
+
+      // If nothing selected yet, automatically select nearest.
+      if (selected == null &&
+          nearby.isNotEmpty) {
+        selected = nearby.first;
+      }
+
+      setState(() {
+        _currentPosition = position;
+
+        _allDestinations =
+            destinations;
+
+        _nearbyDestinations =
+            nearby;
 
         _completedDestinationIds =
-            completedIds;
+        Set<String>.from(
+          completedIds,
+        );
 
         _selectedDestination =
-        nearbyDestinations.isNotEmpty
-            ? nearbyDestinations.first
-            : null;
+            selected;
 
-        _isLoading =
-        false;
+        _isLoading = false;
       });
 
       // --------------------------------------------------------
-      // Load mission for nearest checkpoint
+      // 7. LOAD SELECTED MISSION
       // --------------------------------------------------------
 
-      if (_selectedDestination != null) {
-        await _loadSelectedMission(
-          _selectedDestination!,
-          moveCamera: false,
+      if (selected != null) {
+        await _loadMissionForDestination(
+          selected,
         );
       }
 
-      await _moveToCurrentLocation();
+      // --------------------------------------------------------
+      // DEBUG
+      // --------------------------------------------------------
+
+      debugPrint(
+        'CHECKPOINTS TOTAL: '
+            '${_allDestinations.length}',
+      );
+
+      debugPrint(
+        'CHECKPOINTS WITHIN 5KM: '
+            '${_nearbyDestinations.length}',
+      );
     } catch (error) {
       debugPrint(
-        'CHECKPOINT MAP ERROR: $error',
+        'CHECKPOINT LOAD ERROR: $error',
       );
 
       if (!mounted) {
@@ -227,22 +281,16 @@ class _CheckpointScreenState
       }
 
       setState(() {
-        _isLoading =
-        false;
-
         _errorMessage =
-            error
-                .toString()
-                .replaceFirst(
-              'Exception: ',
-              '',
-            );
+            error.toString();
+
+        _isLoading = false;
       });
     }
   }
 
   // ============================================================
-  // GET GPS
+  // LOCATION
   // ============================================================
 
   Future<Position> _getCurrentLocation() async {
@@ -252,14 +300,13 @@ class _CheckpointScreenState
 
     if (!serviceEnabled) {
       throw Exception(
-        'Location service is disabled. '
-            'Please enable GPS on your device.',
+        'Location services are disabled. '
+            'Please enable GPS and try again.',
       );
     }
 
     LocationPermission permission =
-    await Geolocator
-        .checkPermission();
+    await Geolocator.checkPermission();
 
     if (permission ==
         LocationPermission.denied) {
@@ -271,7 +318,8 @@ class _CheckpointScreenState
     if (permission ==
         LocationPermission.denied) {
       throw Exception(
-        'Location permission was denied.',
+        'Location permission is required '
+            'to find nearby checkpoints.',
       );
     }
 
@@ -279,83 +327,24 @@ class _CheckpointScreenState
         LocationPermission.deniedForever) {
       throw Exception(
         'Location permission is permanently denied. '
-            'Please enable it from Android settings.',
+            'Please enable it in device settings.',
       );
     }
 
-    return Geolocator.getCurrentPosition(
-      locationSettings:
-      const LocationSettings(
-        accuracy:
-        LocationAccuracy.high,
-      ),
+    return Geolocator
+        .getCurrentPosition(
+      desiredAccuracy:
+      LocationAccuracy.high,
     );
   }
 
   // ============================================================
-  // GOOGLE MAP CREATED
-  // ============================================================
-
-  void _onMapCreated(
-      GoogleMapController controller,
-      ) {
-    _mapController =
-        controller;
-
-    _moveToCurrentLocation();
-  }
-
-  // ============================================================
-  // MOVE MAP TO CURRENT LOCATION
-  // ============================================================
-
-  Future<void>
-  _moveToCurrentLocation() async {
-    final Position? position =
-        _currentPosition;
-
-    final GoogleMapController? controller =
-        _mapController;
-
-    if (position == null ||
-        controller == null) {
-      return;
-    }
-
-    await controller.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: LatLng(
-            position.latitude,
-            position.longitude,
-          ),
-          zoom: 14.2,
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // SELECT DESTINATION
+  // SELECT PIN
   // ============================================================
 
   Future<void> _selectDestination(
       CheckpointDestination destination,
       ) async {
-    await _loadSelectedMission(
-      destination,
-      moveCamera: true,
-    );
-  }
-
-  // ============================================================
-  // LOAD SELECTED MISSION
-  // ============================================================
-
-  Future<void> _loadSelectedMission(
-      CheckpointDestination destination, {
-        required bool moveCamera,
-      }) async {
     if (!mounted) {
       return;
     }
@@ -366,24 +355,38 @@ class _CheckpointScreenState
 
       _selectedMission =
       null;
-
-      _isLoadingMission =
-      true;
     });
 
-    if (moveCamera) {
-      await _mapController?.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(
-              destination.latitude,
-              destination.longitude,
-            ),
-            zoom: 15.5,
-          ),
+    await _loadMissionForDestination(
+      destination,
+    );
+
+    // Move camera slightly to selected pin.
+    await _mapController
+        ?.animateCamera(
+      CameraUpdate.newLatLng(
+        LatLng(
+          destination.latitude,
+          destination.longitude,
         ),
-      );
+      ),
+    );
+  }
+
+  // ============================================================
+  // LOAD SELECTED MISSION
+  // ============================================================
+
+  Future<void> _loadMissionForDestination(
+      CheckpointDestination destination,
+      ) async {
+    if (!mounted) {
+      return;
     }
+
+    setState(() {
+      _isLoadingMission = true;
+    });
 
     try {
       final CheckpointMission? mission =
@@ -396,6 +399,13 @@ class _CheckpointScreenState
         return;
       }
 
+      // Only update if user still has same pin selected.
+      if (_selectedDestination
+          ?.destinationId !=
+          destination.destinationId) {
+        return;
+      }
+
       setState(() {
         _selectedMission =
             mission;
@@ -405,7 +415,8 @@ class _CheckpointScreenState
       });
     } catch (error) {
       debugPrint(
-        'SELECTED MISSION ERROR: $error',
+        'LOAD CHECKPOINT MISSION ERROR: '
+            '$error',
       );
 
       if (!mounted) {
@@ -423,68 +434,109 @@ class _CheckpointScreenState
   }
 
   // ============================================================
-  // GET DISTANCE
+  // DISTANCE
   // ============================================================
 
-  double _distanceKm(
+  double _distanceMeters(
       CheckpointDestination destination,
       ) {
-    final Position? position =
+    final Position? current =
         _currentPosition;
 
-    if (position == null) {
+    if (current == null) {
       return 0;
     }
 
-    final double metres =
-    Geolocator.distanceBetween(
-      position.latitude,
-      position.longitude,
+    return Geolocator.distanceBetween(
+      current.latitude,
+      current.longitude,
       destination.latitude,
       destination.longitude,
     );
+  }
 
-    return metres / 1000;
+  String _distanceText(
+      CheckpointDestination destination,
+      ) {
+    final double metres =
+    _distanceMeters(
+      destination,
+    );
+
+    if (metres < 1000) {
+      return '${metres.toStringAsFixed(0)} m away';
+    }
+
+    return '${(metres / 1000).toStringAsFixed(2)} km away';
   }
 
   // ============================================================
-  // BUILD MARKERS
+  // COMPLETED
+  // ============================================================
+
+  bool _isCompleted(
+      CheckpointDestination destination,
+      ) {
+    return _completedDestinationIds
+        .contains(
+      destination.destinationId,
+    );
+  }
+
+  // ============================================================
+  // POPULAR
+  // ============================================================
+
+  bool _isPopular(
+      CheckpointDestination destination,
+      ) {
+    return destination
+        .popularityClassification
+        ?.toUpperCase() ==
+        'POPULAR';
+  }
+
+  // ============================================================
+  // CLASSIFICATION TEXT
+  // ============================================================
+
+  String _classificationText(
+      CheckpointDestination destination,
+      ) {
+    if (_isPopular(destination)) {
+      return 'POPULAR';
+    }
+
+    return 'HIDDEN GEM';
+  }
+
+  // ============================================================
+  // MARKER COLOUR
+  // ============================================================
+
+  double _markerHue(
+      CheckpointDestination destination,
+      ) {
+    if (_isCompleted(destination)) {
+      return BitmapDescriptor.hueGreen;
+    }
+
+    if (_isPopular(destination)) {
+      return BitmapDescriptor.hueOrange;
+    }
+
+    return BitmapDescriptor.hueAzure;
+  }
+
+  // ============================================================
+  // MARKERS
   // ============================================================
 
   Set<Marker> _buildMarkers() {
-    return _destinations.map(
+    return _nearbyDestinations.map(
           (
           CheckpointDestination destination,
           ) {
-        final bool completed =
-        _completedDestinationIds
-            .contains(
-          destination.destinationId,
-        );
-
-        final String popularity =
-            destination
-                .popularityClassification
-                ?.toUpperCase() ??
-                '';
-
-        // Hidden Gem = Blue
-        double hue =
-            BitmapDescriptor.hueAzure;
-
-        // Completed = Green
-        if (completed) {
-          hue =
-              BitmapDescriptor.hueGreen;
-        }
-
-        // Popular = Orange
-        else if (popularity ==
-            'POPULAR') {
-          hue =
-              BitmapDescriptor.hueOrange;
-        }
-
         return Marker(
           markerId:
           MarkerId(
@@ -500,7 +552,9 @@ class _CheckpointScreenState
           icon:
           BitmapDescriptor
               .defaultMarkerWithHue(
-            hue,
+            _markerHue(
+              destination,
+            ),
           ),
 
           infoWindow:
@@ -509,12 +563,13 @@ class _CheckpointScreenState
             destination.name,
 
             snippet:
-            completed
-                ? 'Completed'
-                : 'Checkpoint Mission',
+            _distanceText(
+              destination,
+            ),
           ),
 
-          onTap: () {
+          onTap:
+              () {
             _selectDestination(
               destination,
             );
@@ -525,45 +580,47 @@ class _CheckpointScreenState
   }
 
   // ============================================================
-  // BUILD 5KM RADIUS
+  // 5 KM CIRCLE
   // ============================================================
 
   Set<Circle> _buildCircles() {
-    final Position? position =
+    final Position? current =
         _currentPosition;
 
-    if (position == null) {
-      return <Circle>{};
+    if (current == null) {
+      return {};
     }
 
-    return <Circle>{
+    return {
       Circle(
         circleId:
         const CircleId(
-          'user_5km_radius',
+          'checkpoint_5km_radius',
         ),
 
         center:
         LatLng(
-          position.latitude,
-          position.longitude,
+          current.latitude,
+          current.longitude,
         ),
 
         radius:
-        _searchRadiusMetres,
+        _maximumDistanceMeters,
+
+        fillColor:
+        _primaryBlue
+            .withOpacity(
+          0.05,
+        ),
+
+        strokeColor:
+        _primaryBlue
+            .withOpacity(
+          0.35,
+        ),
 
         strokeWidth:
         2,
-
-        strokeColor:
-        const Color(
-          0xFF0284C7,
-        ),
-
-        fillColor:
-        const Color(
-          0x180284C7,
-        ),
       ),
     };
   }
@@ -572,14 +629,9 @@ class _CheckpointScreenState
   // OPEN MISSION
   // ============================================================
 
-  Future<void> _openMission() async {
-    final CheckpointDestination? destination =
-        _selectedDestination;
-
-    if (destination == null) {
-      return;
-    }
-
+  Future<void> _openMission(
+      CheckpointDestination destination,
+      ) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -591,99 +643,511 @@ class _CheckpointScreenState
       ),
     );
 
-    await _refreshCompletedCheckpoints();
-  }
-
-  // ============================================================
-  // REFRESH COMPLETED CHECKPOINTS
-  // ============================================================
-
-  Future<void>
-  _refreshCompletedCheckpoints() async {
-    try {
-      final Set<String> completed =
-      await _repository
-          .getCompletedDestinationIds();
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _completedDestinationIds =
-            completed;
-      });
-    } catch (error) {
-      debugPrint(
-        'REFRESH COMPLETED ERROR: $error',
-      );
+    if (!mounted) {
+      return;
     }
-  }
 
-  // ============================================================
-  // BOTTOM NAVIGATION
-  // ============================================================
-
-  void _goToBlindBox() {
-    Navigator.of(context)
-        .pushReplacement(
-      MaterialPageRoute(
-        builder: (_) =>
-        const BlindBoxPage(),
-      ),
+    // Reload status after coming back.
+    await _loadCheckpointData(
+      keepSelectedDestinationId:
+      destination.destinationId,
     );
   }
 
-  void _goToMissions() {
-    // Already on Missions.
-    _moveToCurrentLocation();
-  }
+  // ============================================================
+  // OPEN PUZZLE
+  //
+  // IMPORTANT:
+  // THIS IS THE ONLY PUZZLE CONNECTION INSIDE YOUR MODULE.
+  // ============================================================
 
-  void _goHome() {
-    if (Navigator.of(context)
-        .canPop()) {
-      Navigator.of(context)
-          .pop();
+  Future<void> _openPuzzle(
+      CheckpointDestination destination,
+      ) async {
+    // ----------------------------------------------------------
+    // DEBUG SO YOU CAN CONFIRM CORRECT LOCATION IS PASSED
+    // ----------------------------------------------------------
+
+    debugPrint(
+      '======================================',
+    );
+
+    debugPrint(
+      'PUZZLE LOCATION SELECTED',
+    );
+
+    debugPrint(
+      'Destination ID: '
+          '${destination.destinationId}',
+    );
+
+    debugPrint(
+      'Name: '
+          '${destination.name}',
+    );
+
+    debugPrint(
+      'Latitude: '
+          '${destination.latitude}',
+    );
+
+    debugPrint(
+      'Longitude: '
+          '${destination.longitude}',
+    );
+
+    debugPrint(
+      'Address: '
+          '${destination.address}',
+    );
+
+    debugPrint(
+      '======================================',
+    );
+
+    // ----------------------------------------------------------
+    // IF PUZZLE TEAMMATE CONNECTS CALLBACK
+    // ----------------------------------------------------------
+
+    if (widget.onOpenPuzzle != null) {
+      widget.onOpenPuzzle!(
+        destination,
+      );
 
       return;
     }
 
-    Navigator.of(context)
-        .pushReplacement(
+    try {
+      await _supabaseDataSource.savePuzzleLocation(
+        destinationId: destination.destinationId,
+        locationSource: 'CHECKPOINT',
+      );
+    } catch (error) {
+      debugPrint('SAVE CHECKPOINT PUZZLE LOCATION ERROR: $error');
+      if (mounted) {
+        _showMessage('Unable to save this puzzle location. Please try again.');
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-        const HomeScreen(),
+        builder: (_) => PuzzleScreen(
+          initialLocationSource: PuzzleLocationSource.checkpoint,
+          mission: MissionCheckpoint(
+            id: destination.destinationId,
+            title: destination.name,
+            imageUrl: destination.imageUrl,
+            locationName: destination.address,
+            category: destination.category ?? 'Checkpoint',
+          ),
+        ),
       ),
     );
   }
 
-  void _goToPlan() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          behavior:
-          SnackBarBehavior.floating,
+  // ============================================================
+  // TEMP PUZZLE LOCATION PREVIEW
+  // ============================================================
 
-          content:
-          Text(
-            'Plan page will be connected later.',
+  void _showPuzzleLocationReady(
+      CheckpointDestination destination,
+      ) {
+    showModalBottomSheet<void>(
+      context:
+      context,
+
+      backgroundColor:
+      Colors.transparent,
+
+      isScrollControlled:
+      true,
+
+      builder:
+          (
+          BuildContext context,
+          ) {
+        return SafeArea(
+          child:
+          Container(
+            margin:
+            const EdgeInsets.all(
+              14,
+            ),
+
+            padding:
+            const EdgeInsets.all(
+              22,
+            ),
+
+            decoration:
+            BoxDecoration(
+              color:
+              Colors.white,
+
+              borderRadius:
+              BorderRadius.circular(
+                26,
+              ),
+            ),
+
+            child:
+            Column(
+              mainAxisSize:
+              MainAxisSize.min,
+
+              crossAxisAlignment:
+              CrossAxisAlignment.start,
+
+              children: [
+                Center(
+                  child:
+                  Container(
+                    width:
+                    42,
+
+                    height:
+                    5,
+
+                    decoration:
+                    BoxDecoration(
+                      color:
+                      const Color(
+                        0xFFCBD5E1,
+                      ),
+
+                      borderRadius:
+                      BorderRadius.circular(
+                        99,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  20,
+                ),
+
+                Row(
+                  children: [
+                    Container(
+                      width:
+                      48,
+
+                      height:
+                      48,
+
+                      decoration:
+                      BoxDecoration(
+                        color:
+                        const Color(
+                          0xFFF5F3FF,
+                        ),
+
+                        borderRadius:
+                        BorderRadius.circular(
+                          14,
+                        ),
+                      ),
+
+                      child:
+                      const Icon(
+                        Icons
+                            .extension_rounded,
+
+                        color:
+                        _purple,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      width:
+                      12,
+                    ),
+
+                    const Expanded(
+                      child:
+                      Column(
+                        crossAxisAlignment:
+                        CrossAxisAlignment.start,
+
+                        children: [
+                          Text(
+                            'Puzzle Location Ready',
+                            style:
+                            TextStyle(
+                              color:
+                              _darkText,
+                              fontSize:
+                              17,
+                              fontWeight:
+                              FontWeight.w800,
+                            ),
+                          ),
+
+                          SizedBox(
+                            height:
+                            3,
+                          ),
+
+                          Text(
+                            'Selected checkpoint data is ready for Puzzle module.',
+                            style:
+                            TextStyle(
+                              color:
+                              _greyText,
+                              fontSize:
+                              11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(
+                  height:
+                  20,
+                ),
+
+                _PuzzleLocationRow(
+                  label:
+                  'Destination',
+
+                  value:
+                  destination.name,
+                ),
+
+                const SizedBox(
+                  height:
+                  10,
+                ),
+
+                _PuzzleLocationRow(
+                  label:
+                  'Destination ID',
+
+                  value:
+                  destination.destinationId,
+                ),
+
+                const SizedBox(
+                  height:
+                  10,
+                ),
+
+                _PuzzleLocationRow(
+                  label:
+                  'Latitude',
+
+                  value:
+                  destination.latitude
+                      .toStringAsFixed(
+                    6,
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  10,
+                ),
+
+                _PuzzleLocationRow(
+                  label:
+                  'Longitude',
+
+                  value:
+                  destination.longitude
+                      .toStringAsFixed(
+                    6,
+                  ),
+                ),
+
+                if (destination.address !=
+                    null &&
+                    destination.address!
+                        .trim()
+                        .isNotEmpty) ...[
+                  const SizedBox(
+                    height:
+                    10,
+                  ),
+
+                  _PuzzleLocationRow(
+                    label:
+                    'Address',
+
+                    value:
+                    destination.address!,
+                  ),
+                ],
+
+                const SizedBox(
+                  height:
+                  20,
+                ),
+
+                Container(
+                  width:
+                  double.infinity,
+
+                  padding:
+                  const EdgeInsets.all(
+                    14,
+                  ),
+
+                  decoration:
+                  BoxDecoration(
+                    color:
+                    const Color(
+                      0xFFF5F3FF,
+                    ),
+
+                    borderRadius:
+                    BorderRadius.circular(
+                      14,
+                    ),
+                  ),
+
+                  child:
+                  const Text(
+                    'Your teammate only needs this CheckpointDestination object. '
+                        'The Puzzle module can use destinationId to retrieve puzzles '
+                        'for this selected location.',
+                    style:
+                    TextStyle(
+                      color:
+                      Color(
+                        0xFF5B21B6,
+                      ),
+
+                      fontSize:
+                      12,
+
+                      height:
+                      1.45,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  18,
+                ),
+
+                SizedBox(
+                  width:
+                  double.infinity,
+
+                  child:
+                  ElevatedButton(
+                    onPressed:
+                        () {
+                      Navigator.pop(
+                        context,
+                      );
+                    },
+
+                    style:
+                    ElevatedButton
+                        .styleFrom(
+                      backgroundColor:
+                      _purple,
+
+                      foregroundColor:
+                      Colors.white,
+
+                      padding:
+                      const EdgeInsets.symmetric(
+                        vertical:
+                        14,
+                      ),
+
+                      shape:
+                      RoundedRectangleBorder(
+                        borderRadius:
+                        BorderRadius.circular(
+                          20,
+                        ),
+                      ),
+                    ),
+
+                    child:
+                    const Text(
+                      'OK',
+                      style:
+                      TextStyle(
+                        fontWeight:
+                        FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      },
+    );
   }
 
-  void _goToTeams() {
+  // ============================================================
+  // FOCUS CURRENT LOCATION
+  // ============================================================
+
+  Future<void> _focusCurrentLocation() async {
+    final Position? current =
+        _currentPosition;
+
+    if (current == null) {
+      return;
+    }
+
+    await _mapController
+        ?.animateCamera(
+      CameraUpdate.newLatLngZoom(
+        LatLng(
+          current.latitude,
+          current.longitude,
+        ),
+        14,
+      ),
+    );
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(
+      String message,
+      ) {
+    if (!mounted) {
+      return;
+    }
+
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        const SnackBar(
+        SnackBar(
           behavior:
           SnackBarBehavior.floating,
 
+          margin:
+          const EdgeInsets.fromLTRB(
+            18,
+            0,
+            18,
+            85,
+          ),
+
           content:
           Text(
-            'Teams page will be connected later.',
+            message,
           ),
         ),
       );
@@ -699,15 +1163,35 @@ class _CheckpointScreenState
       ) {
     return Scaffold(
       backgroundColor:
-      const Color(
-        0xFFF8FAFC,
-      ),
+      _pageBackground,
 
       extendBody:
-      false,
+      true,
 
       // ========================================================
-      // CENTER HOME BUTTON
+      // PAGE
+      // ========================================================
+
+      body:
+      SafeArea(
+        bottom:
+        false,
+
+        child:
+        Column(
+          children: [
+            _buildHeader(),
+
+            Expanded(
+              child:
+              _buildMainContent(),
+            ),
+          ],
+        ),
+      ),
+
+      // ========================================================
+      // HOME BUTTON
       // ========================================================
 
       floatingActionButtonLocation:
@@ -715,47 +1199,299 @@ class _CheckpointScreenState
           .centerDocked,
 
       floatingActionButton:
-      MysteryLaneHomeFloatingButton(
-        onTap:
-        _goHome,
-      ),
+      _buildHomeButton(),
 
       // ========================================================
-      // BOTTOM NAVIGATION
+      // BOTTOM NAV
       // ========================================================
 
       bottomNavigationBar:
-      MysteryLaneBottomBar(
-        selectedItem:
-        MysteryLaneBottomItem
-            .missions,
+      _buildBottomNavigation(),
+    );
+  }
 
-        onBlindBoxTap:
-        _goToBlindBox,
+  // ============================================================
+  // HEADER
+  // ============================================================
 
-        onMissionsTap:
-        _goToMissions,
+  Widget _buildHeader() {
+    return Container(
+      color:
+      Colors.white,
 
-        onPlanTap:
-        _goToPlan,
-
-        onTeamsTap:
-        _goToTeams,
+      padding:
+      const EdgeInsets.fromLTRB(
+        12,
+        10,
+        12,
+        8,
       ),
 
-      body:
-      SafeArea(
-        child:
-        _buildBody(),
+      child:
+      Column(
+        children: [
+          Row(
+            children: [
+              // ------------------------------------------------
+              // BACK
+              // ------------------------------------------------
+
+              InkWell(
+                customBorder:
+                const CircleBorder(),
+
+                onTap:
+                    () {
+                  Navigator.maybePop(
+                    context,
+                  );
+                },
+
+                child:
+                Container(
+                  width:
+                  40,
+
+                  height:
+                  40,
+
+                  decoration:
+                  BoxDecoration(
+                    color:
+                    Colors.white,
+
+                    shape:
+                    BoxShape.circle,
+
+                    border:
+                    Border.all(
+                      color:
+                      const Color(
+                        0xFFE2E8F0,
+                      ),
+                    ),
+                  ),
+
+                  child:
+                  const Icon(
+                    Icons
+                        .arrow_back_ios_new_rounded,
+
+                    size:
+                    17,
+
+                    color:
+                    _darkText,
+                  ),
+                ),
+              ),
+
+              const SizedBox(
+                width:
+                10,
+              ),
+
+              // ------------------------------------------------
+              // CHECKPOINT / PUZZLE OPTIONS
+              // ------------------------------------------------
+
+              Expanded(
+                child:
+                Container(
+                  height:
+                  40,
+
+                  padding:
+                  const EdgeInsets.all(
+                    3,
+                  ),
+
+                  decoration:
+                  BoxDecoration(
+                    color:
+                    const Color(
+                      0xFFF0F9FF,
+                    ),
+
+                    borderRadius:
+                    BorderRadius.circular(
+                      22,
+                    ),
+
+                    border:
+                    Border.all(
+                      color:
+                      const Color(
+                        0xFFBAE6FD,
+                      ),
+                    ),
+                  ),
+
+                  child:
+                  Row(
+                    children: [
+                      // CHECKPOINT
+                      Expanded(
+                        child:
+                        Container(
+                          alignment:
+                          Alignment.center,
+
+                          decoration:
+                          BoxDecoration(
+                            color:
+                            _primaryBlue,
+
+                            borderRadius:
+                            BorderRadius.circular(
+                              18,
+                            ),
+                          ),
+
+                          child:
+                          const Text(
+                            'Checkpoint Mission',
+
+                            style:
+                            TextStyle(
+                              color:
+                              Colors.white,
+
+                              fontSize:
+                              10,
+
+                              fontWeight:
+                              FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // PUZZLE
+                      Expanded(
+                        child:
+                        InkWell(
+                          borderRadius:
+                          BorderRadius.circular(
+                            18,
+                          ),
+
+                          onTap:
+                              () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const PuzzleScreen(),
+                              ),
+                            );
+                          },
+
+                          child:
+                          const Center(
+                            child:
+                            Text(
+                              'Puzzle Challenge',
+
+                              style:
+                              TextStyle(
+                                color:
+                                Color(
+                                  0xFF475569,
+                                ),
+
+                                fontSize:
+                                9,
+
+                                fontWeight:
+                                FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(
+                width:
+                10,
+              ),
+
+              // ------------------------------------------------
+              // REFRESH
+              // ------------------------------------------------
+
+              IconButton(
+                onPressed:
+                    () {
+                  _loadCheckpointData();
+                },
+
+                icon:
+                const Icon(
+                  Icons.refresh_rounded,
+
+                  color:
+                  _primaryBlue,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(
+            height:
+            8,
+          ),
+
+          Row(
+            children: [
+              const Icon(
+                Icons
+                    .explore_outlined,
+
+                size:
+                15,
+
+                color:
+                _primaryBlue,
+              ),
+
+              const SizedBox(
+                width:
+                6,
+              ),
+
+              Expanded(
+                child:
+                Text(
+                  '${_nearbyDestinations.length} checkpoints available within 5 km of your location',
+
+                  style:
+                  const TextStyle(
+                    color:
+                    _greyText,
+
+                    fontSize:
+                    11,
+
+                    fontWeight:
+                    FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   // ============================================================
-  // BODY
+  // MAIN
   // ============================================================
 
-  Widget _buildBody() {
+  Widget _buildMainContent() {
     if (_isLoading) {
       return const Center(
         child:
@@ -764,24 +1500,22 @@ class _CheckpointScreenState
           MainAxisSize.min,
 
           children: [
-            CircularProgressIndicator(),
+            CircularProgressIndicator(
+              color:
+              _primaryBlue,
+            ),
 
             SizedBox(
-              height: 16,
+              height:
+              14,
             ),
 
             Text(
               'Finding checkpoints near you...',
-
               style:
               TextStyle(
                 color:
-                Color(
-                  0xFF64748B,
-                ),
-
-                fontSize:
-                14,
+                _greyText,
               ),
             ),
           ],
@@ -793,527 +1527,207 @@ class _CheckpointScreenState
       return _buildErrorState();
     }
 
-    return Column(
-      children: [
-        _buildHeader(),
-
-        _buildAvailableCheckpointText(),
-
-        Expanded(
-          child:
-          Padding(
-            padding:
-            const EdgeInsets.fromLTRB(
-              12,
-              0,
-              12,
-              14,
-            ),
-
-            child:
-            _buildMapArea(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ============================================================
-  // HEADER
-  // ============================================================
-
-  Widget _buildHeader() {
-    return Padding(
-      padding:
-      const EdgeInsets.fromLTRB(
-        14,
-        10,
-        14,
-        10,
-      ),
-
-      child:
-      Row(
-        children: [
-          Container(
-            width:
-            42,
-
-            height:
-            42,
-
-            decoration:
-            BoxDecoration(
-              color:
-              Colors.white,
-
-              shape:
-              BoxShape.circle,
-
-              border:
-              Border.all(
-                color:
-                const Color(
-                  0xFFE2E8F0,
-                ),
-              ),
-            ),
-
-            child:
-            IconButton(
-              padding:
-              EdgeInsets.zero,
-
-              onPressed: () {
-                Navigator.of(
-                  context,
-                ).pop();
-              },
-
-              icon:
-              const Icon(
-                Icons
-                    .arrow_back_ios_new_rounded,
-
-                size:
-                18,
-
-                color:
-                Color(
-                  0xFF0F172A,
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(
-            width: 10,
-          ),
-
-          Expanded(
-            child:
-            Container(
-              height:
-              44,
-
-              padding:
-              const EdgeInsets.all(
-                4,
-              ),
-
-              decoration:
-              BoxDecoration(
-                color:
-                const Color(
-                  0xFFF0F9FF,
-                ),
-
-                borderRadius:
-                BorderRadius.circular(
-                  30,
-                ),
-
-                border:
-                Border.all(
-                  color:
-                  const Color(
-                    0xFFBAE6FD,
-                  ),
-                ),
-              ),
-
-              child:
-              Row(
-                children: [
-                  Expanded(
-                    child:
-                    Container(
-                      alignment:
-                      Alignment.center,
-
-                      decoration:
-                      BoxDecoration(
-                        color:
-                        const Color(
-                          0xFF0284C7,
-                        ),
-
-                        borderRadius:
-                        BorderRadius
-                            .circular(
-                          25,
-                        ),
-                      ),
-
-                      child:
-                      const Text(
-                        'Checkpoint Mission',
-
-                        style:
-                        TextStyle(
-                          color:
-                          Colors.white,
-
-                          fontSize:
-                          11,
-
-                          fontWeight:
-                          FontWeight
-                              .w700,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  Expanded(
-                    child:
-                    InkWell(
-                      borderRadius:
-                      BorderRadius
-                          .circular(
-                        25,
-                      ),
-
-                      onTap: () {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(
-                          const SnackBar(
-                            content:
-                            Text(
-                              'Puzzle Challenge will be connected later.',
-                            ),
-                          ),
-                        );
-                      },
-
-                      child:
-                      const Center(
-                        child:
-                        Text(
-                          'Puzzle Challenge',
-
-                          style:
-                          TextStyle(
-                            color:
-                            Color(
-                              0xFF475569,
-                            ),
-
-                            fontSize:
-                            10,
-
-                            fontWeight:
-                            FontWeight
-                                .w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(
-            width: 8,
-          ),
-
-          IconButton(
-            onPressed:
-            _initializeMap,
-
-            icon:
-            const Icon(
-              Icons.refresh_rounded,
-
-              color:
-              Color(
-                0xFF0284C7,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // CHECKPOINT COUNT
-  // ============================================================
-
-  Widget _buildAvailableCheckpointText() {
-    return Padding(
-      padding:
-      const EdgeInsets.fromLTRB(
-        18,
-        0,
-        18,
-        10,
-      ),
-
-      child:
-      Row(
-        children: [
-          const Icon(
-            Icons.explore_outlined,
-
-            size: 17,
-
-            color:
-            Color(
-              0xFF0284C7,
-            ),
-          ),
-
-          const SizedBox(
-            width: 7,
-          ),
-
-          Expanded(
-            child:
-            Text(
-              '${_destinations.length} '
-                  '${_destinations.length == 1 ? 'checkpoint' : 'checkpoints'} '
-                  'available within 5 km of your location',
-
-              style:
-              const TextStyle(
-                color:
-                Color(
-                  0xFF64748B,
-                ),
-
-                fontSize:
-                12,
-
-                fontWeight:
-                FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return _buildMap();
   }
 
   // ============================================================
   // MAP
   // ============================================================
 
-  Widget _buildMapArea() {
-    return ClipRRect(
-      borderRadius:
-      BorderRadius.circular(
-        24,
+  Widget _buildMap() {
+    final Position? current =
+        _currentPosition;
+
+    final LatLng initialPosition =
+    current != null
+        ? LatLng(
+      current.latitude,
+      current.longitude,
+    )
+        : const LatLng(
+      3.1390,
+      101.6869,
+    );
+
+    return Padding(
+      padding:
+      const EdgeInsets.fromLTRB(
+        8,
+        0,
+        8,
+        76,
       ),
 
       child:
-      Stack(
-        children: [
-          Positioned.fill(
-            child:
-            GoogleMap(
-              initialCameraPosition:
-              _initialCamera,
+      ClipRRect(
+        borderRadius:
+        BorderRadius.circular(
+          24,
+        ),
 
-              onMapCreated:
-              _onMapCreated,
+        child:
+        Stack(
+          children: [
+            // ==================================================
+            // GOOGLE MAP
+            // ==================================================
 
-              markers:
-              _buildMarkers(),
-
-              circles:
-              _buildCircles(),
-
-              myLocationEnabled:
-              true,
-
-              myLocationButtonEnabled:
-              false,
-
-              zoomControlsEnabled:
-              false,
-
-              compassEnabled:
-              false,
-
-              mapToolbarEnabled:
-              false,
-
-              buildingsEnabled:
-              true,
-
-              onTap: (
-                  LatLng position,
-                  ) {
-                setState(() {
-                  _selectedDestination =
-                  null;
-
-                  _selectedMission =
-                  null;
-
-                  _isLoadingMission =
-                  false;
-                });
-              },
-            ),
-          ),
-
-          // ====================================================
-          // LEGEND
-          // ====================================================
-
-          Positioned(
-            top: 12,
-            left: 12,
-            right: 12,
-
-            child:
-            _buildLegend(),
-          ),
-
-          // ====================================================
-          // CURRENT LOCATION BUTTON
-          // ====================================================
-
-          Positioned(
-            top: 70,
-            right: 14,
-
-            child:
-            Material(
-              elevation: 4,
-
-              color:
-              Colors.white,
-
-              shape:
-              const CircleBorder(),
-
+            Positioned.fill(
               child:
-              IconButton(
-                onPressed:
-                _moveToCurrentLocation,
+              GoogleMap(
+                initialCameraPosition:
+                CameraPosition(
+                  target:
+                  initialPosition,
 
-                icon:
-                const Icon(
-                  Icons
-                      .my_location_rounded,
-
-                  color:
-                  Color(
-                    0xFF0284C7,
-                  ),
+                  zoom:
+                  13.5,
                 ),
+
+                markers:
+                _buildMarkers(),
+
+                circles:
+                _buildCircles(),
+
+                myLocationEnabled:
+                current != null,
+
+                myLocationButtonEnabled:
+                false,
+
+                zoomControlsEnabled:
+                false,
+
+                mapToolbarEnabled:
+                false,
+
+                compassEnabled:
+                true,
+
+                onMapCreated:
+                    (
+                    GoogleMapController controller,
+                    ) {
+                  _mapController =
+                      controller;
+                },
               ),
             ),
-          ),
 
-          // ====================================================
-          // NO CHECKPOINTS
-          // ====================================================
+            // ==================================================
+            // LEGEND
+            // ==================================================
 
-          if (_destinations.isEmpty)
-            Center(
+            Positioned(
+              top:
+              8,
+
+              left:
+              12,
+
+              right:
+              12,
+
               child:
-              Container(
-                margin:
-                const EdgeInsets.all(
-                  28,
-                ),
+              _buildLegend(),
+            ),
 
-                padding:
-                const EdgeInsets.all(
-                  20,
-                ),
+            // ==================================================
+            // CURRENT LOCATION
+            // ==================================================
 
-                decoration:
-                BoxDecoration(
-                  color:
-                  Colors.white,
+            Positioned(
+              top:
+              72,
 
-                  borderRadius:
-                  BorderRadius.circular(
-                    20,
-                  ),
+              right:
+              14,
 
-                  boxShadow:
-                  const [
-                    BoxShadow(
-                      color:
-                      Color(
-                        0x22000000,
-                      ),
-
-                      blurRadius:
-                      16,
-                    ),
-                  ],
-                ),
+              child:
+              Material(
+                color:
+                Colors.transparent,
 
                 child:
-                const Column(
-                  mainAxisSize:
-                  MainAxisSize.min,
+                InkWell(
+                  customBorder:
+                  const CircleBorder(),
 
-                  children: [
-                    Icon(
+                  onTap:
+                  _focusCurrentLocation,
+
+                  child:
+                  Container(
+                    width:
+                    48,
+
+                    height:
+                    48,
+
+                    decoration:
+                    const BoxDecoration(
+                      color:
+                      Colors.white,
+
+                      shape:
+                      BoxShape.circle,
+
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                          Color(
+                            0x26000000,
+                          ),
+
+                          blurRadius:
+                          8,
+
+                          offset:
+                          Offset(
+                            0,
+                            3,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    child:
+                    const Icon(
                       Icons
-                          .location_off_outlined,
-
-                      size:
-                      44,
+                          .my_location_rounded,
 
                       color:
-                      Color(
-                        0xFF94A3B8,
-                      ),
+                      _primaryBlue,
                     ),
-
-                    SizedBox(
-                      height: 10,
-                    ),
-
-                    Text(
-                      'No checkpoints found within 5 km.',
-
-                      textAlign:
-                      TextAlign.center,
-
-                      style:
-                      TextStyle(
-                        color:
-                        Color(
-                          0xFF0F172A,
-                        ),
-
-                        fontWeight:
-                        FontWeight
-                            .w700,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
 
-          // ====================================================
-          // SELECTED CHECKPOINT CARD
-          // ====================================================
+            // ==================================================
+            // SELECTED CHECKPOINT CARD
+            // ==================================================
 
-          if (_selectedDestination != null)
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 12,
+            if (_selectedDestination !=
+                null)
+              Positioned(
+                left:
+                12,
 
-              child:
-              _buildSelectedCheckpointCard(),
-            ),
-        ],
+                right:
+                12,
+
+                bottom:
+                14,
+
+                child:
+                _buildSelectedCheckpointCard(
+                  _selectedDestination!,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1326,28 +1740,24 @@ class _CheckpointScreenState
     return Container(
       padding:
       const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 10,
+        horizontal:
+        11,
+
+        vertical:
+        8,
       ),
 
       decoration:
       BoxDecoration(
         color:
-        const Color(
-          0xF5FFFFFF,
+        Colors.white
+            .withOpacity(
+          0.95,
         ),
 
         borderRadius:
         BorderRadius.circular(
-          20,
-        ),
-
-        border:
-        Border.all(
-          color:
-          const Color(
-            0xFFE2E8F0,
-          ),
+          18,
         ),
 
         boxShadow:
@@ -1355,26 +1765,25 @@ class _CheckpointScreenState
           BoxShadow(
             color:
             Color(
-              0x18000000,
+              0x14000000,
             ),
 
             blurRadius:
-            10,
-
-            offset:
-            Offset(
-              0,
-              3,
-            ),
+            6,
           ),
         ],
       ),
 
       child:
-      const Row(
-        mainAxisAlignment:
-        MainAxisAlignment
-            .spaceAround,
+      const Wrap(
+        alignment:
+        WrapAlignment.center,
+
+        spacing:
+        14,
+
+        runSpacing:
+        5,
 
         children: [
           _LegendItem(
@@ -1383,7 +1792,7 @@ class _CheckpointScreenState
               0xFF10B981,
             ),
 
-            label:
+            text:
             'Completed',
           ),
 
@@ -1393,7 +1802,7 @@ class _CheckpointScreenState
               0xFFF59E0B,
             ),
 
-            label:
+            text:
             'Popular',
           ),
 
@@ -1403,7 +1812,7 @@ class _CheckpointScreenState
               0xFF0284C7,
             ),
 
-            label:
+            text:
             'Hidden Gem',
           ),
 
@@ -1413,7 +1822,7 @@ class _CheckpointScreenState
               0xFF38BDF8,
             ),
 
-            label:
+            text:
             'You (5km)',
           ),
         ],
@@ -1425,25 +1834,31 @@ class _CheckpointScreenState
   // SELECTED CHECKPOINT CARD
   // ============================================================
 
-  Widget _buildSelectedCheckpointCard() {
-    final CheckpointDestination destination =
-    _selectedDestination!;
-
+  Widget _buildSelectedCheckpointCard(
+      CheckpointDestination destination,
+      ) {
     final bool completed =
-    _completedDestinationIds
-        .contains(
-      destination.destinationId,
-    );
-
-    final double distance =
-    _distanceKm(
+    _isCompleted(
       destination,
     );
+
+    final int reward =
+        _selectedMission
+            ?.rewardPoints ??
+            0;
+
+    final String description =
+    destination.description
+        ?.trim()
+        .isNotEmpty ==
+        true
+        ? destination.description!
+        : 'Explore this checkpoint and complete the available activity.';
 
     return Container(
       padding:
       const EdgeInsets.all(
-        15,
+        16,
       ),
 
       decoration:
@@ -1453,15 +1868,7 @@ class _CheckpointScreenState
 
         borderRadius:
         BorderRadius.circular(
-          22,
-        ),
-
-        border:
-        Border.all(
-          color:
-          const Color(
-            0xFFE2E8F0,
-          ),
+          20,
         ),
 
         boxShadow:
@@ -1469,11 +1876,11 @@ class _CheckpointScreenState
           BoxShadow(
             color:
             Color(
-              0x35000000,
+              0x260F172A,
             ),
 
             blurRadius:
-            20,
+            18,
 
             offset:
             Offset(
@@ -1486,21 +1893,28 @@ class _CheckpointScreenState
 
       child:
       Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
-
         mainAxisSize:
         MainAxisSize.min,
 
+        crossAxisAlignment:
+        CrossAxisAlignment.start,
+
         children: [
+          // ====================================================
+          // NAME + REWARD
+          // ====================================================
+
           Row(
             crossAxisAlignment:
             CrossAxisAlignment.start,
 
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width:
+                34,
+
+                height:
+                34,
 
                 decoration:
                 BoxDecoration(
@@ -1515,7 +1929,7 @@ class _CheckpointScreenState
 
                   borderRadius:
                   BorderRadius.circular(
-                    13,
+                    10,
                   ),
                 ),
 
@@ -1532,14 +1946,16 @@ class _CheckpointScreenState
                       ? const Color(
                     0xFF10B981,
                   )
-                      : const Color(
-                    0xFF0284C7,
-                  ),
+                      : _primaryBlue,
+
+                  size:
+                  21,
                 ),
               ),
 
               const SizedBox(
-                width: 11,
+                width:
+                10,
               ),
 
               Expanded(
@@ -1552,55 +1968,72 @@ class _CheckpointScreenState
                     Text(
                       destination.name,
 
+                      maxLines:
+                      1,
+
+                      overflow:
+                      TextOverflow.ellipsis,
+
                       style:
                       const TextStyle(
                         color:
-                        Color(
-                          0xFF0F172A,
-                        ),
+                        _darkText,
 
                         fontSize:
-                        16,
+                        15,
 
                         fontWeight:
-                        FontWeight
-                            .w800,
+                        FontWeight.w900,
                       ),
                     ),
 
                     const SizedBox(
-                      height: 4,
+                      height:
+                      3,
                     ),
 
                     Text(
-                      '${distance.toStringAsFixed(2)} km away'
-                          '${destination.category != null ? ' • ${destination.category}' : ''}',
+                      '${_distanceText(destination)} • ${_classificationText(destination)}',
 
                       style:
                       const TextStyle(
                         color:
-                        Color(
-                          0xFF64748B,
-                        ),
+                        _greyText,
 
                         fontSize:
-                        11.5,
+                        9,
+
+                        fontWeight:
+                        FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
               ),
 
-              if (_selectedMission != null)
+              if (_isLoadingMission)
+                const SizedBox(
+                  width:
+                  20,
+
+                  height:
+                  20,
+
+                  child:
+                  CircularProgressIndicator(
+                    strokeWidth:
+                    2,
+                  ),
+                )
+              else
                 Container(
                   padding:
-                  const EdgeInsets
-                      .symmetric(
+                  const EdgeInsets.symmetric(
                     horizontal:
-                    9,
+                    10,
 
                     vertical:
-                    5,
+                    6,
                   ),
 
                   decoration:
@@ -1618,47 +2051,52 @@ class _CheckpointScreenState
 
                   child:
                   Text(
-                    '+${_selectedMission!.rewardPoints}',
+                    '+$reward',
 
                     style:
                     const TextStyle(
                       color:
-                      Color(
-                        0xFF0284C7,
-                      ),
+                      _primaryBlue,
 
                       fontSize:
-                      11,
+                      10,
 
                       fontWeight:
-                      FontWeight
-                          .w800,
+                      FontWeight.w900,
                     ),
                   ),
                 ),
             ],
           ),
 
-          if (completed) ...[
-            const SizedBox(
-              height: 8,
-            ),
+          const SizedBox(
+            height:
+            10,
+          ),
 
+          // ====================================================
+          // STATUS
+          // ====================================================
+
+          if (completed)
             const Row(
               children: [
                 Icon(
-                  Icons.verified_rounded,
+                  Icons
+                      .verified_rounded,
 
                   color:
                   Color(
                     0xFF059669,
                   ),
 
-                  size: 16,
+                  size:
+                  15,
                 ),
 
                 SizedBox(
-                  width: 5,
+                  width:
+                  6,
                 ),
 
                 Text(
@@ -1668,161 +2106,254 @@ class _CheckpointScreenState
                   TextStyle(
                     color:
                     Color(
-                      0xFF059669,
+                      0xFF047857,
                     ),
 
                     fontSize:
-                    12,
+                    10,
 
                     fontWeight:
-                    FontWeight
-                        .w700,
+                    FontWeight.w800,
+                  ),
+                ),
+              ],
+            )
+          else
+            const Row(
+              children: [
+                Icon(
+                  Icons
+                      .flag_outlined,
+
+                  color:
+                  _primaryBlue,
+
+                  size:
+                  15,
+                ),
+
+                SizedBox(
+                  width:
+                  6,
+                ),
+
+                Text(
+                  'Checkpoint available',
+
+                  style:
+                  TextStyle(
+                    color:
+                    _primaryBlue,
+
+                    fontSize:
+                    10,
+
+                    fontWeight:
+                    FontWeight.w800,
                   ),
                 ),
               ],
             ),
-          ],
-
-          if (destination.description !=
-              null) ...[
-            const SizedBox(
-              height: 9,
-            ),
-
-            Text(
-              destination.description!,
-
-              maxLines: 2,
-
-              overflow:
-              TextOverflow.ellipsis,
-
-              style:
-              const TextStyle(
-                color:
-                Color(
-                  0xFF64748B,
-                ),
-
-                fontSize: 12,
-
-                height: 1.4,
-              ),
-            ),
-          ],
 
           const SizedBox(
-            height: 12,
+            height:
+            10,
           ),
 
-          if (_isLoadingMission)
-            const Center(
-              child:
-              Padding(
-                padding:
-                EdgeInsets.symmetric(
-                  vertical: 8,
-                ),
+          // ====================================================
+          // DESCRIPTION
+          // ====================================================
 
+          Text(
+            description,
+
+            maxLines:
+            2,
+
+            overflow:
+            TextOverflow.ellipsis,
+
+            style:
+            const TextStyle(
+              color:
+              _greyText,
+
+              fontSize:
+              10,
+
+              height:
+              1.45,
+            ),
+          ),
+
+          const SizedBox(
+            height:
+            14,
+          ),
+
+          // ====================================================
+          // TWO OPTIONS
+          // ====================================================
+
+          Row(
+            children: [
+              // ------------------------------------------------
+              // VIEW MISSION
+              // ------------------------------------------------
+
+              Expanded(
                 child:
                 SizedBox(
-                  width: 22,
-                  height: 22,
+                  height:
+                  44,
 
                   child:
-                  CircularProgressIndicator(
-                    strokeWidth:
-                    2,
-                  ),
-                ),
-              ),
-            )
-          else if (_selectedMission == null)
-            const Text(
-              'No active mission is available for this checkpoint.',
+                  ElevatedButton.icon(
+                    onPressed:
+                    _selectedMission ==
+                        null &&
+                        !_isLoadingMission
+                        ? null
+                        : () {
+                      _openMission(
+                        destination,
+                      );
+                    },
 
-              style:
-              TextStyle(
-                color:
-                Color(
-                  0xFFEF4444,
-                ),
+                    icon:
+                    const Icon(
+                      Icons
+                          .visibility_rounded,
 
-                fontSize:
-                12,
-              ),
-            )
-          else
-            SizedBox(
-              width:
-              double.infinity,
+                      size:
+                      15,
+                    ),
 
-              child:
-              ElevatedButton.icon(
-                onPressed:
-                _openMission,
+                    label:
+                    const Text(
+                      'VIEW MISSION',
+                    ),
 
-                icon:
-                Icon(
-                  completed
-                      ? Icons
-                      .visibility_rounded
-                      : Icons
-                      .flag_circle_rounded,
-                ),
+                    style:
+                    ElevatedButton
+                        .styleFrom(
+                      backgroundColor:
+                      _primaryBlue,
 
-                label:
-                Text(
-                  completed
-                      ? 'VIEW COMPLETED MISSION'
-                      : 'VIEW MISSION',
-                ),
+                      foregroundColor:
+                      Colors.white,
 
-                style:
-                ElevatedButton
-                    .styleFrom(
-                  backgroundColor:
-                  const Color(
-                    0xFF0284C7,
-                  ),
+                      disabledBackgroundColor:
+                      const Color(
+                        0xFFCBD5E1,
+                      ),
 
-                  foregroundColor:
-                  Colors.white,
+                      elevation:
+                      0,
 
-                  elevation: 0,
+                      textStyle:
+                      const TextStyle(
+                        fontSize:
+                        9,
 
-                  padding:
-                  const EdgeInsets
-                      .symmetric(
-                    vertical: 13,
-                  ),
+                        fontWeight:
+                        FontWeight.w900,
+                      ),
 
-                  textStyle:
-                  const TextStyle(
-                    fontSize: 12,
-
-                    fontWeight:
-                    FontWeight
-                        .w800,
-                  ),
-
-                  shape:
-                  RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius.circular(
-                      30,
+                      shape:
+                      RoundedRectangleBorder(
+                        borderRadius:
+                        BorderRadius.circular(
+                          25,
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
+
+              const SizedBox(
+                width:
+                8,
+              ),
+
+              // ------------------------------------------------
+              // VIEW PUZZLE
+              // ------------------------------------------------
+
+              Expanded(
+                child:
+                SizedBox(
+                  height:
+                  44,
+
+                  child:
+                  OutlinedButton.icon(
+                    onPressed:
+                        () {
+                      _openPuzzle(
+                        destination,
+                      );
+                    },
+
+                    icon:
+                    const Icon(
+                      Icons
+                          .extension_rounded,
+
+                      size:
+                      15,
+                    ),
+
+                    label:
+                    const Text(
+                      'VIEW PUZZLE',
+                    ),
+
+                    style:
+                    OutlinedButton
+                        .styleFrom(
+                      foregroundColor:
+                      _purple,
+
+                      side:
+                      const BorderSide(
+                        color:
+                        _purple,
+
+                        width:
+                        1.3,
+                      ),
+
+                      textStyle:
+                      const TextStyle(
+                        fontSize:
+                        9,
+
+                        fontWeight:
+                        FontWeight.w900,
+                      ),
+
+                      shape:
+                      RoundedRectangleBorder(
+                        borderRadius:
+                        BorderRadius.circular(
+                          25,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
   // ============================================================
-  // ERROR STATE
+  // ERROR
   // ============================================================
 
   Widget _buildErrorState() {
@@ -1831,7 +2362,7 @@ class _CheckpointScreenState
       Padding(
         padding:
         const EdgeInsets.all(
-          28,
+          30,
         ),
 
         child:
@@ -1841,9 +2372,11 @@ class _CheckpointScreenState
 
           children: [
             const Icon(
-              Icons.location_off_outlined,
+              Icons
+                  .location_off_outlined,
 
-              size: 65,
+              size:
+              60,
 
               color:
               Color(
@@ -1852,11 +2385,12 @@ class _CheckpointScreenState
             ),
 
             const SizedBox(
-              height: 16,
+              height:
+              15,
             ),
 
             const Text(
-              'Unable to Load Checkpoint Map',
+              'Unable to Load Checkpoints',
 
               textAlign:
               TextAlign.center,
@@ -1864,26 +2398,24 @@ class _CheckpointScreenState
               style:
               TextStyle(
                 color:
-                Color(
-                  0xFF0F172A,
-                ),
+                _darkText,
 
                 fontSize:
-                19,
+                18,
 
                 fontWeight:
-                FontWeight
-                    .w800,
+                FontWeight.w800,
               ),
             ),
 
             const SizedBox(
-              height: 8,
+              height:
+              8,
             ),
 
             Text(
               _errorMessage ??
-                  'Unknown error',
+                  'Unknown error.',
 
               textAlign:
               TextAlign.center,
@@ -1891,21 +2423,23 @@ class _CheckpointScreenState
               style:
               const TextStyle(
                 color:
-                Color(
-                  0xFF64748B,
-                ),
+                _greyText,
 
-                height: 1.4,
+                fontSize:
+                12,
               ),
             ),
 
             const SizedBox(
-              height: 20,
+              height:
+              18,
             ),
 
             ElevatedButton.icon(
               onPressed:
-              _initializeMap,
+                  () {
+                _loadCheckpointData();
+              },
 
               icon:
               const Icon(
@@ -1921,9 +2455,7 @@ class _CheckpointScreenState
               ElevatedButton
                   .styleFrom(
                 backgroundColor:
-                const Color(
-                  0xFF0284C7,
-                ),
+                _primaryBlue,
 
                 foregroundColor:
                 Colors.white,
@@ -1931,6 +2463,244 @@ class _CheckpointScreenState
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // HOME BUTTON
+  // ============================================================
+
+  Widget _buildHomeButton() {
+    return Padding(
+      padding:
+      const EdgeInsets.only(
+        top:
+        10,
+      ),
+
+      child:
+      InkWell(
+        customBorder:
+        const CircleBorder(),
+
+        onTap:
+            () {
+          Navigator.of(context)
+              .pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) =>
+              const HomeScreen(),
+            ),
+                (
+                route,
+                ) =>
+            false,
+          );
+        },
+
+        child:
+        Container(
+          width:
+          64,
+
+          height:
+          64,
+
+          decoration:
+          BoxDecoration(
+            shape:
+            BoxShape.circle,
+
+            gradient:
+            const LinearGradient(
+              colors: [
+                _primaryBlue,
+                _teal,
+              ],
+            ),
+
+            border:
+            Border.all(
+              color:
+              Colors.white,
+
+              width:
+              4,
+            ),
+
+            boxShadow:
+            const [
+              BoxShadow(
+                color:
+                Color(
+                  0x3D0284C7,
+                ),
+
+                blurRadius:
+                14,
+
+                offset:
+                Offset(
+                  0,
+                  6,
+                ),
+              ),
+            ],
+          ),
+
+          child:
+          const Column(
+            mainAxisAlignment:
+            MainAxisAlignment.center,
+
+            children: [
+              Icon(
+                Icons
+                    .home_rounded,
+
+                color:
+                Color(
+                  0xFFFFE66D,
+                ),
+
+                size:
+                25,
+              ),
+
+              Text(
+                'HOME',
+
+                style:
+                TextStyle(
+                  color:
+                  Colors.white,
+
+                  fontSize:
+                  7,
+
+                  fontWeight:
+                  FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BOTTOM NAV
+  // ============================================================
+
+  Widget _buildBottomNavigation() {
+    return BottomAppBar(
+      height:
+      72,
+
+      color:
+      Colors.white,
+
+      elevation:
+      15,
+
+      shape:
+      const CircularNotchedRectangle(),
+
+      notchMargin:
+      8,
+
+      padding:
+      EdgeInsets.zero,
+
+      child:
+      Row(
+        children: [
+          Expanded(
+            child:
+            _CheckpointBottomItem(
+              icon:
+              Icons
+                  .inventory_2_outlined,
+
+              label:
+              'BLIND\nBOX',
+
+              onTap:
+                  () {
+                Navigator.of(context)
+                    .pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                    const BlindBoxPage(),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          Expanded(
+            child:
+            _CheckpointBottomItem(
+              icon:
+              Icons
+                  .assignment_outlined,
+
+              label:
+              'MISSIONS',
+
+              active:
+              true,
+
+              onTap:
+                  () {},
+            ),
+          ),
+
+          const SizedBox(
+            width:
+            70,
+          ),
+
+          Expanded(
+            child:
+            _CheckpointBottomItem(
+              icon:
+              Icons
+                  .map_outlined,
+
+              label:
+              'PLAN',
+
+              onTap:
+                  () {
+                _showMessage(
+                  'Plan page will be connected later.',
+                );
+              },
+            ),
+          ),
+
+          Expanded(
+            child:
+            _CheckpointBottomItem(
+              icon:
+              Icons
+                  .groups_2_outlined,
+
+              label:
+              'TEAMS',
+
+              onTap:
+                  () {
+                _showMessage(
+                  'Teams page will be connected later.',
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1947,19 +2717,17 @@ class _CheckpointScreenState
   }
 }
 
-// ============================================================
-// MAP LEGEND ITEM
-// ============================================================
+// ============================================================================
+// LEGEND
+// ============================================================================
 
-class _LegendItem
-    extends StatelessWidget {
+class _LegendItem extends StatelessWidget {
   final Color color;
-
-  final String label;
+  final String text;
 
   const _LegendItem({
     required this.color,
-    required this.label,
+    required this.text,
   });
 
   @override
@@ -1972,8 +2740,11 @@ class _LegendItem
 
       children: [
         Container(
-          width: 8,
-          height: 8,
+          width:
+          7,
+
+          height:
+          7,
 
           decoration:
           BoxDecoration(
@@ -1986,11 +2757,12 @@ class _LegendItem
         ),
 
         const SizedBox(
-          width: 4,
+          width:
+          4,
         ),
 
         Text(
-          label,
+          text,
 
           style:
           const TextStyle(
@@ -1999,13 +2771,194 @@ class _LegendItem
               0xFF475569,
             ),
 
-            fontSize: 8.5,
+            fontSize:
+            8,
 
             fontWeight:
             FontWeight.w600,
           ),
         ),
       ],
+    );
+  }
+}
+
+// ============================================================================
+// PUZZLE LOCATION ROW
+// ============================================================================
+
+class _PuzzleLocationRow
+    extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _PuzzleLocationRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(
+      BuildContext context,
+      ) {
+    return Row(
+      crossAxisAlignment:
+      CrossAxisAlignment.start,
+
+      children: [
+        SizedBox(
+          width:
+          100,
+
+          child:
+          Text(
+            label,
+
+            style:
+            const TextStyle(
+              color:
+              Color(
+                0xFF94A3B8,
+              ),
+
+              fontSize:
+              10,
+
+              fontWeight:
+              FontWeight.w700,
+            ),
+          ),
+        ),
+
+        Expanded(
+          child:
+          Text(
+            value,
+
+            style:
+            const TextStyle(
+              color:
+              Color(
+                0xFF334155,
+              ),
+
+              fontSize:
+              11,
+
+              fontWeight:
+              FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================================
+// BOTTOM NAV ITEM
+// ============================================================================
+
+class _CheckpointBottomItem
+    extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _CheckpointBottomItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
+  @override
+  Widget build(
+      BuildContext context,
+      ) {
+    final Color color =
+    active
+        ? const Color(
+      0xFF0284C7,
+    )
+        : const Color(
+      0xFF64748B,
+    );
+
+    return InkWell(
+      onTap:
+      onTap,
+
+      child:
+      Column(
+        mainAxisAlignment:
+        MainAxisAlignment.center,
+
+        children: [
+          Container(
+            padding:
+            const EdgeInsets.all(
+              6,
+            ),
+
+            decoration:
+            BoxDecoration(
+              color:
+              active
+                  ? const Color(
+                0xFFE0F2FE,
+              )
+                  : Colors.transparent,
+
+              borderRadius:
+              BorderRadius.circular(
+                9,
+              ),
+            ),
+
+            child:
+            Icon(
+              icon,
+
+              color:
+              color,
+
+              size:
+              20,
+            ),
+          ),
+
+          const SizedBox(
+            height:
+            2,
+          ),
+
+          Text(
+            label,
+
+            textAlign:
+            TextAlign.center,
+
+            style:
+            TextStyle(
+              color:
+              color,
+
+              fontSize:
+              7,
+
+              height:
+              1,
+
+              fontWeight:
+              active
+                  ? FontWeight.w900
+                  : FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

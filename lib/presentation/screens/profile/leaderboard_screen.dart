@@ -3,17 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/config/supabase_config.dart';
+import 'profile_screen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
 
   @override
-  State<LeaderboardScreen> createState() =>
-      _LeaderboardScreenState();
+  State<LeaderboardScreen> createState() => _LeaderboardScreenState();
 }
 
-class _LeaderboardScreenState
-    extends State<LeaderboardScreen> {
+class _LeaderboardScreenState extends State<LeaderboardScreen> {
   static const Color _blue = Color(0xFF0284C7);
   static const Color _teal = Color(0xFF0D9488);
   static const Color _navy = Color(0xFF0F1B33);
@@ -32,6 +31,8 @@ class _LeaderboardScreenState
 
   Timer? _timer;
   Duration _untilMidnight = Duration.zero;
+  String? _activeDateKey;
+  bool _checkingReward = false;
 
   @override
   void initState() {
@@ -40,10 +41,7 @@ class _LeaderboardScreenState
     _loadLeaderboard();
     _updateTimer();
 
-    _timer = Timer.periodic(
-      const Duration(seconds: 1),
-          (_) => _updateTimer(),
-    );
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateTimer());
   }
 
   @override
@@ -76,83 +74,64 @@ class _LeaderboardScreenState
     });
 
     try {
-      final user =
-          SupabaseConfig.client.auth.currentUser;
+      final user = SupabaseConfig.client.auth.currentUser;
 
       if (user == null) {
-        throw Exception(
-          'No authenticated traveller was found.',
-        );
+        throw Exception('No authenticated traveller was found.');
       }
 
       _currentUserId = user.id;
 
-      final List<dynamic> response =
-      await SupabaseConfig.client.rpc(
-        'get_leaderboard',
+      final List<dynamic> response = await SupabaseConfig.client.rpc(
+        'get_daily_puzzle_leaderboard',
       );
 
       final List<LeaderboardEntry> built = [];
 
       for (int i = 0; i < response.length; i++) {
-        final Map<String, dynamic> row =
-        Map<String, dynamic>.from(
+        final Map<String, dynamic> row = Map<String, dynamic>.from(
           response[i] as Map,
         );
 
-        final String id =
-            row['id']?.toString() ?? '';
+        final String id = row['user_id']?.toString() ?? '';
 
-        final String fullName =
-            row['full_name']?.toString().trim() ?? '';
+        final String fullName = row['full_name']?.toString().trim() ?? '';
 
-        final String? picture =
-        _cleanNullableString(
+        final String? picture = _cleanNullableString(
           row['profile_picture_url'],
         );
 
-        final int explorationPoints =
-        _toInt(
-          row['exploration_points'],
-        );
+        final int explorationPoints = _toInt(row['daily_score']);
+        final int challengeCount = _toInt(row['challenge_count']);
+        final int rank = _toInt(row['leaderboard_rank']);
 
         built.add(
           LeaderboardEntry(
-            rank: i + 1,
+            rank: rank,
             userId: id,
-            name: fullName.isEmpty
-                ? 'Traveller'
-                : fullName,
-            explorationPoints:
-            explorationPoints,
+            name: fullName.isEmpty ? 'Traveller' : fullName,
+            explorationPoints: explorationPoints,
+            challengeCount: challengeCount,
             profilePictureUrl: picture,
             isCurrentUser: id == user.id,
           ),
         );
       }
 
-      final currentUserEntry =
-      built.where(
-            (entry) => entry.isCurrentUser,
-      );
+      final currentUserEntry = built.where((entry) => entry.isCurrentUser);
 
       if (currentUserEntry.isNotEmpty) {
-        _headerProfilePictureUrl =
-            currentUserEntry.first.profilePictureUrl;
+        _headerProfilePictureUrl = currentUserEntry.first.profilePictureUrl;
       } else {
-        final Map<String, dynamic>? ownProfile =
-        await SupabaseConfig.client
+        final Map<String, dynamic>? ownProfile = await SupabaseConfig.client
             .from('profiles')
-            .select(
-          'profile_picture_url',
-        )
+            .select('profile_picture_url')
             .eq('id', user.id)
             .maybeSingle();
 
-        _headerProfilePictureUrl =
-            _cleanNullableString(
-              ownProfile?['profile_picture_url'],
-            );
+        _headerProfilePictureUrl = _cleanNullableString(
+          ownProfile?['profile_picture_url'],
+        );
       }
 
       if (!mounted) return;
@@ -161,30 +140,26 @@ class _LeaderboardScreenState
         _entries = built;
         _loading = false;
       });
+
+      await _showPendingDailyReward();
     } catch (error) {
-      debugPrint(
-        'LEADERBOARD LOAD ERROR: $error',
-      );
+      debugPrint('LEADERBOARD LOAD ERROR: $error');
 
       if (!mounted) return;
 
       setState(() {
         _loading = false;
-        _errorMessage =
-        'Unable to load leaderboard data from Supabase.';
+        _errorMessage = 'Unable to load leaderboard data from Supabase.';
       });
     }
   }
 
-  String? _cleanNullableString(
-      dynamic value,
-      ) {
+  String? _cleanNullableString(dynamic value) {
     if (value == null) {
       return null;
     }
 
-    final String text =
-    value.toString().trim();
+    final String text = value.toString().trim();
 
     if (text.isEmpty) {
       return null;
@@ -206,39 +181,97 @@ class _LeaderboardScreenState
       return value.toInt();
     }
 
-    return int.tryParse(
-      value.toString(),
-    ) ??
-        0;
+    return int.tryParse(value.toString()) ?? 0;
   }
 
   void _updateTimer() {
-    final now = DateTime.now();
+    final nowUtc = DateTime.now().toUtc();
+    final now = nowUtc.add(const Duration(hours: 8));
+    final dateKey = '${now.year}-${now.month}-${now.day}';
+    final crossedMidnight = _activeDateKey != null && _activeDateKey != dateKey;
+    _activeDateKey = dateKey;
 
-    final nextMidnight = DateTime(
+    final nextMidnightUtc = DateTime.utc(
       now.year,
       now.month,
       now.day + 1,
-    );
+    ).subtract(const Duration(hours: 8));
 
     if (!mounted) return;
 
     setState(() {
-      _untilMidnight =
-          nextMidnight.difference(now);
+      _untilMidnight = nextMidnightUtc.difference(nowUtc);
     });
+
+    if (crossedMidnight) {
+      Future<void>.delayed(const Duration(seconds: 5), () {
+        if (mounted) _loadLeaderboard();
+      });
+    }
+  }
+
+  Future<void> _showPendingDailyReward() async {
+    if (_checkingReward || !mounted) return;
+    _checkingReward = true;
+
+    try {
+      final row = await SupabaseConfig.client
+          .from('puzzle_daily_rewards')
+          .select(
+            'reward_id, leaderboard_date, rank, daily_score, reward_points',
+          )
+          .isFilter('read_at', null)
+          .order('leaderboard_date', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (row == null || !mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          icon: const Icon(
+            Icons.emoji_events_rounded,
+            color: Color(0xFFF59E0B),
+            size: 48,
+          ),
+          title: Text('Congratulations! Rank #${_toInt(row['rank'])}'),
+          content: Text(
+            'You finished in the daily top 3 with '
+            '${_toInt(row['daily_score'])} puzzle points and earned '
+            '+${_toInt(row['reward_points'])} EP.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Awesome!'),
+            ),
+          ],
+        ),
+      );
+
+      await SupabaseConfig.client
+          .from('puzzle_daily_rewards')
+          .update({'read_at': DateTime.now().toIso8601String()})
+          .eq('reward_id', row['reward_id']);
+    } catch (error) {
+      debugPrint('DAILY PUZZLE REWARD CHECK ERROR: $error');
+    } finally {
+      _checkingReward = false;
+    }
   }
 
   String _twoDigits(int value) {
-    return value
-        .toString()
-        .padLeft(2, '0');
+    return value.toString().padLeft(2, '0');
   }
 
   LeaderboardEntry? get _currentUserEntry {
     for (final entry in _entries) {
-      if (entry.userId ==
-          _currentUserId) {
+      if (entry.userId == _currentUserId) {
         return entry;
       }
     }
@@ -268,91 +301,57 @@ class _LeaderboardScreenState
           ],
         ),
       ),
-      floatingActionButtonLocation:
-      FloatingActionButtonLocation.centerDocked,
-      floatingActionButton:
-      _buildHomeButton(),
-      bottomNavigationBar:
-      _buildBottomBar(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: _buildHomeButton(),
+      bottomNavigationBar: _buildBottomBar(),
     );
   }
 
   Widget _buildBody() {
     if (_loading) {
       return ListView(
-        physics:
-        const AlwaysScrollableScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(),
         children: const [
           SizedBox(height: 250),
-          Center(
-            child:
-            CircularProgressIndicator(
-              color: _blue,
-            ),
-          ),
+          Center(child: CircularProgressIndicator(color: _blue)),
         ],
       );
     }
 
     if (_errorMessage != null) {
       return ListView(
-        physics:
-        const AlwaysScrollableScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(24),
         children: [
           const SizedBox(height: 150),
-          const Icon(
-            Icons.leaderboard_outlined,
-            color: _blue,
-            size: 62,
-          ),
+          const Icon(Icons.leaderboard_outlined, color: _blue, size: 62),
           const SizedBox(height: 18),
           Text(
             _errorMessage!,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: _muted,
-              fontSize: 14,
-              height: 1.5,
-            ),
+            style: const TextStyle(color: _muted, fontSize: 14, height: 1.5),
           ),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: _loadLeaderboard,
             style: FilledButton.styleFrom(
               backgroundColor: _blue,
-              minimumSize:
-              const Size.fromHeight(
-                50,
-              ),
+              minimumSize: const Size.fromHeight(50),
             ),
-            child: const Text(
-              'TRY AGAIN',
-            ),
+            child: const Text('TRY AGAIN'),
           ),
         ],
       );
     }
 
     return SingleChildScrollView(
-      physics:
-      const AlwaysScrollableScrollPhysics(),
-      padding:
-      const EdgeInsets.fromLTRB(
-        18,
-        22,
-        18,
-        95,
-      ),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(18, 22, 18, 95),
       child: Center(
         child: ConstrainedBox(
-          constraints:
-          const BoxConstraints(
-            maxWidth: 760,
-          ),
+          constraints: const BoxConstraints(maxWidth: 760),
           child: Column(
-            crossAxisAlignment:
-            CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildBackButton(),
 
@@ -371,12 +370,9 @@ class _LeaderboardScreenState
               const SizedBox(height: 22),
 
               if (_currentUserEntry != null)
-                _buildCurrentUserCard(
-                  _currentUserEntry!,
-                ),
+                _buildCurrentUserCard(_currentUserEntry!),
 
-              if (_currentUserEntry != null)
-                const SizedBox(height: 24),
+              if (_currentUserEntry != null) const SizedBox(height: 24),
 
               _buildRankingTable(),
             ],
@@ -394,16 +390,8 @@ class _LeaderboardScreenState
     return Container(
       height: 69,
       decoration: BoxDecoration(
-        color:
-        Colors.white.withOpacity(
-          0.97,
-        ),
-        border: const Border(
-          bottom: BorderSide(
-            color: _border,
-            width: 1,
-          ),
-        ),
+        color: Colors.white.withOpacity(0.97),
+        border: const Border(bottom: BorderSide(color: _border, width: 1)),
       ),
       child: Row(
         children: [
@@ -412,27 +400,18 @@ class _LeaderboardScreenState
           Container(
             width: 38,
             height: 38,
-            decoration:
-            const BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              gradient:
-              LinearGradient(
-                colors: [
-                  _blue,
-                  _teal,
-                ],
-                begin:
-                Alignment.topLeft,
-                end:
-                Alignment.bottomRight,
+              gradient: LinearGradient(
+                colors: [_blue, _teal],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
               boxShadow: [
                 BoxShadow(
-                  color:
-                  Color(0x300284C7),
+                  color: Color(0x300284C7),
                   blurRadius: 10,
-                  offset:
-                  Offset(0, 4),
+                  offset: Offset(0, 4),
                 ),
               ],
             ),
@@ -449,14 +428,12 @@ class _LeaderboardScreenState
             child: Text(
               'MYSTERYLANE',
               maxLines: 1,
-              overflow:
-              TextOverflow.fade,
+              overflow: TextOverflow.fade,
               softWrap: false,
               style: TextStyle(
                 color: _text,
                 fontSize: 20,
-                fontWeight:
-                FontWeight.w900,
+                fontWeight: FontWeight.w900,
                 letterSpacing: -0.5,
               ),
             ),
@@ -464,22 +441,17 @@ class _LeaderboardScreenState
 
           const _HeaderActionButton(
             tooltip: 'Leaderboard',
-            icon:
-            Icons.emoji_events_rounded,
-            background:
-            Color(0xFFFFFBEB),
-            foreground:
-            Color(0xFFD97706),
+            icon: Icons.emoji_events_rounded,
+            background: Color(0xFFFFFBEB),
+            foreground: Color(0xFFD97706),
           ),
 
           const SizedBox(width: 6),
 
           const _HeaderActionButton(
             tooltip: 'Chat',
-            icon: Icons
-                .chat_bubble_outline_rounded,
-            background:
-            Color(0xFFF0F9FF),
+            icon: Icons.chat_bubble_outline_rounded,
+            background: Color(0xFFF0F9FF),
             foreground: _blue,
           ),
 
@@ -494,45 +466,39 @@ class _LeaderboardScreenState
   }
 
   Widget _buildHeaderProfilePicture() {
-    final String? imageUrl =
-    _headerProfilePictureUrl
-        ?.trim();
+    final String? imageUrl = _headerProfilePictureUrl?.trim();
 
-    final ImageProvider? provider =
-    imageUrl != null &&
-        imageUrl.isNotEmpty
+    final ImageProvider? provider = imageUrl != null && imageUrl.isNotEmpty
         ? NetworkImage(imageUrl)
         : null;
 
-    return Container(
-      width: 38,
-      height: 38,
-      padding:
-      const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(
-          color:
-          const Color(
-            0xFFBAE6FD,
+    return Tooltip(
+      message: 'Profile',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+          );
+          if (mounted) await _loadLeaderboard();
+        },
+        child: Container(
+          width: 38,
+          height: 38,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFBAE6FD), width: 1.4),
           ),
-          width: 1.4,
+          child: CircleAvatar(
+            backgroundColor: const Color(0xFFE0F2FE),
+            backgroundImage: provider,
+            child: provider == null
+                ? const Icon(Icons.person_rounded, size: 20, color: _blue)
+                : null,
+          ),
         ),
-      ),
-      child: CircleAvatar(
-        backgroundColor:
-        const Color(
-          0xFFE0F2FE,
-        ),
-        backgroundImage: provider,
-        child: provider == null
-            ? const Icon(
-          Icons.person_rounded,
-          size: 20,
-          color: _blue,
-        )
-            : null,
       ),
     );
   }
@@ -543,45 +509,24 @@ class _LeaderboardScreenState
 
   Widget _buildBackButton() {
     return Align(
-      alignment:
-      Alignment.centerLeft,
+      alignment: Alignment.centerLeft,
       child: OutlinedButton.icon(
         onPressed: () {
           Navigator.of(context).pop();
         },
-        style:
-        OutlinedButton.styleFrom(
+        style: OutlinedButton.styleFrom(
           foregroundColor: _text,
-          backgroundColor:
-          Colors.white,
-          side: const BorderSide(
-            color: _border,
-          ),
-          padding:
-          const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
-          ),
-          shape:
-          RoundedRectangleBorder(
-            borderRadius:
-            BorderRadius.circular(
-              12,
-            ),
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: _border),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
-        icon: const Icon(
-          Icons.arrow_back,
-          size: 18,
-          color: _blue,
-        ),
+        icon: const Icon(Icons.arrow_back, size: 18, color: _blue),
         label: const Text(
           'Back to Home',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight:
-            FontWeight.w700,
-          ),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
         ),
       ),
     );
@@ -595,36 +540,19 @@ class _LeaderboardScreenState
     return Column(
       children: [
         Container(
-          padding:
-          const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 7,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           decoration: BoxDecoration(
-            color:
-            const Color(
-              0xFFF0F9FF,
-            ),
-            borderRadius:
-            BorderRadius.circular(
-              99,
-            ),
-            border: Border.all(
-              color:
-              const Color(
-                0xFFBAE6FD,
-              ),
-            ),
+            color: const Color(0xFFF0F9FF),
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: const Color(0xFFBAE6FD)),
           ),
           child: const Text(
             'GLOBAL EXPLORER RANKINGS  •  LIVE SUPABASE DATA',
-            textAlign:
-            TextAlign.center,
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: _blue,
               fontSize: 9,
-              fontWeight:
-              FontWeight.w900,
+              fontWeight: FontWeight.w900,
               letterSpacing: 1.5,
             ),
           ),
@@ -634,14 +562,12 @@ class _LeaderboardScreenState
 
         const Text(
           'Explorer Leaderboard',
-          textAlign:
-          TextAlign.center,
+          textAlign: TextAlign.center,
           style: TextStyle(
             color: _text,
             fontSize: 34,
             height: 1.05,
-            fontWeight:
-            FontWeight.w900,
+            fontWeight: FontWeight.w900,
             fontFamily: 'serif',
           ),
         ),
@@ -649,17 +575,12 @@ class _LeaderboardScreenState
         const SizedBox(height: 10),
 
         const Padding(
-          padding:
-          EdgeInsets.symmetric(
-            horizontal: 16,
-          ),
+          padding: EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            'See how explorers rank based on their accumulated Exploration Points.',
-            textAlign:
-            TextAlign.center,
+            'See how explorers rank from their first five puzzle challenge scores today.',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color:
-              Color(0xFF475569),
+              color: Color(0xFF475569),
               fontSize: 13,
               height: 1.45,
             ),
@@ -674,38 +595,22 @@ class _LeaderboardScreenState
   // ============================================================
 
   Widget _buildResetCard() {
-    final int hours =
-        _untilMidnight.inHours;
+    final int hours = _untilMidnight.inHours;
 
-    final int minutes =
-    _untilMidnight.inMinutes
-        .remainder(60);
+    final int minutes = _untilMidnight.inMinutes.remainder(60);
 
-    final int seconds =
-    _untilMidnight.inSeconds
-        .remainder(60);
+    final int seconds = _untilMidnight.inSeconds.remainder(60);
 
     return Container(
-      padding:
-      const EdgeInsets.fromLTRB(
-        18,
-        16,
-        18,
-        16,
-      ),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
         color: _navy,
-        borderRadius:
-        BorderRadius.circular(
-          16,
-        ),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
-            color:
-            Color(0x220F172A),
+            color: Color(0x220F172A),
             blurRadius: 12,
-            offset:
-            Offset(0, 5),
+            offset: Offset(0, 5),
           ),
         ],
       ),
@@ -714,10 +619,8 @@ class _LeaderboardScreenState
           Row(
             children: [
               const Icon(
-                Icons
-                    .access_time_rounded,
-                color:
-                Color(0xFF38BDF8),
+                Icons.access_time_rounded,
+                color: Color(0xFF38BDF8),
                 size: 18,
               ),
 
@@ -727,60 +630,31 @@ class _LeaderboardScreenState
                 child: Text(
                   'NEXT DAILY REFRESH IN',
                   style: TextStyle(
-                    color:
-                    Color(
-                      0xFFBAE6FD,
-                    ),
+                    color: Color(0xFFBAE6FD),
                     fontSize: 11,
-                    fontWeight:
-                    FontWeight.w900,
+                    fontWeight: FontWeight.w900,
                     letterSpacing: 1,
                   ),
                 ),
               ),
 
               OutlinedButton.icon(
-                onPressed:
-                _loadLeaderboard,
-                style: OutlinedButton
-                    .styleFrom(
-                  foregroundColor:
-                  const Color(
-                    0xFF7DD3FC,
-                  ),
-                  side:
-                  const BorderSide(
-                    color:
-                    Color(
-                      0xFF1E5E89,
-                    ),
-                  ),
-                  padding:
-                  const EdgeInsets
-                      .symmetric(
+                onPressed: _loadLeaderboard,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF7DD3FC),
+                  side: const BorderSide(color: Color(0xFF1E5E89)),
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
                   ),
-                  shape:
-                  RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius
-                        .circular(
-                      99,
-                    ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(99),
                   ),
                 ),
-                icon: const Icon(
-                  Icons.refresh_rounded,
-                  size: 16,
-                ),
+                icon: const Icon(Icons.refresh_rounded, size: 16),
                 label: const Text(
                   'Refresh',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight:
-                    FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -789,58 +663,30 @@ class _LeaderboardScreenState
           const SizedBox(height: 12),
 
           Container(
-            padding:
-            const EdgeInsets
-                .symmetric(
-              vertical: 14,
-            ),
+            padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
-              color:
-              const Color(
-                0xFF1C2A44,
-              ),
-              borderRadius:
-              BorderRadius.circular(
-                12,
-              ),
-              border: Border.all(
-                color:
-                const Color(
-                  0xFF334155,
-                ),
-              ),
+              color: const Color(0xFF1C2A44),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF334155)),
             ),
             child: Row(
               children: [
                 Expanded(
-                  child: _timeBlock(
-                    value:
-                    _twoDigits(
-                      hours,
-                    ),
-                    label: 'HOURS',
-                  ),
+                  child: _timeBlock(value: _twoDigits(hours), label: 'HOURS'),
                 ),
 
                 const Text(
                   ':',
                   style: TextStyle(
-                    color:
-                    Color(
-                      0xFF64748B,
-                    ),
+                    color: Color(0xFF64748B),
                     fontSize: 24,
-                    fontWeight:
-                    FontWeight.w900,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
 
                 Expanded(
                   child: _timeBlock(
-                    value:
-                    _twoDigits(
-                      minutes,
-                    ),
+                    value: _twoDigits(minutes),
                     label: 'MINUTES',
                   ),
                 ),
@@ -848,22 +694,15 @@ class _LeaderboardScreenState
                 const Text(
                   ':',
                   style: TextStyle(
-                    color:
-                    Color(
-                      0xFF64748B,
-                    ),
+                    color: Color(0xFF64748B),
                     fontSize: 24,
-                    fontWeight:
-                    FontWeight.w900,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
 
                 Expanded(
                   child: _timeBlock(
-                    value:
-                    _twoDigits(
-                      seconds,
-                    ),
+                    value: _twoDigits(seconds),
                     label: 'SECONDS',
                     highlight: true,
                   ),
@@ -879,34 +718,17 @@ class _LeaderboardScreenState
               Expanded(
                 child: Text(
                   'Source: Supabase profiles',
-                  style: TextStyle(
-                    color:
-                    Color(
-                      0xFF7DD3FC,
-                    ),
-                    fontSize: 9,
-                  ),
+                  style: TextStyle(color: Color(0xFF7DD3FC), fontSize: 9),
                 ),
               ),
-              Icon(
-                Icons.circle,
-                color:
-                Color(
-                  0xFF22D3EE,
-                ),
-                size: 6,
-              ),
+              Icon(Icons.circle, color: Color(0xFF22D3EE), size: 6),
               SizedBox(width: 6),
               Text(
                 'Live Leaderboard',
                 style: TextStyle(
-                  color:
-                  Color(
-                    0xFF38BDF8,
-                  ),
+                  color: Color(0xFF38BDF8),
                   fontSize: 9,
-                  fontWeight:
-                  FontWeight.w800,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],
@@ -926,25 +748,18 @@ class _LeaderboardScreenState
         Text(
           value,
           style: TextStyle(
-            color: highlight
-                ? const Color(
-              0xFFFFC107,
-            )
-                : Colors.white,
+            color: highlight ? const Color(0xFFFFC107) : Colors.white,
             fontSize: 23,
-            fontWeight:
-            FontWeight.w900,
+            fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
           style: const TextStyle(
-            color:
-            Color(0xFF7DD3FC),
+            color: Color(0xFF7DD3FC),
             fontSize: 8,
-            fontWeight:
-            FontWeight.w700,
+            fontWeight: FontWeight.w700,
             letterSpacing: 1,
           ),
         ),
@@ -959,36 +774,22 @@ class _LeaderboardScreenState
   Widget _buildDailyTab() {
     return Center(
       child: Container(
-        padding:
-        const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 10,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
           color: _blue,
-          borderRadius:
-          BorderRadius.circular(
-            99,
-          ),
+          borderRadius: BorderRadius.circular(99),
         ),
         child: const Row(
-          mainAxisSize:
-          MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons
-                  .calendar_month_outlined,
-              color: Colors.white,
-              size: 14,
-            ),
+            Icon(Icons.calendar_month_outlined, color: Colors.white, size: 14),
             SizedBox(width: 7),
             Text(
               'CURRENT RANKING',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 9,
-                fontWeight:
-                FontWeight.w900,
+                fontWeight: FontWeight.w900,
                 letterSpacing: 0.8,
               ),
             ),
@@ -1002,118 +803,70 @@ class _LeaderboardScreenState
   // CURRENT USER CARD
   // ============================================================
 
-  Widget _buildCurrentUserCard(
-      LeaderboardEntry entry,
-      ) {
+  Widget _buildCurrentUserCard(LeaderboardEntry entry) {
     return Container(
-      padding:
-      const EdgeInsets.all(
-        16,
-      ),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color:
-        const Color(
-          0xFFF0F9FF,
-        ),
-        borderRadius:
-        BorderRadius.circular(
-          16,
-        ),
-        border: Border.all(
-          color:
-          const Color(
-            0xFFBAE6FD,
-          ),
-        ),
+        color: const Color(0xFFF0F9FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFBAE6FD)),
       ),
       child: Row(
         children: [
-          _avatar(
-            entry,
-            size: 50,
-          ),
+          _avatar(entry, size: 50),
 
           const SizedBox(width: 13),
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Flexible(
                       child: Text(
                         entry.name,
-                        overflow:
-                        TextOverflow
-                            .ellipsis,
-                        style:
-                        const TextStyle(
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           color: _text,
                           fontSize: 17,
-                          fontWeight:
-                          FontWeight
-                              .w900,
-                          fontFamily:
-                          'serif',
+                          fontWeight: FontWeight.w900,
+                          fontFamily: 'serif',
                         ),
                       ),
                     ),
 
-                    const SizedBox(
-                      width: 7,
-                    ),
+                    const SizedBox(width: 7),
 
                     Container(
-                      padding:
-                      const EdgeInsets
-                          .symmetric(
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 6,
                         vertical: 3,
                       ),
-                      decoration:
-                      BoxDecoration(
+                      decoration: BoxDecoration(
                         color: _blue,
-                        borderRadius:
-                        BorderRadius
-                            .circular(
-                          4,
-                        ),
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                      child:
-                      const Text(
+                      child: const Text(
                         'YOU',
-                        style:
-                        TextStyle(
-                          color:
-                          Colors.white,
+                        style: TextStyle(
+                          color: Colors.white,
                           fontSize: 7,
-                          fontWeight:
-                          FontWeight
-                              .w900,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                     ),
                   ],
                 ),
 
-                const SizedBox(
-                  height: 5,
-                ),
+                const SizedBox(height: 5),
 
                 Text(
                   'CURRENT RANK: #${entry.rank}',
-                  style:
-                  const TextStyle(
-                    color:
-                    Color(
-                      0xFF475569,
-                    ),
+                  style: const TextStyle(
+                    color: Color(0xFF475569),
                     fontSize: 9,
-                    fontWeight:
-                    FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: 0.6,
                   ),
                 ),
@@ -1122,29 +875,23 @@ class _LeaderboardScreenState
           ),
 
           Column(
-            crossAxisAlignment:
-            CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${entry.explorationPoints} EP',
-                style:
-                const TextStyle(
+                '${entry.explorationPoints}',
+                style: const TextStyle(
                   color: _blue,
                   fontSize: 18,
-                  fontWeight:
-                  FontWeight.w900,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(
-                height: 4,
-              ),
+              const SizedBox(height: 4),
               const Text(
-                'TOTAL POINTS',
+                'TODAY’S PUZZLE SCORE',
                 style: TextStyle(
                   color: _muted,
                   fontSize: 8,
-                  fontWeight:
-                  FontWeight.w800,
+                  fontWeight: FontWeight.w800,
                   letterSpacing: 1.1,
                 ),
               ),
@@ -1162,35 +909,19 @@ class _LeaderboardScreenState
   Widget _buildRankingTable() {
     if (_entries.isEmpty) {
       return Container(
-        padding:
-        const EdgeInsets.all(
-          30,
-        ),
+        padding: const EdgeInsets.all(30),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius:
-          BorderRadius.circular(
-            16,
-          ),
-          border: Border.all(
-            color: _border,
-          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _border),
         ),
         child: const Column(
           children: [
-            Icon(
-              Icons
-                  .leaderboard_outlined,
-              color: _blue,
-              size: 44,
-            ),
+            Icon(Icons.leaderboard_outlined, color: _blue, size: 44),
             SizedBox(height: 12),
             Text(
               'No leaderboard users found.',
-              style: TextStyle(
-                color: _muted,
-                fontSize: 13,
-              ),
+              style: TextStyle(color: _muted, fontSize: 13),
             ),
           ],
         ),
@@ -1200,28 +931,15 @@ class _LeaderboardScreenState
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-        BorderRadius.circular(
-          16,
-        ),
-        border: Border.all(
-          color: _border,
-        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _border),
       ),
-      clipBehavior:
-      Clip.antiAlias,
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           Container(
-            padding:
-            const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 13,
-            ),
-            color:
-            const Color(
-              0xFFFAFCFE,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            color: const Color(0xFFFAFCFE),
             child: const Row(
               children: [
                 Expanded(
@@ -1230,19 +948,17 @@ class _LeaderboardScreenState
                     style: TextStyle(
                       color: _muted,
                       fontSize: 9,
-                      fontWeight:
-                      FontWeight.w900,
+                      fontWeight: FontWeight.w900,
                       letterSpacing: 1.2,
                     ),
                   ),
                 ),
                 Text(
-                  'EXPLORATION POINTS',
+                  'PUZZLE SCORE',
                   style: TextStyle(
                     color: _muted,
                     fontSize: 9,
-                    fontWeight:
-                    FontWeight.w900,
+                    fontWeight: FontWeight.w900,
                     letterSpacing: 1.2,
                   ),
                 ),
@@ -1250,70 +966,37 @@ class _LeaderboardScreenState
             ),
           ),
 
-          for (final entry
-          in _entries)
-            _rankingRow(entry),
+          for (final entry in _entries) _rankingRow(entry),
         ],
       ),
     );
   }
 
-  Widget _rankingRow(
-      LeaderboardEntry entry,
-      ) {
-    Color background =
-        Colors.white;
+  Widget _rankingRow(LeaderboardEntry entry) {
+    Color background = Colors.white;
 
     if (entry.rank <= 3) {
-      background =
-      const Color(
-        0xFFFFFAF4,
-      );
+      background = const Color(0xFFFFFAF4);
     }
 
     if (entry.isCurrentUser) {
-      background =
-      const Color(
-        0xFFF0F9FF,
-      );
+      background = const Color(0xFFF0F9FF);
     }
 
     return Container(
       decoration: BoxDecoration(
         color: background,
         border: Border(
-          top: const BorderSide(
-            color:
-            Color(
-              0xFFF1F5F9,
-            ),
-          ),
-          left:
-          entry.isCurrentUser
-              ? const BorderSide(
-            color: _blue,
-            width: 4,
-          )
+          top: const BorderSide(color: Color(0xFFF1F5F9)),
+          left: entry.isCurrentUser
+              ? const BorderSide(color: _blue, width: 4)
               : BorderSide.none,
         ),
       ),
-      padding:
-      EdgeInsets.fromLTRB(
-        entry.isCurrentUser
-            ? 12
-            : 16,
-        14,
-        16,
-        14,
-      ),
+      padding: EdgeInsets.fromLTRB(entry.isCurrentUser ? 12 : 16, 14, 16, 14),
       child: Row(
         children: [
-          SizedBox(
-            width: 34,
-            child: _rankWidget(
-              entry.rank,
-            ),
-          ),
+          SizedBox(width: 34, child: _rankWidget(entry.rank)),
 
           const SizedBox(width: 8),
 
@@ -1323,9 +1006,7 @@ class _LeaderboardScreenState
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
@@ -1334,54 +1015,33 @@ class _LeaderboardScreenState
                         entry.isCurrentUser
                             ? '${entry.name} (You)'
                             : entry.name,
-                        overflow:
-                        TextOverflow
-                            .ellipsis,
-                        style:
-                        const TextStyle(
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           color: _text,
                           fontSize: 15,
-                          fontWeight:
-                          FontWeight
-                              .w900,
-                          fontFamily:
-                          'serif',
+                          fontWeight: FontWeight.w900,
+                          fontFamily: 'serif',
                         ),
                       ),
                     ),
 
-                    if (entry
-                        .isCurrentUser) ...[
-                      const SizedBox(
-                        width: 6,
-                      ),
+                    if (entry.isCurrentUser) ...[
+                      const SizedBox(width: 6),
                       Container(
-                        padding:
-                        const EdgeInsets
-                            .symmetric(
+                        padding: const EdgeInsets.symmetric(
                           horizontal: 5,
                           vertical: 2,
                         ),
-                        decoration:
-                        BoxDecoration(
+                        decoration: BoxDecoration(
                           color: _blue,
-                          borderRadius:
-                          BorderRadius
-                              .circular(
-                            3,
-                          ),
+                          borderRadius: BorderRadius.circular(3),
                         ),
-                        child:
-                        const Text(
+                        child: const Text(
                           'YOU',
-                          style:
-                          TextStyle(
-                            color:
-                            Colors.white,
+                          style: TextStyle(
+                            color: Colors.white,
                             fontSize: 6,
-                            fontWeight:
-                            FontWeight
-                                .w900,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
@@ -1389,16 +1049,11 @@ class _LeaderboardScreenState
                   ],
                 ),
 
-                const SizedBox(
-                  height: 4,
-                ),
+                const SizedBox(height: 4),
 
                 Text(
-                  _explorerTitle(
-                    entry.explorationPoints,
-                  ),
-                  style:
-                  const TextStyle(
+                  '${entry.challengeCount} of 5 scoring challenges',
+                  style: const TextStyle(
                     color: _muted,
                     fontSize: 9,
                     letterSpacing: 0.4,
@@ -1411,13 +1066,11 @@ class _LeaderboardScreenState
           const SizedBox(width: 8),
 
           Text(
-            '${entry.explorationPoints} EP',
-            style:
-            const TextStyle(
+            '${entry.explorationPoints}',
+            style: const TextStyle(
               color: _blue,
               fontSize: 14,
-              fontWeight:
-              FontWeight.w900,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -1425,83 +1078,38 @@ class _LeaderboardScreenState
     );
   }
 
-  String _explorerTitle(
-      int points,
-      ) {
-    if (points >= 2000) {
-      return 'Legendary Explorer';
-    }
-
-    if (points >= 1500) {
-      return 'Elite Explorer';
-    }
-
-    if (points >= 1200) {
-      return 'Master Explorer';
-    }
-
-    if (points >= 800) {
-      return 'Seasoned Explorer';
-    }
-
-    if (points >= 500) {
-      return 'Active Explorer';
-    }
-
-    if (points >= 300) {
-      return 'Explorer Apprentice';
-    }
-
-    if (points >= 150) {
-      return 'Rising Explorer';
-    }
-
-    return 'New Explorer';
-  }
-
-  Widget _rankWidget(
-      int rank,
-      ) {
+  Widget _rankWidget(int rank) {
     if (rank == 1) {
       return const Text(
         '🥇',
-        textAlign:
-        TextAlign.center,
-        style:
-        TextStyle(fontSize: 24),
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 24),
       );
     }
 
     if (rank == 2) {
       return const Text(
         '🥈',
-        textAlign:
-        TextAlign.center,
-        style:
-        TextStyle(fontSize: 24),
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 24),
       );
     }
 
     if (rank == 3) {
       return const Text(
         '🥉',
-        textAlign:
-        TextAlign.center,
-        style:
-        TextStyle(fontSize: 24),
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 24),
       );
     }
 
     return Text(
       '#$rank',
-      textAlign:
-      TextAlign.center,
+      textAlign: TextAlign.center,
       style: const TextStyle(
-        color:
-        Color(0xFF94A3B8),
+        color: Color(0xFF94A3B8),
         fontSize: 13,
-        fontWeight:
-        FontWeight.w700,
+        fontWeight: FontWeight.w700,
       ),
     );
   }
@@ -1510,84 +1118,50 @@ class _LeaderboardScreenState
   // PROFILE AVATAR
   // ============================================================
 
-  Widget _avatar(
-      LeaderboardEntry entry, {
-        double size = 42,
-      }) {
-    final String? imageUrl =
-    entry.profilePictureUrl
-        ?.trim();
+  Widget _avatar(LeaderboardEntry entry, {double size = 42}) {
+    final String? imageUrl = entry.profilePictureUrl?.trim();
 
-    final ImageProvider? provider =
-    imageUrl != null &&
-        imageUrl.isNotEmpty
+    final ImageProvider? provider = imageUrl != null && imageUrl.isNotEmpty
         ? NetworkImage(imageUrl)
         : null;
 
     return Container(
       width: size,
       height: size,
-      padding:
-      const EdgeInsets.all(2),
+      padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: entry.isCurrentUser
-            ? _blue
-            : const Color(
-          0xFFE2E8F0,
-        ),
+        color: entry.isCurrentUser ? _blue : const Color(0xFFE2E8F0),
       ),
       child: CircleAvatar(
-        backgroundColor:
-        const Color(
-          0xFFE0F2FE,
-        ),
+        backgroundColor: const Color(0xFFE0F2FE),
         backgroundImage: provider,
         child: provider == null
             ? Text(
-          _initials(
-            entry.name,
-          ),
-          style: TextStyle(
-            color: _blue,
-            fontSize:
-            size * 0.27,
-            fontWeight:
-            FontWeight.w900,
-          ),
-        )
+                _initials(entry.name),
+                style: TextStyle(
+                  color: _blue,
+                  fontSize: size * 0.27,
+                  fontWeight: FontWeight.w900,
+                ),
+              )
             : null,
       ),
     );
   }
 
-  String _initials(
-      String name,
-      ) {
-    final List<String> parts =
-    name
+  String _initials(String name) {
+    final List<String> parts = name
         .trim()
-        .split(
-      RegExp(r'\s+'),
-    )
-        .where(
-          (part) =>
-      part.isNotEmpty,
-    )
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
         .toList();
 
     if (parts.isEmpty) {
       return '?';
     }
 
-    return parts
-        .take(2)
-        .map(
-          (part) =>
-          part[0]
-              .toUpperCase(),
-    )
-        .join();
+    return parts.take(2).map((part) => part[0].toUpperCase()).join();
   }
 
   // ============================================================
@@ -1597,9 +1171,7 @@ class _LeaderboardScreenState
 
   Widget _buildHomeButton() {
     return Padding(
-      padding: const EdgeInsets.only(
-        top: 10,
-      ),
+      padding: const EdgeInsets.only(top: 10),
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: () {
@@ -1611,17 +1183,11 @@ class _LeaderboardScreenState
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: const LinearGradient(
-              colors: [
-                _blue,
-                _teal,
-              ],
+              colors: [_blue, _teal],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            border: Border.all(
-              color: Colors.white,
-              width: 4,
-            ),
+            border: Border.all(color: Colors.white, width: 4),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x3D0284C7),
@@ -1631,14 +1197,9 @@ class _LeaderboardScreenState
             ],
           ),
           child: const Column(
-            mainAxisAlignment:
-            MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.home_rounded,
-                color: Color(0xFFFDE68A),
-                size: 27,
-              ),
+              Icon(Icons.home_rounded, color: Color(0xFFFDE68A), size: 27),
               Text(
                 'HOME',
                 style: TextStyle(
@@ -1666,9 +1227,7 @@ class _LeaderboardScreenState
       padding: EdgeInsets.zero,
       color: Colors.white.withOpacity(0.98),
       elevation: 18,
-      shadowColor: const Color(
-        0x330284C7,
-      ),
+      shadowColor: const Color(0x330284C7),
       shape: const CircularNotchedRectangle(),
       notchMargin: 8,
       child: SafeArea(
@@ -1677,56 +1236,42 @@ class _LeaderboardScreenState
           children: [
             Expanded(
               child: _LeaderboardBottomItem(
-                icon:
-                Icons.inventory_2_outlined,
+                icon: Icons.inventory_2_outlined,
                 label: 'BLIND BOX',
                 onTap: () {
-                  _showNavigationMessage(
-                    'Blind Box',
-                  );
+                  _showNavigationMessage('Blind Box');
                 },
               ),
             ),
 
             Expanded(
               child: _LeaderboardBottomItem(
-                icon:
-                Icons.assignment_outlined,
+                icon: Icons.assignment_outlined,
                 label: 'MISSIONS',
                 onTap: () {
-                  _showNavigationMessage(
-                    'Missions',
-                  );
+                  _showNavigationMessage('Missions');
                 },
               ),
             ),
 
-            const SizedBox(
-              width: 74,
-            ),
+            const SizedBox(width: 74),
 
             Expanded(
               child: _LeaderboardBottomItem(
-                icon:
-                Icons.map_outlined,
+                icon: Icons.map_outlined,
                 label: 'PLAN',
                 onTap: () {
-                  _showNavigationMessage(
-                    'Plan',
-                  );
+                  _showNavigationMessage('Plan');
                 },
               ),
             ),
 
             Expanded(
               child: _LeaderboardBottomItem(
-                icon:
-                Icons.groups_2_outlined,
+                icon: Icons.groups_2_outlined,
                 label: 'TEAMS',
                 onTap: () {
-                  _showNavigationMessage(
-                    'Teams',
-                  );
+                  _showNavigationMessage('Teams');
                 },
               ),
             ),
@@ -1736,25 +1281,17 @@ class _LeaderboardScreenState
     );
   }
 
-  void _showNavigationMessage(
-      String feature,
-      ) {
+  void _showNavigationMessage(String feature) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
-            '$feature is not connected yet.',
-          ),
-          duration: const Duration(
-            milliseconds: 900,
-          ),
-          behavior:
-          SnackBarBehavior.floating,
+          content: Text('$feature is not connected yet.'),
+          duration: const Duration(milliseconds: 900),
+          behavior: SnackBarBehavior.floating,
         ),
       );
   }
-
 }
 
 // ============================================================
@@ -1767,6 +1304,7 @@ class LeaderboardEntry {
     required this.userId,
     required this.name,
     required this.explorationPoints,
+    required this.challengeCount,
     required this.profilePictureUrl,
     required this.isCurrentUser,
   });
@@ -1775,6 +1313,7 @@ class LeaderboardEntry {
   final String userId;
   final String name;
   final int explorationPoints;
+  final int challengeCount;
   final String? profilePictureUrl;
   final bool isCurrentUser;
 }
@@ -1784,8 +1323,7 @@ class LeaderboardEntry {
 // Same visual style as HomeScreen
 // ============================================================
 
-class _LeaderboardBottomItem
-    extends StatelessWidget {
+class _LeaderboardBottomItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
@@ -1797,57 +1335,33 @@ class _LeaderboardBottomItem
   });
 
   @override
-  Widget build(
-      BuildContext context,
-      ) {
-    const Color blue = Color(
-      0xFF0284C7,
-    );
-
+  Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.only(
-          top: 10,
-          bottom: 4,
-        ),
+        padding: const EdgeInsets.only(top: 10, bottom: 4),
         child: Column(
-          mainAxisAlignment:
-          MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               width: 42,
               height: 29,
               decoration: BoxDecoration(
                 color: Colors.transparent,
-                borderRadius:
-                BorderRadius.circular(
-                  12,
-                ),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                icon,
-                size: 21,
-                color: const Color(
-                  0xFF64748B,
-                ),
-              ),
+              child: Icon(icon, size: 21, color: const Color(0xFF64748B)),
             ),
-            const SizedBox(
-              height: 3,
-            ),
+            const SizedBox(height: 3),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 label,
                 maxLines: 1,
                 style: const TextStyle(
-                  color: Color(
-                    0xFF64748B,
-                  ),
+                  color: Color(0xFF64748B),
                   fontSize: 8,
-                  fontWeight:
-                  FontWeight.w800,
+                  fontWeight: FontWeight.w800,
                   letterSpacing: 0.45,
                 ),
               ),
@@ -1863,8 +1377,7 @@ class _LeaderboardBottomItem
 // HEADER BUTTON
 // ============================================================
 
-class _HeaderActionButton
-    extends StatelessWidget {
+class _HeaderActionButton extends StatelessWidget {
   const _HeaderActionButton({
     required this.tooltip,
     required this.icon,
@@ -1878,30 +1391,18 @@ class _HeaderActionButton
   final Color foreground;
 
   @override
-  Widget build(
-      BuildContext context,
-      ) {
+  Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
       child: Container(
         width: 38,
         height: 38,
-        decoration:
-        BoxDecoration(
+        decoration: BoxDecoration(
           color: background,
           shape: BoxShape.circle,
-          border: Border.all(
-            color:
-            foreground.withOpacity(
-              0.20,
-            ),
-          ),
+          border: Border.all(color: foreground.withOpacity(0.20)),
         ),
-        child: Icon(
-          icon,
-          color: foreground,
-          size: 20,
-        ),
+        child: Icon(icon, color: foreground, size: 20),
       ),
     );
   }

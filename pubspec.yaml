@@ -17,6 +17,11 @@ dependencies:
   intl_phone_field: ^3.2.0
   intl_phone_number_input: ^0.7.5
 
+  google_maps_apis: ^5.1.0
+  flutter_polyline_points: ^2.0.0
+  pdf: ^3.10.4
+  printing: ^5.11.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -24,3 +29,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - env/dev.json

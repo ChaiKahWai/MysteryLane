@@ -1,0 +1,21 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const lines = path => readFileSync(new URL(path,import.meta.url),'utf8').trim().split(/\r?\n/);
+const rows = lines('../supabase/seeds/malaysia_general_mcq.txt').map(x=>x.split('|'));
+const hints = lines('../supabase/seeds/malaysia_general_hints.txt');
+assert.equal(hints.length,100);
+assert.equal(new Set(hints).size,100);
+const quote = s => "'"+s.replaceAll("'","''")+"'";
+const values = rows.map((r,i)=>{
+  const answer=r[1+'ABCD'.indexOf(r[5])];
+  const options=r.slice(1,5);
+  const alternative=options[(options.indexOf(answer)+1)%4];
+  const shortlist=[answer,alternative].sort();
+  const h2=`Narrow it down to these two choices: ${shortlist[0]} or ${shortlist[1]}.`;
+  const h3=`The correct answer is ${answer}. ${hints[i]}`;
+  assert.ok(hints[i].length>20);
+  assert.ok(h2.includes(answer));
+  return '('+[r[0],hints[i],h2,h3].map(quote).join(',')+')';
+});
+if(process.argv.includes('--sql')) console.log(`update public.puzzle_questions p set hint_1=v.h1,hint_2=v.h2,hint_3=v.h3 from(values ${values.join(',\n')}) v(q,h1,h2,h3) where p.destination_id is null and p.category='Malaysia General Knowledge' and p.puzzle_type='Multiple Choice Question' and p.question_text=v.q;`);
+else console.log('Passed: 100 individual clues, two-choice hints including the answer, and final answer explanations.');

@@ -1,0 +1,100 @@
+What is the capital city of Malaysia?|Ipoh|Kuala Lumpur|Kuching|Johor Bahru|B
+What is Malaysia’s national language?|Japanese|French|Malay|Korean|C
+What currency is used in Malaysia?|Ringgit|Baht|Rupiah|Peso|A
+What is Malaysia’s national flower?|Rose|Sunflower|Orchid|Hibiscus|D
+What is Malaysia’s national flag commonly called?|Sang Saka|Jalur Gemilang|Union Jack|Bintang Timur|B
+What is the title of Malaysia’s national anthem?|Malaysia Berjaya|Jalur Gemilang|Negaraku|Sejahtera Malaysia|C
+On which date is Malaysia’s National Day celebrated?|31 August|16 September|1 January|1 May|A
+On which date is Malaysia Day celebrated?|31 December|1 February|31 August|16 September|D
+How many states does Malaysia have?|10|13|15|18|B
+How many federal territories does Malaysia have?|2|4|3|5|C
+Which sea separates Peninsular Malaysia from East Malaysia?|Mediterranean Sea|Red Sea|Arabian Sea|South China Sea|D
+Sabah and Sarawak are located on which island?|Java|Borneo|Sumatra|Bali|B
+Which country shares a land border with the northern part of Peninsular Malaysia?|Thailand|Vietnam|Cambodia|Philippines|A
+Which island country lies directly south of Johor?|Sri Lanka|Japan|Singapore|Taiwan|C
+Which Malaysian state is the largest by land area?|Melaka|Perlis|Penang|Sarawak|D
+Which Malaysian state is the smallest by land area?|Kedah|Perlis|Pahang|Perak|B
+In which state is Mount Kinabalu located?|Sabah|Selangor|Negeri Sembilan|Kelantan|A
+Which Malaysian state is often called the “Land Below the Wind”?|Johor|Perak|Sabah|Melaka|C
+Which Malaysian state is famous for extensive paddy fields and is known as the country’s rice bowl?|Sarawak|Selangor|Pahang|Kedah|D
+Which strait lies along the western coast of Peninsular Malaysia?|Strait of Hormuz|Strait of Malacca|Bering Strait|Taiwan Strait|B
+George Town is the capital of which state?|Penang|Perak|Johor|Kedah|A
+Ipoh is the capital of which state?|Pahang|Sabah|Perak|Melaka|C
+Kuching is the capital of which state?|Selangor|Perlis|Terengganu|Sarawak|D
+Kota Kinabalu is the capital of which state?|Kelantan|Sabah|Negeri Sembilan|Penang|B
+Johor Bahru is the capital of which state?|Johor|Kedah|Perak|Sarawak|A
+Alor Setar is the capital of which state?|Melaka|Selangor|Kedah|Pahang|C
+Kangar is the capital of which state?|Sabah|Johor|Kelantan|Perlis|D
+Seremban is the capital of which state?|Terengganu|Negeri Sembilan|Sarawak|Penang|B
+Kuantan is the capital of which state?|Pahang|Perak|Kedah|Selangor|A
+Kota Bharu is the capital of which state?|Perlis|Melaka|Kelantan|Sabah|C
+In which city are the Petronas Twin Towers located?|Kuching|Ipoh|Johor Bahru|Kuala Lumpur|D
+Which Malaysian attraction is famous for a large staircase leading to limestone caves and Hindu temples?|Penang Hill|Batu Caves|Langkawi Sky Bridge|A Famosa|B
+In which state is the historic A Famosa gateway located?|Melaka|Sabah|Kedah|Perak|A
+Which destination is particularly well known for tea plantations and cool weather?|Port Dickson|Kuala Perlis|Cameron Highlands|Kuala Selangor|C
+Langkawi belongs to which Malaysian state?|Johor|Kelantan|Sarawak|Kedah|D
+Which Malaysian destination is famous for a curved pedestrian bridge high above a forested landscape?|Pangkor Island|Langkawi|Kuala Terengganu|Putrajaya|B
+In which state is Gunung Mulu National Park located?|Sarawak|Perlis|Selangor|Melaka|A
+Which Malaysian island is especially famous as a scuba-diving destination off Sabah?|Sentosa|Phuket|Sipadan|Jeju|C
+Which Malaysian city is known for Jonker Street?|Alor Setar|Kota Bharu|Shah Alam|Melaka City|D
+Which federal territory is Malaysia’s administrative centre?|Labuan|Putrajaya|Kuala Lumpur|George Town|B
+Which dish traditionally features rice cooked with coconut milk, sambal, anchovies and peanuts?|Nasi lemak|Chicken chop|Fish and chips|Spaghetti|A
+What is satay usually served on?|A banana stem|A metal tray only|Skewers|A bread roll|C
+Which sauce commonly accompanies Malaysian satay?|Tomato cream sauce|Cheese sauce|Vanilla sauce|Peanut sauce|D
+Which Malaysian drink gets its name from being “pulled” between containers?|Kopi O|Teh tarik|Barley water|Lime juice|B
+Roti canai is best described as what?|A flaky flatbread|A rice pudding|A noodle soup|A fruit salad|A
+What type of noodles is commonly used in char kway teow?|Spaghetti|Glass noodles only|Flat rice noodles|Udon noodles|C
+Which dish is a spicy noodle soup with several Malaysian regional variations?|Nasi impit|Satay|Roti bakar|Laksa|D
+Which fruit is commonly called the “king of fruits” in Malaysia?|Papaya|Durian|Watermelon|Pineapple|B
+Which fruit has a reddish skin covered with soft, hair-like spines?|Rambutan|Coconut|Banana|Mango|A
+What gives traditional pandan-flavoured desserts their distinctive aroma?|Coffee beans|Black pepper|Pandan leaves|Mustard seeds|C
+Which dessert commonly contains shaved ice, green jelly strands, coconut milk and palm sugar?|Cheesecake|Apple pie|Bread pudding|Cendol|D
+What is the main ingredient in pisang goreng?|Sweet potato|Banana|Pumpkin|Pineapple|B
+What is ketupat traditionally wrapped in?|Woven palm leaves|Aluminium cans|Bread dough|Paper cups|A
+Which ingredient commonly gives sambal its spicy heat?|Cucumber|Potato|Chilli|Coconut flesh|C
+Which dish is made by slowly cooking meat with spices and coconut milk?|Cendol|Rojak|Apam balik|Rendang|D
+What is gula Melaka commonly known as in English?|Rock salt|Palm sugar|Wheat flour|Corn starch|B
+Which Malaysian snack is a folded pancake commonly filled with peanuts, sugar and corn?|Apam balik|Keropok lekor|Otak-otak|Popiah|A
+Keropok lekor is strongly associated with which Malaysian state?|Perlis|Selangor|Terengganu|Negeri Sembilan|C
+What is kaya, commonly spread on toast?|A chilli paste|A fish sauce|A peanut powder|A coconut-and-egg jam|D
+Which dish commonly combines mixed ingredients with a sweet, spicy dressing?|Plain porridge|Rojak|Roti kosong|Nasi putih|B
+Batik is a traditional method of decorating what?|Fabric|Metal pipes|Glass bottles|Stone walls|A
+What is a wau?|A drum|A cooking pot|A traditional kite|A fishing boat|C
+What is a gasing?|A woven basket|A bamboo flute|A wooden mask|A spinning top|D
+Congkak is traditionally played using a board with what?|A single painted circle|Rows of small hollows|A football net|A set of strings|B
+A kompang belongs to which group of musical instruments?|Percussion|Strings|Brass|Keyboards|A
+A sape is a traditional string instrument associated particularly with which region?|Northern Europe|Central Asia|Borneo|South America|C
+What is songket?|A type of soup|A traditional boat|A wooden toy|Fabric woven with decorative metallic threads|D
+Which traditional performance uses puppets and light to create shadows?|Dikir barat|Wayang kulit|Silat|Joget|B
+Silat is best described as what?|A martial art|A weaving technique|A rice dish|A musical instrument|A
+Which traditional Malay outfit usually consists of a long blouse worn with a matching skirt or sarong?|Kimono|Hanbok|Baju kurung|Toga|C
+Hari Raya Aidilfitri marks the end of which Islamic month of fasting?|Muharram|Safar|Rejab|Ramadan|D
+Which festival is widely known as the Festival of Lights?|Gawai|Deepavali|Kaamatan|Wesak|B
+Which celebration commonly features lion dances and red packets?|Chinese New Year|National Day|Labour Day|Malaysia Day|A
+Gawai Dayak is particularly associated with which Malaysian state?|Perlis|Melaka|Sarawak|Selangor|C
+Kaamatan is a harvest celebration particularly associated with which Malaysian state?|Johor|Penang|Negeri Sembilan|Sabah|D
+Which religious community celebrates Wesak Day?|Muslims|Buddhists|Christians|Sikhs|B
+What does the Malaysian custom of an “open house” usually involve?|Welcoming guests to share food during a celebration|Selling a house by auction|Leaving every door unlocked overnight|Closing a neighbourhood to visitors|A
+What should visitors generally do before entering a Malaysian home when the host follows the usual local custom?|Wear a hat|Clap three times|Remove their shoes|Bring their own chair|C
+What is an ang pow?|A traditional kite|A flower garland|A wooden drum|A red packet containing money|D
+Which festival is associated with the kavadi procession at Batu Caves?|Christmas|Thaipusam|Gawai|Kaamatan|B
+Which great ape can be found in the rainforests of Malaysian Borneo?|Orangutan|Gorilla|Chimpanzee|Bonobo|A
+Which animal is recognised by its long nose and is native to Borneo?|Snow monkey|Lemur|Proboscis monkey|Baboon|C
+Which bird is well known for its large bill and, in many species, a casque above the bill?|Sparrow|Pigeon|Swallow|Hornbill|D
+Which Malaysian mammal has a distinctive black-and-white body pattern and a short, flexible snout?|Sambar deer|Malayan tapir|Sun bear|Leopard|B
+Which animal is the smallest living bear species and occurs in Malaysia?|Sun bear|Polar bear|Brown bear|American black bear|A
+What type of climate does Malaysia generally have?|Polar|Desert|Tropical|Mediterranean|C
+Mangrove forests are commonly found in which environment?|Snow-covered mountains|Dry inland deserts|Alpine meadows|Sheltered coastal and tidal areas|D
+Which marine animals come ashore on some Malaysian beaches to lay eggs?|Dolphins|Sea turtles|Sharks|Stingrays|B
+What is Rafflesia particularly famous for?|Its enormous flowers|Its edible wooden trunk|Its blue fruit|Its needle-like leaves|A
+Which activity helps protect coral reefs while snorkelling?|Standing on coral|Collecting coral pieces|Avoiding touching or stepping on coral|Feeding fish with plastic wrappers|C
+In which year did the Federation of Malaya gain independence?|1945|1963|1970|1957|D
+In which year was Malaysia formed?|1950|1963|1957|1980|B
+Who is widely known as Malaysia’s Father of Independence?|Tunku Abdul Rahman|P. Ramlee|Hang Tuah|Tun Perak|A
+What does the Malay word “merdeka” mean?|Welcome|Together|Independent or free|Thank you|C
+On which side of the road do vehicles normally travel in Malaysia?|The right side|Either side|The centre|The left side|D
+What does “terima kasih” mean in English?|Good night|Thank you|Excuse me|Welcome|B
+What does “selamat pagi” mean in English?|Good morning|Good evening|Goodbye|Please sit down|A
+What is a pasar malam?|A railway station|A mountain trail|A night market|A public library|C
+Which sport uses a shuttlecock?|Football|Basketball|Hockey|Badminton|D
+In sepak takraw, players mainly use which body parts to send the ball over the net?|Hands and arms|Feet, knees, chest and head|Hands only|Elbows only|B

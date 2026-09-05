@@ -1451,6 +1451,13 @@ Column(
 crossAxisAlignment:
 CrossAxisAlignment.stretch,
 children: [
+_buildProfileBackButton(),
+
+const SizedBox(
+height:
+18,
+),
+
 _buildProfileHeader(),
 
 const SizedBox(
@@ -1514,6 +1521,26 @@ _buildBottomBar(),
 // ============================================================
 // PROFILE HEADER
 // ============================================================
+
+Widget _buildProfileBackButton() {
+return Align(
+alignment: Alignment.centerLeft,
+child: OutlinedButton.icon(
+onPressed: () => Navigator.of(context).maybePop(),
+icon: const Icon(Icons.arrow_back_rounded, size: 20),
+label: const Text('Back'),
+style: OutlinedButton.styleFrom(
+foregroundColor: darkText,
+backgroundColor: Colors.white,
+padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+side: const BorderSide(color: borderColor),
+shape: RoundedRectangleBorder(
+borderRadius: BorderRadius.circular(16),
+),
+),
+),
+);
+}
 
 Widget _buildProfileHeader() {
 return Column(

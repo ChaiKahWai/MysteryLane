@@ -7,6 +7,7 @@ import '../profile/profile_screen.dart';
 import '../profile/leaderboard_screen.dart';
 import '../group/group_screen.dart';
 import '../group/chat_list_screen.dart';
+import '../plan/plan_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -132,6 +133,16 @@ class _HomeScreenState extends State<HomeScreen> {
     ).then((_) {
       if (!mounted) return;
       setState(() => _selectedItem = 'Home');
+    });
+  }
+
+  void _openPlanScreen() {
+    setState(() => _selectedItem = 'Plan');
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PlanScreen()),
+    ).then((_) {
+      if (mounted) setState(() => _selectedItem = 'Home');
     });
   }
 
@@ -588,7 +599,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.map_outlined,
                 label: 'PLAN',
                 active: _selectedItem == 'Plan',
-                onTap: () => _showPressedMessage('Plan'),
+                onTap: _openPlanScreen,
               ),
             ),
             Expanded(
