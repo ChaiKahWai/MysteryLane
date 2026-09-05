@@ -167,7 +167,7 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
         'team_status': null,
       });
 
-      await SupabaseConfig.client.auth.signOut();
+        await SupabaseConfig.client.auth.signOut();
 
       if (!mounted) {
         return;
