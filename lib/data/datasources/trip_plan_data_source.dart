@@ -14,7 +14,7 @@ class TripPlanDataSource {
 
     final planRows = await _client
         .from('trip_plans')
-        .select('trip_id, trip_name, start_date, end_date, route_status')
+        .select('trip_id, trip_name, start_date, end_date, route_status, estimated_travel_minutes')
         .eq('user_id', user.id)
         .order('created_at', ascending: false);
 
@@ -70,6 +70,7 @@ class TripPlanDataSource {
         visibility: 'private',
         inviteCode: null,
         routeAccepted: planRow['route_status'] == 'ACCEPTED' || planRow['route_status'] == 'GENERATED',
+        estimatedTravelMinutes: planRow['estimated_travel_minutes'], // <--- ADDED THIS
         stops: stops,
       ));
     }
@@ -85,21 +86,42 @@ class TripPlanDataSource {
     final user = _client.auth.currentUser;
     if (user == null) throw const TripPlanDataException('Please log in first.');
 
-    final planRow = await _client
-        .from('trip_plans')
-        .insert({
+    // Create the base data map (without the ID first, to handle new vs. existing plans)
+    Map<String, dynamic> planData = {
       'user_id': user.id,
       'trip_name': plan.name,
       'start_date': _date(plan.startDate),
       'end_date': _date(plan.endDate),
       'route_status': plan.routeAccepted ? 'ACCEPTED' : 'NOT_PLANNED',
+      'estimated_travel_minutes': plan.estimatedTravelMinutes,
       'status': 'ACTIVE',
-    })
-        .select()
-        .single();
+    };
+
+    dynamic planRow;
+
+    // 1. If the plan is NEW (ID is empty), use insert() and let Supabase generate the UUID
+    if (plan.id.isEmpty) {
+      planRow = await _client
+          .from('trip_plans')
+          .insert(planData)
+          .select()
+          .single();
+    }
+    // 2. If the plan EXISTS (ID is valid), use upsert() to update it
+    else {
+      planData['trip_id'] = plan.id; // Add the valid ID
+      planRow = await _client
+          .from('trip_plans')
+          .upsert(planData, onConflict: 'trip_id')
+          .select()
+          .single();
+    }
 
     final planId = planRow['trip_id'] as String;
+
     if (plan.stops.isNotEmpty) {
+      // ⚠️ REMOVED the delete().eq('trip_id', planId) line entirely!
+
       final rows = <Map<String, dynamic>>[];
       for (final stop in plan.stops) {
         var destination = await _client
@@ -111,13 +133,13 @@ class TripPlanDataSource {
         destination ??= await _client
             .from('blind_box_destinations')
             .insert({
-              'google_place_id': stop.placeId,
-              'name': stop.name,
-              'address': stop.address,
-              'latitude': stop.latitude,
-              'longitude': stop.longitude,
-              'destination_source': 'GOOGLE',
-            })
+          'google_place_id': stop.placeId,
+          'name': stop.name,
+          'address': stop.address,
+          'latitude': stop.latitude,
+          'longitude': stop.longitude,
+          'destination_source': 'GOOGLE',
+        })
             .select('destination_id')
             .single();
 
@@ -129,9 +151,16 @@ class TripPlanDataSource {
           'source': 'SEARCH',
         });
       }
-      await _client.from('trip_plan_destinations').insert(rows);
-      print('✅ Inserted ${rows.length} destinations for plan $planId');
+
+      // ⚠️ REPLACED insert with upsert using the composite key!
+      await _client.from('trip_plan_destinations').upsert(
+          rows,
+          onConflict: 'trip_id,destination_id'
+      );
+      print('✅ Upserted ${rows.length} destinations for plan $planId');
     }
+
+    // RETURN: Make sure estimatedTravelMinutes is passed back!
     return TripPlan(
       id: planId,
       name: plan.name,
@@ -141,6 +170,7 @@ class TripPlanDataSource {
       visibility: plan.visibility,
       inviteCode: plan.inviteCode,
       routeAccepted: plan.routeAccepted,
+      estimatedTravelMinutes: plan.estimatedTravelMinutes, // <--- ADDED THIS
       stops: plan.stops,
     );
   }
