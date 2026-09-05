@@ -5,7 +5,6 @@ import '../../data/datasources/location_data_source.dart';
 import '../../data/datasources/supabase_datasource.dart';
 import '../../data/models/blind_box_history.dart';
 import '../../data/models/place_candidate.dart';
-import '../models/blind_box_history.dart';
 
 class BlindBoxService {
   static const double minRadiusKm = 5;
