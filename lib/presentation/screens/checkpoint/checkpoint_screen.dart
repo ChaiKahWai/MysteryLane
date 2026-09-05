@@ -4,10 +4,12 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../data/models/checkpoint_destination.dart';
 import '../../../data/models/checkpoint_mission.dart';
+import '../../../data/datasources/supabase_datasource.dart';
 import '../../../data/repositories/checkpoint_repository.dart';
 
 import '../Blindbox/BlindBox_Screen.dart';
 import '../home/home_screen.dart';
+import '../puzzle/puzzle_screen.dart';
 
 import 'checkpoint_mission_screen.dart';
 
@@ -39,6 +41,7 @@ class CheckpointScreen extends StatefulWidget {
 }
 
 class _CheckpointScreenState extends State<CheckpointScreen> {
+  final SupabaseDataSource _supabaseDataSource = SupabaseDataSource();
   // ============================================================
   // CONSTANTS
   // ============================================================
@@ -658,9 +661,9 @@ class _CheckpointScreenState extends State<CheckpointScreen> {
   // THIS IS THE ONLY PUZZLE CONNECTION INSIDE YOUR MODULE.
   // ============================================================
 
-  void _openPuzzle(
+  Future<void> _openPuzzle(
       CheckpointDestination destination,
-      ) {
+      ) async {
     // ----------------------------------------------------------
     // DEBUG SO YOU CAN CONFIRM CORRECT LOCATION IS PASSED
     // ----------------------------------------------------------
@@ -714,15 +717,34 @@ class _CheckpointScreenState extends State<CheckpointScreen> {
       return;
     }
 
-    // ----------------------------------------------------------
-    // TEMPORARY TEST
-    //
-    // Since puzzle module is not connected yet,
-    // show the exact location being handed over.
-    // ----------------------------------------------------------
+    try {
+      await _supabaseDataSource.savePuzzleLocation(
+        destinationId: destination.destinationId,
+        locationSource: 'CHECKPOINT',
+      );
+    } catch (error) {
+      debugPrint('SAVE CHECKPOINT PUZZLE LOCATION ERROR: $error');
+      if (mounted) {
+        _showMessage('Unable to save this puzzle location. Please try again.');
+      }
+      return;
+    }
 
-    _showPuzzleLocationReady(
-      destination,
+    if (!mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PuzzleScreen(
+          initialLocationSource: PuzzleLocationSource.checkpoint,
+          mission: MissionCheckpoint(
+            id: destination.destinationId,
+            title: destination.name,
+            imageUrl: destination.imageUrl,
+            locationName: destination.address,
+            category: destination.category ?? 'Checkpoint',
+          ),
+        ),
+      ),
     );
   }
 
@@ -1356,20 +1378,10 @@ class _CheckpointScreenState extends State<CheckpointScreen> {
 
                           onTap:
                               () {
-                            final destination =
-                                _selectedDestination;
-
-                            if (destination ==
-                                null) {
-                              _showMessage(
-                                'Select a checkpoint pin first.',
-                              );
-
-                              return;
-                            }
-
-                            _openPuzzle(
-                              destination,
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const PuzzleScreen(),
+                              ),
                             );
                           },
 

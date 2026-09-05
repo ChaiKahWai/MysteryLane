@@ -353,7 +353,9 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   late PuzzleLocationSource _locationSource;
   bool _isLoadingBlindBoxLocations = false;
   final List<MissionCheckpoint> _blindBoxLocations = [];
+  final List<MissionCheckpoint> _savedCheckpointLocations = [];
   int _selectedBlindBoxIndex = 0;
+  int? _selectedSavedCheckpointIndex;
   final SupabaseDataSource _supabaseDataSource = SupabaseDataSource();
   final Random _random = Random();
   CategoryQuestion? _currentResolvedQuestion;
@@ -369,6 +371,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     _userEp = widget.userEp;
     _locationSource = widget.initialLocationSource;
     _loadBlindBoxLocations();
+    _loadSavedCheckpointLocations();
     _loadPuzzleHistory();
     _loadHeaderProfile();
 
@@ -405,10 +408,22 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   bool get _hasBlindBoxLocations => _blindBoxLocations.isNotEmpty;
 
   bool get _hasCheckpointLocation =>
+      _activeCheckpointMission != null;
+
+  bool get _hasCurrentCheckpoint =>
       widget.mission != null && widget.mission!.title.trim().isNotEmpty;
 
-  bool get _isRandomPuzzleMode =>
-      !_hasBlindBoxLocations;
+  MissionCheckpoint? get _activeCheckpointMission {
+    final savedIndex = _selectedSavedCheckpointIndex;
+    if (savedIndex != null &&
+        savedIndex >= 0 &&
+        savedIndex < _savedCheckpointLocations.length) {
+      return _savedCheckpointLocations[savedIndex];
+    }
+    return _hasCurrentCheckpoint ? widget.mission : null;
+  }
+
+  bool get _isRandomPuzzleMode => _activeLocationMission == null;
 
   bool get _showBlindBoxFilterContent =>
       _locationSource == PuzzleLocationSource.blindBox && _hasBlindBoxLocations;
@@ -417,11 +432,9 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       _locationSource == PuzzleLocationSource.checkpoint &&
       _hasCheckpointLocation;
 
-  MissionCheckpoint? get _checkpointMission => widget.mission;
+  MissionCheckpoint? get _checkpointMission => _activeCheckpointMission;
 
   MissionCheckpoint? get _activeLocationMission {
-    if (_isRandomPuzzleMode) return null;
-
     if (_locationSource == PuzzleLocationSource.blindBox) {
       if (_blindBoxLocations.isEmpty) return null;
       final safeIndex = _selectedBlindBoxIndex.clamp(
@@ -504,20 +517,18 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   }
 
   void _syncLocationFilterAfterLoad() {
-    if (_isRandomPuzzleMode) return;
-
-    if (_hasBlindBoxLocations && !_hasCheckpointLocation) {
+    if (_hasBlindBoxLocations && !_hasCurrentCheckpoint) {
       _locationSource = PuzzleLocationSource.blindBox;
       _selectedBlindBoxIndex = 0;
       return;
     }
 
-    if (_hasCheckpointLocation && !_hasBlindBoxLocations) {
+    if (_hasCurrentCheckpoint && !_hasBlindBoxLocations) {
       _locationSource = PuzzleLocationSource.checkpoint;
       return;
     }
 
-    if (_hasBlindBoxLocations && _hasCheckpointLocation) {
+    if (_hasBlindBoxLocations && _hasCurrentCheckpoint) {
       if (widget.initialLocationSource == PuzzleLocationSource.checkpoint) {
         _locationSource = PuzzleLocationSource.checkpoint;
       } else {
@@ -580,6 +591,40 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       if (mounted) {
         setState(() => _isLoadingBlindBoxLocations = false);
       }
+    }
+  }
+
+  Future<void> _loadSavedCheckpointLocations() async {
+    try {
+      final rows = await _supabaseDataSource.getSavedPuzzleLocations(
+        locationSource: 'CHECKPOINT',
+      );
+      final currentId = widget.mission?.id;
+      final built = <MissionCheckpoint>[];
+      for (final row in rows) {
+        final raw = row['blind_box_destinations'];
+        if (raw is! Map) continue;
+        final destination = Map<String, dynamic>.from(raw);
+        final id = destination['destination_id']?.toString();
+        if (id == null || id.isEmpty || id == currentId) continue;
+        built.add(
+          MissionCheckpoint(
+            id: id,
+            title: destination['name']?.toString() ?? 'Checkpoint location',
+            imageUrl: destination['image_url']?.toString(),
+            locationName: destination['address']?.toString(),
+            category: destination['category']?.toString() ?? 'Checkpoint',
+          ),
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _savedCheckpointLocations
+          ..clear()
+          ..addAll(built);
+      });
+    } catch (error) {
+      debugPrint('LOAD SAVED CHECKPOINT LOCATIONS ERROR: $error');
     }
   }
 
@@ -1629,6 +1674,15 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
           _showMessage('No Blind Box locations available yet.');
           return;
         }
+        if (source == PuzzleLocationSource.checkpoint &&
+            !_hasCheckpointLocation) {
+          if (_savedCheckpointLocations.isNotEmpty) {
+            _showLocationPicker();
+          } else {
+            _showMessage('No checkpoint location has been selected yet.');
+          }
+          return;
+        }
 
         setState(() {
           _locationSource = source;
@@ -1706,7 +1760,11 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   }
 
   void _showLocationPicker() {
-    if (!_hasCheckpointLocation && _blindBoxLocations.length < 2) return;
+    if (!_hasCurrentCheckpoint &&
+        _savedCheckpointLocations.isEmpty &&
+        _blindBoxLocations.isEmpty) {
+      return;
+    }
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1737,21 +1795,41 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
                   children: [
-                    if (_hasCheckpointLocation)
+                    if (_hasCurrentCheckpoint)
                       _locationPickerTile(
-                        title: _checkpointMission!.title,
-                        subtitle: 'Current checkpoint · Recommended',
+                        title: widget.mission!.title,
+                        subtitle: 'Current Checkpoint - Recommended',
                         icon: Icons.flag_rounded,
                         selected:
                             _locationSource == PuzzleLocationSource.checkpoint,
                         onTap: () {
                           setState(() {
                             _locationSource = PuzzleLocationSource.checkpoint;
+                            _selectedSavedCheckpointIndex = null;
                             _currentResolvedQuestion = null;
                           });
                           Navigator.pop(sheetContext);
                         },
                       ),
+                    ...List.generate(_savedCheckpointLocations.length, (index) {
+                      final location = _savedCheckpointLocations[index];
+                      return _locationPickerTile(
+                        title: location.title,
+                        subtitle: 'Checkpoint location',
+                        icon: Icons.flag_outlined,
+                        selected:
+                            _locationSource == PuzzleLocationSource.checkpoint &&
+                            _selectedSavedCheckpointIndex == index,
+                        onTap: () {
+                          setState(() {
+                            _locationSource = PuzzleLocationSource.checkpoint;
+                            _selectedSavedCheckpointIndex = index;
+                            _currentResolvedQuestion = null;
+                          });
+                          Navigator.pop(sheetContext);
+                        },
+                      );
+                    }),
                     ...List.generate(_blindBoxLocations.length, (index) {
                       final location = _blindBoxLocations[index];
                       return _locationPickerTile(
@@ -1854,10 +1932,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
           ),
         ],
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
               Icon(Icons.shuffle_rounded, color: Colors.white, size: 18),
               SizedBox(width: 8),
@@ -1871,16 +1949,29 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
               ),
             ],
           ),
-          SizedBox(height: 6),
-          Text(
-            'Random travel puzzles: fresh questions are prepared when needed, '
-            'with saved questions available for reuse.',
+          const SizedBox(height: 6),
+          const Text(
+            'No puzzle destination was selected. This challenge will use '
+            'general Malaysia questions.',
             style: TextStyle(
               color: Color(0xFFEDE9FE),
               fontSize: 12,
               height: 1.45,
             ),
           ),
+          if (_savedCheckpointLocations.isNotEmpty ||
+              _blindBoxLocations.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _showLocationPicker,
+              icon: const Icon(Icons.swap_horiz_rounded, size: 17),
+              label: const Text('Choose a saved puzzle location'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white70),
+              ),
+            ),
+          ],
         ],
       ),
     );
