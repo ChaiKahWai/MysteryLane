@@ -346,20 +346,10 @@ class CheckpointRepository {
         // ------------------------------------------------------
 
         await SupabaseConfig.client
-            .from(
-          'user_checkpoint_missions',
-        )
+            .from('user_checkpoint_missions')
             .update({
           'mission_status':
           'COMPLETED',
-
-          // TEMPORARY
-          // Gemini will control this later.
-          'verification_result':
-          'VERIFIED',
-
-          'verification_reason':
-          'Temporary verification before Gemini integration.',
 
           'reward_claimed':
           true,
