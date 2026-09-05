@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/app_imports.dart';
+
 import '../../../data/datasources/supabase_datasource.dart';
 import '../Blindbox/BlindBox_Screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
@@ -15,10 +17,12 @@ import '../../../data/models/puzzle_model.dart';
 import '../../../data/models/puzzle_question_quality.dart';
 import '../../../data/models/puzzle_selection.dart';
 
+// ============================================================
+// ENUMS & EXTENSIONS
+// ============================================================
+
 enum PuzzleCategory { image, scrambled, word, mcq, trueFalse }
 
-// Image Recognition is retained only so older attempts can still be displayed
-// in Puzzle History. New challenges intentionally offer the four text formats.
 const List<PuzzleCategory> playablePuzzleCategories = [
   PuzzleCategory.scrambled,
   PuzzleCategory.word,
@@ -31,16 +35,12 @@ extension PuzzleCategoryX on PuzzleCategory {
     switch (this) {
       case PuzzleCategory.image:
         return 'Image Guessing';
-
       case PuzzleCategory.scrambled:
         return 'Guess the Word';
-
       case PuzzleCategory.word:
         return 'Missing Word Challenge';
-
       case PuzzleCategory.mcq:
         return 'Multiple Choice Question';
-
       case PuzzleCategory.trueFalse:
         return 'True or False';
     }
@@ -142,35 +142,35 @@ const Map<PuzzleCategory, CategoryInfo> categoryInfo = {
   PuzzleCategory.image: CategoryInfo(
     title: 'Image Recognition',
     description:
-        'Identify ancient landmarks, secret artifacts, or hidden clues from field photos.',
+    'Identify ancient landmarks, secret artifacts, or hidden clues from field photos.',
     icon: '📸',
     difficulty: 'Medium',
   ),
   PuzzleCategory.scrambled: CategoryInfo(
     title: 'Scrambled Anagrams',
     description:
-        'Unscramble mixed letters to unlock destination names & passcode words.',
+    'Unscramble mixed letters to unlock destination names & passcode words.',
     icon: '🔤',
     difficulty: 'Easy',
   ),
   PuzzleCategory.word: CategoryInfo(
     title: 'Missing Word Challenge',
     description:
-        'Answer destination questions by choosing the correct word or phrase.',
+    'Answer destination questions by choosing the correct word or phrase.',
     icon: '🧩',
     difficulty: 'Easy',
   ),
   PuzzleCategory.mcq: CategoryInfo(
     title: 'Multiple Choice Trivia',
     description:
-        'Select the correct historical answer from 4 location choices.',
+    'Select the correct historical answer from 4 location choices.',
     icon: '❓',
     difficulty: 'Easy',
   ),
   PuzzleCategory.trueFalse: CategoryInfo(
     title: 'True or False',
     description:
-        'Verify statement accuracy regarding mystery travel lore and facts.',
+    'Verify statement accuracy regarding mystery travel lore and facts.',
     icon: '☑️',
     difficulty: 'Quick',
   ),
@@ -184,7 +184,7 @@ const List<CategoryQuestion> puzzleQuestionDatabase = [
     subtitle: 'Missing Word Challenge · Choose the correct answer.',
     answer: 'Mont Blanc',
     hint:
-        'Located in the western Alps on the French-Italian border.',
+    'Located in the western Alps on the French-Italian border.',
     options: ['Mont Blanc', 'Mount Fuji', 'Mount Kinabalu', 'Ben Nevis'],
   ),
   CategoryQuestion(
@@ -203,9 +203,9 @@ const List<CategoryQuestion> puzzleQuestionDatabase = [
     subtitle: 'Image Recognition · Inspect landmark details.',
     answer: 'Fushimi Inari',
     hint:
-        'Famous for its thousands of vibrant vermilion torii gates winding up Mount Inari.',
+    'Famous for its thousands of vibrant vermilion torii gates winding up Mount Inari.',
     imageUrl:
-        'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=800&q=80',
   ),
   CategoryQuestion(
     id: 'q-image-2',
@@ -215,7 +215,7 @@ const List<CategoryQuestion> puzzleQuestionDatabase = [
     answer: 'Eiffel Tower',
     hint: 'Built for the 1889 World\'s Fair.',
     imageUrl:
-        'https://images.unsplash.com/photo-1511739001486-6bfe10ce785f?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1511739001486-6bfe10ce785f?auto=format&fit=crop&w=800&q=80',
   ),
   CategoryQuestion(
     id: 'q-scrambled-1',
@@ -224,7 +224,7 @@ const List<CategoryQuestion> puzzleQuestionDatabase = [
     subtitle: 'Word Anagram · Reorder the letters.',
     answer: 'KYOTO',
     hint:
-        'Former capital of Japan, renowned for classical Buddhist temples, gardens, and wooden houses.',
+    'Former capital of Japan, renowned for classical Buddhist temples, gardens, and wooden houses.',
   ),
   CategoryQuestion(
     id: 'q-scrambled-2',
@@ -241,7 +241,7 @@ const List<CategoryQuestion> puzzleQuestionDatabase = [
     subtitle: 'Multiple Choice · Choose the correct answer.',
     answer: 'Kamo River',
     hint:
-        'Its riverbanks are a popular walking spot for locals and visitors in Kyoto.',
+    'Its riverbanks are a popular walking spot for locals and visitors in Kyoto.',
     options: ['Kamo River', 'Sumida River', 'Yodo River', 'Shinano River'],
   ),
   CategoryQuestion(
@@ -257,18 +257,18 @@ const List<CategoryQuestion> puzzleQuestionDatabase = [
     id: 'q-tf-1',
     category: PuzzleCategory.trueFalse,
     question:
-        'Kyoto was originally chosen as the site for the Japanese imperial court in 794 AD.',
+    'Kyoto was originally chosen as the site for the Japanese imperial court in 794 AD.',
     subtitle: 'True or False · Verify the statement.',
     answer: 'True',
     hint:
-        'Heian-kyo (Kyoto) served as Japan\'s imperial capital from 794 until 1868.',
+    'Heian-kyo (Kyoto) served as Japan\'s imperial capital from 794 until 1868.',
     options: ['True', 'False'],
   ),
   CategoryQuestion(
     id: 'q-tf-2',
     category: PuzzleCategory.trueFalse,
     question:
-        'The Great Wall of China is visible from the Moon with the naked eye.',
+    'The Great Wall of China is visible from the Moon with the naked eye.',
     subtitle: 'True or False · Verify the statement.',
     answer: 'False',
     hint: 'This is a common myth debunked by astronauts.',
@@ -279,6 +279,10 @@ const List<CategoryQuestion> puzzleQuestionDatabase = [
 final Map<PuzzleCategory, CategoryQuestion> categoryQuestions = {
   for (final question in puzzleQuestionDatabase) question.category: question,
 };
+
+// ============================================================
+// PUZZLE SCREEN
+// ============================================================
 
 class PuzzleScreen extends StatefulWidget {
   final MissionCheckpoint? mission;
@@ -299,1115 +303,1024 @@ class PuzzleScreen extends StatefulWidget {
 }
 
 class _PuzzleScreenState extends State<PuzzleScreen> {
-  static const Color skyBlue = Color(0xFF0284C7);
-  static const Color pageBackground = Color(0xFFF8FAFC);
-
-  String viewMode = 'categories';
-  String hubTab = 'selection';
-
-  PuzzleCategory selectedCategory = PuzzleCategory.word;
-
-  final PuzzleChallengeService _challengeService = PuzzleChallengeService();
-
-  // Real Supabase puzzle challenge state
-  List<PuzzleQuestion> _challengeQuestions = [];
-  int _challengeQuestionIndex = 0;
-  String? _attemptId;
-
-  bool _isLoadingChallenge = false;
-  String? _preparationNotice;
-  bool _isSubmittingAnswer = false;
-
-  int _challengeCompletionTimeSeconds = 0;
-  int _earnedEpForChallenge = 0;
-  int _dailyPuzzleScore = 0;
-  int? _dailyLeaderboardRank;
-  int _rewardedChallengesToday = 0;
-  bool _challengeWasRewardEligible = true;
-
-  bool _lastAnswerWasCorrect = false;
-  bool _lastAnswerTimedOut = false;
-  int _lastEarnedMarks = 0;
-
-  int questionIndex = 1;
-  int score = 0;
-  int timerSeconds = 30;
-  int elapsedSeconds = 0;
-
-  String answerInput = '';
-  String? selectedOption;
-
-  int hintsAvailable = 3;
-  int hintsUsedCount = 0;
-
-  bool showHintModal = false;
-  String? errorMsg;
-  bool isSolved = false;
-
-  Timer? questionTimer;
-  Timer? countdownTimer;
-  final ScrollController _questionScrollController = ScrollController();
-
-  int countdownSeconds = 23 * 3600 + 42 * 60 + 15;
-  late int _userEp;
-  late PuzzleLocationSource _locationSource;
-  bool _isLoadingBlindBoxLocations = false;
-  final List<MissionCheckpoint> _blindBoxLocations = [];
-  final List<MissionCheckpoint> _savedCheckpointLocations = [];
-  int _selectedBlindBoxIndex = 0;
-  int? _selectedSavedCheckpointIndex;
-  final SupabaseDataSource _supabaseDataSource = SupabaseDataSource();
-  final Random _random = Random();
-  CategoryQuestion? _currentResolvedQuestion;
-  List<PuzzleChallengeHistory> _puzzleHistory = [];
-  bool _isLoadingHistory = true;
-  String? _historyError;
-  PuzzleCategory? _historyCategoryFilter;
-  String? _headerProfilePictureUrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _userEp = widget.userEp;
-    _locationSource = widget.initialLocationSource;
-    _loadBlindBoxLocations();
-    _loadSavedCheckpointLocations();
-    _loadPuzzleHistory();
-    _loadHeaderProfile();
-
-    countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() {
-        countdownSeconds = countdownSeconds > 0
-            ? countdownSeconds - 1
-            : 24 * 3600;
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    questionTimer?.cancel();
-    countdownTimer?.cancel();
-    _questionScrollController.dispose();
-    super.dispose();
-  }
-
-  CategoryQuestion get currentQuestion {
-    if (_challengeQuestions.isNotEmpty &&
-        _challengeQuestionIndex < _challengeQuestions.length) {
-      return _convertPuzzleQuestionToCategoryQuestion(
-        _challengeQuestions[_challengeQuestionIndex],
-      );
-    }
-
-    return _currentResolvedQuestion ??
-        _resolveQuestionForCategory(selectedCategory);
-  }
-
-  bool get _hasBlindBoxLocations => _blindBoxLocations.isNotEmpty;
-
-  bool get _hasCheckpointLocation =>
-      _activeCheckpointMission != null;
-
-  bool get _hasCurrentCheckpoint =>
-      widget.mission != null && widget.mission!.title.trim().isNotEmpty;
-
-  MissionCheckpoint? get _activeCheckpointMission {
-    final savedIndex = _selectedSavedCheckpointIndex;
-    if (savedIndex != null &&
-        savedIndex >= 0 &&
-        savedIndex < _savedCheckpointLocations.length) {
-      return _savedCheckpointLocations[savedIndex];
-    }
-    return _hasCurrentCheckpoint ? widget.mission : null;
-  }
-
-  bool get _isRandomPuzzleMode => _activeLocationMission == null;
-
-  bool get _showBlindBoxFilterContent =>
-      _locationSource == PuzzleLocationSource.blindBox && _hasBlindBoxLocations;
-
-  bool get _showCheckpointFilterContent =>
-      _locationSource == PuzzleLocationSource.checkpoint &&
-      _hasCheckpointLocation;
-
-  MissionCheckpoint? get _checkpointMission => _activeCheckpointMission;
-
-  MissionCheckpoint? get _activeLocationMission {
-    if (_locationSource == PuzzleLocationSource.blindBox) {
-      if (_blindBoxLocations.isEmpty) return null;
-      final safeIndex = _selectedBlindBoxIndex.clamp(
-        0,
-        _blindBoxLocations.length - 1,
-      );
-      return _blindBoxLocations[safeIndex];
-    }
-
-    return _checkpointMission;
-  }
-
-  int get epReward {
-    if (_isRandomPuzzleMode ||
-        _locationSource == PuzzleLocationSource.blindBox) {
-      return 200;
-    }
-    final mission = _activeLocationMission;
-    if (mission == null) return 200;
-    return mission.epReward > 0 ? mission.epReward : 200;
-  }
-
-  List<CategoryQuestion> _questionsForCategory(PuzzleCategory category) {
-    return puzzleQuestionDatabase
-        .where((question) => question.category == category)
-        .toList();
-  }
-
-  CategoryQuestion _personalizeForLocation(
-    CategoryQuestion base,
-    MissionCheckpoint location,
-  ) {
-    final locationLabel = location.locationName ?? location.title;
-
-    return CategoryQuestion(
-      id: '${base.id}-${location.id ?? location.title}',
-      category: base.category,
-      question: 'Regarding ${location.title}: ${base.question}',
-      subtitle: '${base.subtitle} · Field target: $locationLabel',
-      answer: base.answer,
-      hint: '${base.hint} Think about ${location.title}.',
-      options: base.options,
-      imageUrl: location.imageUrl ?? base.imageUrl,
-      locationId: location.id,
-    );
-  }
-
-  CategoryQuestion _resolveQuestionForCategory(PuzzleCategory category) {
-    final pool = _questionsForCategory(category);
-    if (pool.isEmpty) {
-      return categoryQuestions[category]!;
-    }
-
-    if (_isRandomPuzzleMode) {
-      return pool[_random.nextInt(pool.length)];
-    }
-
-    final location = _activeLocationMission;
-    if (location == null) {
-      return pool[_random.nextInt(pool.length)];
-    }
-
-    if (location.id != null) {
-      final locationSpecific = pool
-          .where((question) => question.locationId == location.id)
-          .toList();
-      if (locationSpecific.isNotEmpty) {
-        return locationSpecific.first;
-      }
-    }
-
-    final genericPool = pool
-        .where((question) => question.locationId == null)
-        .toList();
-    final base = genericPool.isNotEmpty
-        ? genericPool[_random.nextInt(genericPool.length)]
-        : pool.first;
-
-    return _personalizeForLocation(base, location);
-  }
-
-  void _syncLocationFilterAfterLoad() {
-    if (_hasBlindBoxLocations && !_hasCurrentCheckpoint) {
-      _locationSource = PuzzleLocationSource.blindBox;
-      _selectedBlindBoxIndex = 0;
-      return;
-    }
-
-    if (_hasCurrentCheckpoint && !_hasBlindBoxLocations) {
-      _locationSource = PuzzleLocationSource.checkpoint;
-      return;
-    }
-
-    if (_hasBlindBoxLocations && _hasCurrentCheckpoint) {
-      if (widget.initialLocationSource == PuzzleLocationSource.checkpoint) {
-        _locationSource = PuzzleLocationSource.checkpoint;
-      } else {
-        _locationSource = PuzzleLocationSource.blindBox;
-        _selectedBlindBoxIndex = 0;
-      }
-    }
-  }
-
-  Future<void> _loadBlindBoxLocations() async {
-    if (_isLoadingBlindBoxLocations) return;
-
-    setState(() => _isLoadingBlindBoxLocations = true);
-    try {
-      final rows = await _supabaseDataSource.getBlindBoxHistory();
-      final built = <MissionCheckpoint>[];
-      final seenDestinationIds = <String>{};
-
-      for (final row in rows) {
-        final destinationRaw = row['blind_box_destinations'];
-        if (destinationRaw is! Map) continue;
-
-        final destination = Map<String, dynamic>.from(destinationRaw);
-        final destinationId = destination['destination_id']?.toString() ?? '';
-
-        if (destinationId.isNotEmpty &&
-            seenDestinationIds.contains(destinationId)) {
-          continue;
-        }
-
-        if (destinationId.isNotEmpty) {
-          seenDestinationIds.add(destinationId);
-        }
-
-        built.add(
-          MissionCheckpoint(
-            id: destinationId.isNotEmpty ? destinationId : null,
-            title: destination['name']?.toString() ?? 'Blind Box Destination',
-            imageUrl: destination['image_url']?.toString(),
-            locationName: destination['address']?.toString(),
-            category: 'Blind Box',
-            epReward: 200,
-          ),
-        );
-
-        if (built.length >= 10) break;
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _blindBoxLocations
-          ..clear()
-          ..addAll(built);
-        _selectedBlindBoxIndex = 0;
-        _syncLocationFilterAfterLoad();
-      });
-    } catch (_) {
-      // Keep fallback data if history fetch fails.
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingBlindBoxLocations = false);
-      }
-    }
-  }
-
-  Future<void> _loadSavedCheckpointLocations() async {
-    try {
-      final rows = await _supabaseDataSource.getSavedPuzzleLocations(
-        locationSource: 'CHECKPOINT',
-      );
-      final currentId = widget.mission?.id;
-      final built = <MissionCheckpoint>[];
-      for (final row in rows) {
-        final raw = row['blind_box_destinations'];
-        if (raw is! Map) continue;
-        final destination = Map<String, dynamic>.from(raw);
-        final id = destination['destination_id']?.toString();
-        if (id == null || id.isEmpty || id == currentId) continue;
-        built.add(
-          MissionCheckpoint(
-            id: id,
-            title: destination['name']?.toString() ?? 'Checkpoint location',
-            imageUrl: destination['image_url']?.toString(),
-            locationName: destination['address']?.toString(),
-            category: destination['category']?.toString() ?? 'Checkpoint',
-          ),
-        );
-      }
-      if (!mounted) return;
-      setState(() {
-        _savedCheckpointLocations
-          ..clear()
-          ..addAll(built);
-      });
-    } catch (error) {
-      debugPrint('LOAD SAVED CHECKPOINT LOCATIONS ERROR: $error');
-    }
-  }
-
-  Future<void> _loadPuzzleHistory() async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
-      if (mounted) setState(() => _isLoadingHistory = false);
-      return;
-    }
-
-    try {
-      final history = await _challengeService.loadPuzzleHistory(
-        userId: user.id,
-      );
-      if (!mounted) return;
-      setState(() {
-        _puzzleHistory = history;
-        _historyError = null;
-        _isLoadingHistory = false;
-      });
-    } catch (error) {
-      debugPrint('Puzzle history error: $error');
-      if (!mounted) return;
-      setState(() {
-        _historyError = 'Unable to load puzzle history right now.';
-        _isLoadingHistory = false;
-      });
-    }
-  }
-
-  void _showLocationFilterInfo() {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE0F2FE),
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFBAE6FD)),
-              ),
-              child: const Icon(
-                Icons.info_outline_rounded,
-                size: 16,
-                color: Color(0xFF0284C7),
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'Location Filter',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-              ),
-            ),
-          ],
-        ),
-        content: const Text(
-          'Use this filter to switch puzzle context between:\n\n'
-          '• Blind Box — choose from your previously drawn mystery destinations. '
-          'The latest draw is selected by default.\n'
-          '• Checkpoint — use your current checkpoint mission location.\n\n'
-          'If you have no saved locations, puzzles will run in Random Puzzle mode '
-          'using questions from the full database.',
-          style: TextStyle(
-            fontSize: 13,
-            height: 1.45,
-            color: Color(0xFF475569),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Got it',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0284C7),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(18, 0, 18, 92),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-      );
-  }
-
-  void _replaceWith(Widget page) {
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute(builder: (_) => page));
-  }
-
-  void _handleAppNavigation(String tab) {
-    switch (tab) {
-      case 'missions':
-        _replaceWith(const CheckpointScreen());
-        break;
-      case 'leaderboard':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
-        );
-        break;
-      case 'profile':
-        _openProfile();
-        break;
-      default:
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        } else {
-          _replaceWith(const HomeScreen());
-        }
-    }
-  }
-
-  Future<void> _loadHeaderProfile() async {
-    try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) {
-        if (mounted) setState(() => _headerProfilePictureUrl = null);
-        return;
-      }
-
-      final profile = await Supabase.instance.client
-          .from('profiles')
-          .select('profile_picture_url, exploration_points')
-          .eq('id', user.id)
-          .maybeSingle();
-      if (!mounted) return;
-
-      final picture = profile?['profile_picture_url']?.toString().trim();
-      setState(() {
-        _headerProfilePictureUrl =
-            picture != null && picture.isNotEmpty ? picture : null;
-        _userEp = int.tryParse(
-              profile?['exploration_points']?.toString() ?? '',
-            ) ??
-            _userEp;
-      });
-    } catch (error) {
-      debugPrint('PUZZLE HEADER PROFILE PHOTO ERROR: $error');
-    }
-  }
-
-  Future<void> _openProfile() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ProfileScreen()),
-    );
-    await _loadHeaderProfile();
-  }
-
-  void _handleBottomNavigation(MysteryLaneTab tab) {
-    switch (tab) {
-      case MysteryLaneTab.blindBox:
-        _replaceWith(const BlindBoxPage());
-        break;
-      case MysteryLaneTab.missions:
-        _replaceWith(const CheckpointScreen());
-        break;
-      case MysteryLaneTab.home:
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        } else {
-          _replaceWith(const HomeScreen());
-        }
-        break;
-      case MysteryLaneTab.plan:
-        _showMessage('Plan page will be connected later.');
-        break;
-      case MysteryLaneTab.teams:
-        _showMessage('Teams page will be connected later.');
-        break;
-    }
-  }
-
-  void _startQuestionTimer() {
-    questionTimer?.cancel();
-
-    questionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted ||
-          viewMode != 'questions' ||
-          isSolved ||
-          _isSubmittingAnswer) {
-        return;
-      }
-
-      var timeExpired = false;
-      setState(() {
-        if (timerSeconds > 0) {
-          timerSeconds--;
-          elapsedSeconds++;
-          timeExpired = timerSeconds == 0;
-        }
-      });
-
-      if (timeExpired) {
-        questionTimer?.cancel();
-        _submitAnswer(timedOut: true);
-      }
-    });
-  }
-
-  Future<void> _selectCategory(PuzzleCategory category) async {
-    if (_isLoadingChallenge) return;
-
-    final location = _activeLocationMission;
-
-    setState(() {
-      _isLoadingChallenge = true;
-      _preparationNotice = null;
-      selectedCategory = category;
-    });
-
-    try {
-      final user = Supabase.instance.client.auth.currentUser;
-
-      if (user == null) {
-        _showMessage('Please log in before starting a puzzle challenge.');
-        return;
-      }
-
-      final questions = await _challengeService.loadChallengeQuestions(
-        userId: user.id,
-        destinationId: !_isRandomPuzzleMode
-            ? location?.id : null,
-        puzzleType: category.key,
-        historyCategory: category.historyKey,
-      );
-
-      if (!mounted) return;
-
-      if (questions.length < 10) {
-        _showMessage(
-          'There are not enough questions available for this puzzle type.',
-        );
-        return;
-      }
-
-      // Create a new puzzle attempt.
-      final attemptId = await _challengeService.startAttempt(
-        userId: user.id,
-        puzzleType: category.historyKey,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _challengeQuestions = questions;
-        _challengeQuestionIndex = 0;
-        _attemptId = attemptId;
-
-        questionIndex = 1;
-        score = 0;
-        _challengeCompletionTimeSeconds = 0;
-        _earnedEpForChallenge = 0;
-        _dailyPuzzleScore = 0;
-        _dailyLeaderboardRank = null;
-        _challengeWasRewardEligible = true;
-        _lastAnswerWasCorrect = false;
-        _lastAnswerTimedOut = false;
-        _lastEarnedMarks = 0;
-        _isSubmittingAnswer = false;
-        timerSeconds = 30;
-        elapsedSeconds = 0;
-
-        answerInput = '';
-        selectedOption = null;
-
-        hintsAvailable = 3;
-        hintsUsedCount = 0;
-
-        showHintModal = false;
-        errorMsg = null;
-        isSolved = false;
-
-        // Keep the existing question UI active.
-        viewMode = 'questions';
-
-        // Keep this temporarily for compatibility with
-        // the existing UI code.
-        _currentResolvedQuestion = _convertPuzzleQuestionToCategoryQuestion(
-          questions.first,
-        );
-      });
-
-      _startQuestionTimer();
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _preparationNotice = e is PuzzlePreparationException
-            ? e.message
-            : 'Puzzles are temporarily unavailable. Your progress is saved. Please retry shortly.';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingChallenge = false;
-        });
-      }
-    }
-  }
-
-  CategoryQuestion _convertPuzzleQuestionToCategoryQuestion(
-    PuzzleQuestion question,
-  ) {
-    PuzzleCategory category;
-
-    switch (question.puzzleType.toLowerCase()) {
-      case 'image':
-      case 'image guessing':
-      case 'image recognition':
-        category = PuzzleCategory.image;
-        break;
-
-      case 'scrambled':
-      case 'scrambled word':
-      case 'scrambled anagrams':
-      case 'guess the word':
-        category = PuzzleCategory.scrambled;
-        break;
-
-      case 'word':
-      case 'word riddle':
-      case 'word riddle cipher':
-      case 'missing word':
-      case 'missing word challenge':
-        category = PuzzleCategory.word;
-        break;
-
-      case 'mcq':
-      case 'multiple choice':
-      case 'multiple choice question':
-      case 'multiple choice trivia':
-        category = PuzzleCategory.mcq;
-        break;
-
-      case 'true/false':
-      case 'true or false':
-        category = PuzzleCategory.trueFalse;
-        break;
-
-      default:
-        category = selectedCategory;
-    }
-
-    return CategoryQuestion(
-      id: question.id,
-      category: category,
-      question: question.questionText,
-      subtitle:
-          '${categoryInfo[category]?.title ?? 'Puzzle'} · ${question.category}',
-      answer: question.correctAnswer,
-      hint: question.hint1 ?? 'No hint available.',
-      options: question.options.isEmpty ? null : question.options,
-      imageUrl: question.imageUrl,
-      locationId: question.destinationId,
-      displayBoxContent: question.displayBoxContent,
-    );
-  }
-
-  void _useHint() {
-    if (isSolved || _isSubmittingAnswer || hintsUsedCount >= 3) {
-      return;
-    }
-
-    setState(() {
-      hintsUsedCount++;
-      hintsAvailable = 3 - hintsUsedCount;
-      showHintModal = true;
-    });
-  }
-
-  String _currentHintText() {
-    if (_challengeQuestions.isEmpty) {
-      return currentQuestion.hint;
-    }
-
-    final question = _challengeQuestions[_challengeQuestionIndex];
-    switch (hintsUsedCount) {
-      case 1:
-        return question.hint1 ?? 'No hint is available for this question.';
-      case 2:
-        return question.hint2 ??
-            question.hint1 ??
-            'No further hint is available.';
-      case 3:
-        return question.hint3 ?? 'Answer revealed: ${question.correctAnswer}';
-      default:
-        return 'No hint is available for this question.';
-    }
-  }
-
-  Future<void> _submitAnswer({bool timedOut = false}) async {
-    // Prevent submitting the same question more than once.
-    if (isSolved || _isSubmittingAnswer) return;
-
-    setState(() {
-      errorMsg = null;
-      _isSubmittingAnswer = true;
-    });
-
-    final String userAnswer = timedOut
-        ? ''
-        : (currentQuestion.category == PuzzleCategory.mcq ||
-              currentQuestion.category == PuzzleCategory.word ||
-              currentQuestion.category == PuzzleCategory.trueFalse)
-        ? (selectedOption ?? '')
-        : answerInput.trim();
-
-    if (!timedOut && userAnswer.isEmpty) {
-      setState(() {
-        errorMsg = 'Please select or provide an answer before submitting.';
-        _isSubmittingAnswer = false;
-      });
-      return;
-    }
-
-    if (_attemptId == null || _challengeQuestions.isEmpty) {
-      _showMessage(
-        'Puzzle attempt is not available. Please restart the challenge.',
-      );
-      if (mounted) {
-        setState(() => _isSubmittingAnswer = false);
-      }
-      return;
-    }
-
-    final puzzle = _challengeQuestions[_challengeQuestionIndex];
-
-    final bool correct =
-        !timedOut &&
-        _challengeService.checkAnswer(
-          userAnswer: userAnswer,
-          correctAnswer: puzzle.correctAnswer,
-        );
-
-    questionTimer?.cancel();
-
-    // -----------------------------------------
-    // Calculate marks
-    // -----------------------------------------
-
-    final int earnedMarks = _challengeService.calculateQuestionScore(
-      isCorrect: correct,
-      remainingTimeSeconds: timerSeconds,
-      hintsUsed: hintsUsedCount,
-    );
-
-    final remainingTime = timerSeconds < 0 ? 0 : timerSeconds;
-
-    final completionTime = elapsedSeconds < 0 ? 0 : elapsedSeconds;
-
-    try {
-      // -----------------------------------------
-      // Save this question's answer
-      // -----------------------------------------
-
-      await _challengeService.saveQuestionAnswer(
-        attemptId: _attemptId!,
-        question: puzzle,
-        submittedAnswer: userAnswer,
-        isCorrect: correct,
-        marksObtained: earnedMarks,
-        remainingTimeSeconds: remainingTime,
-        hintsUsed: hintsUsedCount,
-      );
-
-      _challengeCompletionTimeSeconds += completionTime;
-
-      // Add this question's score.
-      score += earnedMarks;
-
-      // -----------------------------------------
-      // Question 10?
-      // -----------------------------------------
-
-      final bool isLastQuestion =
-          _challengeQuestionIndex >= _challengeQuestions.length - 1;
-
-      if (isLastQuestion) {
-        if (!mounted) return;
-
-        setState(() {
-          isSolved = true;
-          _lastAnswerWasCorrect = correct;
-          _lastAnswerTimedOut = timedOut;
-          _lastEarnedMarks = earnedMarks;
-          _isSubmittingAnswer = false;
-          errorMsg = null;
-        });
-
-        // Keep the final result visible long enough to read before opening the
-        // completion/leaderboard view.
-        await Future.delayed(const Duration(milliseconds: 2500));
-
-        if (!mounted) return;
-
-        await _completePuzzleChallenge(
-          completionTimeSeconds: _challengeCompletionTimeSeconds,
-        );
-
-        if (!mounted) return;
-
-        setState(() {
-          isSolved = true;
-          _isSubmittingAnswer = false;
-          viewMode = 'completion';
-        });
-
-        return;
-      }
-
-      // -----------------------------------------
-      // Move to next question
-      // -----------------------------------------
-
-      if (!mounted) return;
-
-      setState(() {
-        isSolved = true;
-        _lastAnswerWasCorrect = correct;
-        _lastAnswerTimedOut = timedOut;
-        _lastEarnedMarks = earnedMarks;
-        errorMsg = null;
-      });
-
-      // Small delay so the user can see the result,
-      // then automatically show the next question.
-      await Future.delayed(const Duration(milliseconds: 700));
-
-      if (!mounted) return;
-
-      final previousOffset = _questionScrollController.hasClients
-          ? _questionScrollController.offset
-          : 0.0;
-      setState(() {
-        _challengeQuestionIndex++;
-        questionIndex = _challengeQuestionIndex + 1;
-        answerInput = '';
-        selectedOption = null;
-        timerSeconds = 30;
-        elapsedSeconds = 0;
-        hintsAvailable = 3;
-        hintsUsedCount = 0;
-        showHintModal = false;
-        isSolved = false;
-        _isSubmittingAnswer = false;
-        errorMsg = null;
-      });
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_questionScrollController.hasClients) return;
-        final maximum = _questionScrollController.position.maxScrollExtent;
-        _questionScrollController.jumpTo(previousOffset.clamp(0.0, maximum));
-      });
-
-      _startQuestionTimer();
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        isSolved = false;
-        _isSubmittingAnswer = false;
-        errorMsg = 'Unable to save your answer. Please try again.';
-      });
-
-      debugPrint('Puzzle answer error: $e');
-    }
-  }
-
-  Future<void> _completePuzzleChallenge({
-    required int completionTimeSeconds,
-  }) async {
-    if (_attemptId == null) return;
-
-    final result = await _challengeService.completeAttempt(
-      attemptId: _attemptId!,
-      completionTimeSeconds: completionTimeSeconds,
-      rewardPoints: epReward,
-    );
-
-    score = result.totalScore;
-    _earnedEpForChallenge = result.pointsEarned;
-    _dailyPuzzleScore = result.dailyScore;
-    _dailyLeaderboardRank = result.leaderboardRank;
-    _rewardedChallengesToday = result.rewardedChallengesToday;
-    _challengeWasRewardEligible = result.rewardEligible;
-
-    if (result.pointsEarned > 0) {
-      _userEp += result.pointsEarned;
-      widget.onSolveSuccess?.call(result.pointsEarned);
-    }
-    await _loadPuzzleHistory();
-  }
-
-  void _goBackFromHeader() {
-    if (viewMode == 'questions' || viewMode == 'completion') {
-      setState(() => viewMode = 'categories');
-    } else {
-      _handleAppNavigation('missions');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final challengeActive = viewMode == 'questions';
-    return PopScope(
-      canPop: !challengeActive && !_isLoadingChallenge,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && challengeActive) {
-          _showMessage('Finish all 10 questions before leaving the challenge.');
-        }
-      },
-      child: Stack(
-        children: [
-          Scaffold(
-            backgroundColor: pageBackground,
-            body: SafeArea(
-              child: Column(
-                children: [
-                  if (!challengeActive) _buildTopAppHeader(),
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: _buildCurrentView(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            floatingActionButtonLocation:
-                FloatingActionButtonLocation.centerDocked,
-            floatingActionButton: challengeActive
-                ? null
-                : _PuzzleHomeButton(
-                    onTap: () => _handleBottomNavigation(MysteryLaneTab.home),
-                  ),
-            bottomNavigationBar: challengeActive
-                ? null
-                : _PuzzleBottomBar(onTap: _handleBottomNavigation),
-          ),
-          if (_isLoadingChallenge) ...[
-            const ModalBarrier(dismissible: false, color: Color(0x66000000)),
-            Center(
-              child: Semantics(
-                liveRegion: true,
-                child: Card(
-                  margin: const EdgeInsets.all(28),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 20),
-                        Text(
-                          'Preparing your puzzle…',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          'Please wait while we load or generate questions for your selected destination. This may take a little while.',
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTopAppHeader() {
-    Widget action({
-      required IconData icon,
-      required Color foreground,
-      required Color background,
-      required Color border,
-      required VoidCallback onTap,
-    }) {
-      return InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: background,
-            shape: BoxShape.circle,
-            border: Border.all(color: border),
-          ),
-          child: Icon(icon, size: 19, color: foreground),
-        ),
-      );
-    }
-
-    return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 13),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: const BoxDecoration(
-              color: Color(0xFF0891B2),
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Color(0x220891B2), blurRadius: 7)],
-            ),
-            child: const Icon(
-              Icons.explore_rounded,
-              color: Colors.white,
-              size: 23,
-            ),
-          ),
-          const SizedBox(width: 9),
-          const Expanded(
-            child: Text(
-              'MYSTERYLANE',
-              style: TextStyle(
-                color: Color(0xFF111827),
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -.5,
-              ),
-            ),
-          ),
-          action(
-            icon: Icons.emoji_events_rounded,
-            foreground: const Color(0xFFD97706),
-            background: const Color(0xFFFFFBEB),
-            border: const Color(0xFFFED7AA),
-            onTap: () => _handleAppNavigation('leaderboard'),
-          ),
-          const SizedBox(width: 7),
-          action(
-            icon: Icons.chat_bubble_outline_rounded,
-            foreground: skyBlue,
-            background: const Color(0xFFF0F9FF),
-            border: const Color(0xFFBAE6FD),
-            onTap: () => _showMessage('Chat page will be connected later.'),
-          ),
-          const SizedBox(width: 7),
-          _PuzzleProfileButton(
-            onTap: _openProfile,
-            imageUrl: _headerProfilePictureUrl,
-          ),
-        ],
-      ),
-    );
-  }
+static const Color skyBlue = Color(0xFF0284C7);
+static const Color pageBackground = Color(0xFFF8FAFC);
+
+String viewMode = 'categories';
+String hubTab = 'selection';
+
+PuzzleCategory selectedCategory = PuzzleCategory.word;
+
+final PuzzleChallengeService _challengeService = PuzzleChallengeService();
+
+// Real Supabase puzzle challenge state
+List<PuzzleQuestion> _challengeQuestions = [];
+int _challengeQuestionIndex = 0;
+String? _attemptId;
+
+bool _isLoadingChallenge = false;
+String? _preparationNotice;
+bool _isSubmittingAnswer = false;
+
+int _challengeCompletionTimeSeconds = 0;
+int _earnedEpForChallenge = 0;
+int _dailyPuzzleScore = 0;
+int? _dailyLeaderboardRank;
+int _rewardedChallengesToday = 0;
+bool _challengeWasRewardEligible = true;
+
+bool _lastAnswerWasCorrect = false;
+bool _lastAnswerTimedOut = false;
+int _lastEarnedMarks = 0;
+
+int questionIndex = 1;
+int score = 0;
+int timerSeconds = 30;
+int elapsedSeconds = 0;
+
+String answerInput = '';
+String? selectedOption;
+
+int hintsAvailable = 3;
+int hintsUsedCount = 0;
+
+bool showHintModal = false;
+String? errorMsg;
+bool isSolved = false;
+
+Timer? questionTimer;
+Timer? countdownTimer;
+final ScrollController _questionScrollController = ScrollController();
+
+int countdownSeconds = 23 * 3600 + 42 * 60 + 15;
+late int _userEp;
+late PuzzleLocationSource _locationSource;
+bool _isLoadingBlindBoxLocations = false;
+final List<MissionCheckpoint> _blindBoxLocations = [];
+final List<MissionCheckpoint> _savedCheckpointLocations = [];
+int _selectedBlindBoxIndex = 0;
+int? _selectedSavedCheckpointIndex;
+final SupabaseDataSource _supabaseDataSource = SupabaseDataSource();
+final Random _random = Random();
+CategoryQuestion? _currentResolvedQuestion;
+List<PuzzleChallengeHistory> _puzzleHistory = [];
+bool _isLoadingHistory = true;
+String? _historyError;
+PuzzleCategory? _historyCategoryFilter;
+String? _headerProfilePictureUrl;
+
+// ---------- Getters ----------
+CategoryQuestion get currentQuestion {
+if (_challengeQuestions.isNotEmpty &&
+_challengeQuestionIndex < _challengeQuestions.length) {
+return _convertPuzzleQuestionToCategoryQuestion(
+_challengeQuestions[_challengeQuestionIndex],
+);
+}
+
+return _currentResolvedQuestion ??
+_resolveQuestionForCategory(selectedCategory);
+}
+
+bool get _hasBlindBoxLocations => _blindBoxLocations.isNotEmpty;
+
+bool get _hasCheckpointLocation => _activeCheckpointMission != null;
+
+bool get _hasCurrentCheckpoint =>
+widget.mission != null && widget.mission!.title.trim().isNotEmpty;
+
+MissionCheckpoint? get _activeCheckpointMission {
+final savedIndex = _selectedSavedCheckpointIndex;
+if (savedIndex != null &&
+savedIndex >= 0 &&
+savedIndex < _savedCheckpointLocations.length) {
+return _savedCheckpointLocations[savedIndex];
+}
+return _hasCurrentCheckpoint ? widget.mission : null;
+}
+
+bool get _isRandomPuzzleMode => _activeLocationMission == null;
+
+bool get _showBlindBoxFilterContent =>
+_locationSource == PuzzleLocationSource.blindBox && _hasBlindBoxLocations;
+
+bool get _showCheckpointFilterContent =>
+_locationSource == PuzzleLocationSource.checkpoint &&
+_hasCheckpointLocation;
+
+MissionCheckpoint? get _checkpointMission => _activeCheckpointMission;
+
+MissionCheckpoint? get _activeLocationMission {
+if (_locationSource == PuzzleLocationSource.blindBox) {
+if (_blindBoxLocations.isEmpty) return null;
+final safeIndex = _selectedBlindBoxIndex.clamp(
+0,
+_blindBoxLocations.length - 1,
+);
+return _blindBoxLocations[safeIndex];
+}
+
+return _checkpointMission;
+}
+
+int get epReward {
+if (_isRandomPuzzleMode ||
+_locationSource == PuzzleLocationSource.blindBox) {
+return 200;
+}
+final mission = _activeLocationMission;
+if (mission == null) return 200;
+return mission.epReward > 0 ? mission.epReward : 200;
+}
+
+// ---------- Lifecycle ----------
+@override
+void initState() {
+super.initState();
+_userEp = widget.userEp;
+_locationSource = widget.initialLocationSource;
+_loadBlindBoxLocations();
+_loadSavedCheckpointLocations();
+_loadPuzzleHistory();
+_loadHeaderProfile();
+
+countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+if (!mounted) return;
+setState(() {
+countdownSeconds = countdownSeconds > 0
+? countdownSeconds - 1
+: 24 * 3600;
+});
+});
+}
+
+@override
+void dispose() {
+questionTimer?.cancel();
+countdownTimer?.cancel();
+_questionScrollController.dispose();
+super.dispose();
+}
+
+// ---------- Helper methods ----------
+List<CategoryQuestion> _questionsForCategory(PuzzleCategory category) {
+return puzzleQuestionDatabase
+.where((question) => question.category == category)
+.toList();
+}
+
+CategoryQuestion _personalizeForLocation(
+CategoryQuestion base,
+MissionCheckpoint location,
+) {
+final locationLabel = location.locationName ?? location.title;
+
+return CategoryQuestion(
+id: '${base.id}-${location.id ?? location.title}',
+category: base.category,
+question: 'Regarding ${location.title}: ${base.question}',
+subtitle: '${base.subtitle} · Field target: $locationLabel',
+answer: base.answer,
+hint: '${base.hint} Think about ${location.title}.',
+options: base.options,
+imageUrl: location.imageUrl ?? base.imageUrl,
+locationId: location.id,
+);
+}
+
+CategoryQuestion _resolveQuestionForCategory(PuzzleCategory category) {
+final pool = _questionsForCategory(category);
+if (pool.isEmpty) {
+return categoryQuestions[category]!;
+}
+
+if (_isRandomPuzzleMode) {
+return pool[_random.nextInt(pool.length)];
+}
+
+final location = _activeLocationMission;
+if (location == null) {
+return pool[_random.nextInt(pool.length)];
+}
+
+if (location.id != null) {
+final locationSpecific = pool
+.where((question) => question.locationId == location.id)
+.toList();
+if (locationSpecific.isNotEmpty) {
+return locationSpecific.first;
+}
+}
+
+final genericPool = pool
+.where((question) => question.locationId == null)
+.toList();
+final base = genericPool.isNotEmpty
+? genericPool[_random.nextInt(genericPool.length)]
+: pool.first;
+
+return _personalizeForLocation(base, location);
+}
+
+void _syncLocationFilterAfterLoad() {
+if (_hasBlindBoxLocations && !_hasCurrentCheckpoint) {
+_locationSource = PuzzleLocationSource.blindBox;
+_selectedBlindBoxIndex = 0;
+return;
+}
+
+if (_hasCurrentCheckpoint && !_hasBlindBoxLocations) {
+_locationSource = PuzzleLocationSource.checkpoint;
+return;
+}
+
+if (_hasBlindBoxLocations && _hasCurrentCheckpoint) {
+if (widget.initialLocationSource == PuzzleLocationSource.checkpoint) {
+_locationSource = PuzzleLocationSource.checkpoint;
+} else {
+_locationSource = PuzzleLocationSource.blindBox;
+_selectedBlindBoxIndex = 0;
+}
+}
+}
+
+// ---------- Navigation ----------
+void _handleBottomNavigation(MysteryLaneTab tab) {
+final nav = NavigationService();
+switch (tab) {
+case MysteryLaneTab.blindBox:
+nav.goToBlindBox();
+break;
+case MysteryLaneTab.missions:
+nav.goToMissions();
+break;
+case MysteryLaneTab.plan:
+_showMessage('Plan page will be connected later.');
+break;
+case MysteryLaneTab.teams:
+_showMessage('Teams page will be connected later.');
+break;
+}
+}
+
+void _handleAppNavigation(String tab) {
+final nav = NavigationService();
+switch (tab) {
+case 'missions':
+nav.goToMissions();
+break;
+case 'leaderboard':
+nav.goToLeaderboard();
+break;
+case 'profile':
+_openProfile();
+break;
+default:
+if (Navigator.of(context).canPop()) {
+Navigator.of(context).pop();
+} else {
+nav.goHome();
+}
+}
+}
+
+void _goBackFromHeader() {
+if (viewMode == 'questions' || viewMode == 'completion') {
+setState(() => viewMode = 'categories');
+} else {
+_handleAppNavigation('missions');
+}
+}
+
+// ---------- Data loading (full implementations) ----------
+Future<void> _loadBlindBoxLocations() async {
+if (_isLoadingBlindBoxLocations) return;
+
+setState(() => _isLoadingBlindBoxLocations = true);
+try {
+final rows = await _supabaseDataSource.getBlindBoxHistory();
+final built = <MissionCheckpoint>[];
+final seenDestinationIds = <String>{};
+
+for (final row in rows) {
+final destinationRaw = row['blind_box_destinations'];
+if (destinationRaw is! Map) continue;
+
+final destination = Map<String, dynamic>.from(destinationRaw);
+final destinationId = destination['destination_id']?.toString() ?? '';
+
+if (destinationId.isNotEmpty &&
+seenDestinationIds.contains(destinationId)) {
+continue;
+}
+
+if (destinationId.isNotEmpty) {
+seenDestinationIds.add(destinationId);
+}
+
+built.add(
+MissionCheckpoint(
+id: destinationId.isNotEmpty ? destinationId : null,
+title: destination['name']?.toString() ?? 'Blind Box Destination',
+imageUrl: destination['image_url']?.toString(),
+locationName: destination['address']?.toString(),
+category: 'Blind Box',
+epReward: 200,
+),
+);
+
+if (built.length >= 10) break;
+}
+
+if (!mounted) return;
+setState(() {
+_blindBoxLocations
+..clear()
+..addAll(built);
+_selectedBlindBoxIndex = 0;
+_syncLocationFilterAfterLoad();
+});
+} catch (_) {
+// Keep fallback data if history fetch fails.
+} finally {
+if (mounted) {
+setState(() => _isLoadingBlindBoxLocations = false);
+}
+}
+}
+
+Future<void> _loadSavedCheckpointLocations() async {
+try {
+final rows = await _supabaseDataSource.getSavedPuzzleLocations(
+locationSource: 'CHECKPOINT',
+);
+final currentId = widget.mission?.id;
+final built = <MissionCheckpoint>[];
+for (final row in rows) {
+final raw = row['blind_box_destinations'];
+if (raw is! Map) continue;
+final destination = Map<String, dynamic>.from(raw);
+final id = destination['destination_id']?.toString();
+if (id == null || id.isEmpty || id == currentId) continue;
+built.add(
+MissionCheckpoint(
+id: id,
+title: destination['name']?.toString() ?? 'Checkpoint location',
+imageUrl: destination['image_url']?.toString(),
+locationName: destination['address']?.toString(),
+category: destination['category']?.toString() ?? 'Checkpoint',
+),
+);
+}
+if (!mounted) return;
+setState(() {
+_savedCheckpointLocations
+..clear()
+..addAll(built);
+});
+} catch (error) {
+debugPrint('LOAD SAVED CHECKPOINT LOCATIONS ERROR: $error');
+}
+}
+
+Future<void> _loadPuzzleHistory() async {
+final user = Supabase.instance.client.auth.currentUser;
+if (user == null) {
+if (mounted) setState(() => _isLoadingHistory = false);
+return;
+}
+
+try {
+final history = await _challengeService.loadPuzzleHistory(
+userId: user.id,
+);
+if (!mounted) return;
+setState(() {
+_puzzleHistory = history;
+_historyError = null;
+_isLoadingHistory = false;
+});
+} catch (error) {
+debugPrint('Puzzle history error: $error');
+if (!mounted) return;
+setState(() {
+_historyError = 'Unable to load puzzle history right now.';
+_isLoadingHistory = false;
+});
+}
+}
+
+void _showLocationFilterInfo() {
+showDialog<void>(
+context: context,
+builder: (context) => AlertDialog(
+shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+title: Row(
+children: [
+Container(
+width: 28,
+height: 28,
+decoration: BoxDecoration(
+color: const Color(0xFFE0F2FE),
+shape: BoxShape.circle,
+border: Border.all(color: const Color(0xFFBAE6FD)),
+),
+child: const Icon(
+Icons.info_outline_rounded,
+size: 16,
+color: Color(0xFF0284C7),
+),
+),
+const SizedBox(width: 10),
+const Expanded(
+child: Text(
+'Location Filter',
+style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+),
+),
+],
+),
+content: const Text(
+'Use this filter to switch puzzle context between:\n\n'
+'• Blind Box — choose from your previously drawn mystery destinations. '
+'The latest draw is selected by default.\n'
+'• Checkpoint — use your current checkpoint mission location.\n\n'
+'If you have no saved locations, puzzles will run in Random Puzzle mode '
+'using questions from the full database.',
+style: TextStyle(
+fontSize: 13,
+height: 1.45,
+color: Color(0xFF475569),
+),
+),
+actions: [
+TextButton(
+onPressed: () => Navigator.pop(context),
+child: const Text(
+'Got it',
+style: TextStyle(
+fontWeight: FontWeight.bold,
+color: Color(0xFF0284C7),
+),
+),
+),
+],
+),
+);
+}
+
+void _showMessage(String message) {
+ScaffoldMessenger.of(context)
+..hideCurrentSnackBar()
+..showSnackBar(
+SnackBar(
+content: Text(message),
+behavior: SnackBarBehavior.floating,
+margin: const EdgeInsets.fromLTRB(18, 0, 18, 92),
+shape: RoundedRectangleBorder(
+borderRadius: BorderRadius.circular(14),
+),
+),
+);
+}
+
+void _replaceWith(Widget page) {
+Navigator.of(
+context,
+).pushReplacement(MaterialPageRoute(builder: (_) => page));
+}
+
+Future<void> _loadHeaderProfile() async {
+try {
+final user = Supabase.instance.client.auth.currentUser;
+if (user == null) {
+if (mounted) setState(() => _headerProfilePictureUrl = null);
+return;
+}
+
+final profile = await Supabase.instance.client
+.from('profiles')
+.select('profile_picture_url, exploration_points')
+.eq('id', user.id)
+.maybeSingle();
+if (!mounted) return;
+
+final picture = profile?['profile_picture_url']?.toString().trim();
+setState(() {
+_headerProfilePictureUrl =
+picture != null && picture.isNotEmpty ? picture : null;
+_userEp = int.tryParse(
+profile?['exploration_points']?.toString() ?? '',
+) ??
+_userEp;
+});
+} catch (error) {
+debugPrint('PUZZLE HEADER PROFILE PHOTO ERROR: $error');
+}
+}
+
+Future<void> _openProfile() async {
+await Navigator.push(
+context,
+MaterialPageRoute(builder: (_) => const ProfileScreen()),
+);
+await _loadHeaderProfile();
+}
+
+// ---------- Puzzle logic (full implementations) ----------
+void _startQuestionTimer() {
+questionTimer?.cancel();
+
+questionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+if (!mounted ||
+viewMode != 'questions' ||
+isSolved ||
+_isSubmittingAnswer) {
+return;
+}
+
+var timeExpired = false;
+setState(() {
+if (timerSeconds > 0) {
+timerSeconds--;
+elapsedSeconds++;
+timeExpired = timerSeconds == 0;
+}
+});
+
+if (timeExpired) {
+questionTimer?.cancel();
+_submitAnswer(timedOut: true);
+}
+});
+}
+
+Future<void> _selectCategory(PuzzleCategory category) async {
+if (_isLoadingChallenge) return;
+
+final location = _activeLocationMission;
+
+setState(() {
+_isLoadingChallenge = true;
+_preparationNotice = null;
+selectedCategory = category;
+});
+
+try {
+final user = Supabase.instance.client.auth.currentUser;
+
+if (user == null) {
+_showMessage('Please log in before starting a puzzle challenge.');
+return;
+}
+
+final questions = await _challengeService.loadChallengeQuestions(
+userId: user.id,
+destinationId: !_isRandomPuzzleMode
+? location?.id : null,
+puzzleType: category.key,
+historyCategory: category.historyKey,
+);
+
+if (!mounted) return;
+
+if (questions.length < 10) {
+_showMessage(
+'There are not enough questions available for this puzzle type.',
+);
+return;
+}
+
+// Create a new puzzle attempt.
+final attemptId = await _challengeService.startAttempt(
+userId: user.id,
+puzzleType: category.historyKey,
+);
+
+if (!mounted) return;
+
+setState(() {
+_challengeQuestions = questions;
+_challengeQuestionIndex = 0;
+_attemptId = attemptId;
+
+questionIndex = 1;
+score = 0;
+_challengeCompletionTimeSeconds = 0;
+_earnedEpForChallenge = 0;
+_dailyPuzzleScore = 0;
+_dailyLeaderboardRank = null;
+_challengeWasRewardEligible = true;
+_lastAnswerWasCorrect = false;
+_lastAnswerTimedOut = false;
+_lastEarnedMarks = 0;
+_isSubmittingAnswer = false;
+timerSeconds = 30;
+elapsedSeconds = 0;
+
+answerInput = '';
+selectedOption = null;
+
+hintsAvailable = 3;
+hintsUsedCount = 0;
+
+showHintModal = false;
+errorMsg = null;
+isSolved = false;
+
+// Keep the existing question UI active.
+viewMode = 'questions';
+
+// Keep this temporarily for compatibility with
+// the existing UI code.
+_currentResolvedQuestion = _convertPuzzleQuestionToCategoryQuestion(
+questions.first,
+);
+});
+
+_startQuestionTimer();
+} catch (e) {
+if (!mounted) return;
+
+setState(() {
+_preparationNotice = e is PuzzlePreparationException
+? e.message
+: 'Puzzles are temporarily unavailable. Your progress is saved. Please retry shortly.';
+});
+} finally {
+if (mounted) {
+setState(() {
+_isLoadingChallenge = false;
+});
+}
+}
+}
+
+CategoryQuestion _convertPuzzleQuestionToCategoryQuestion(
+PuzzleQuestion question,
+) {
+PuzzleCategory category;
+
+switch (question.puzzleType.toLowerCase()) {
+case 'image':
+case 'image guessing':
+case 'image recognition':
+category = PuzzleCategory.image;
+break;
+
+case 'scrambled':
+case 'scrambled word':
+case 'scrambled anagrams':
+case 'guess the word':
+category = PuzzleCategory.scrambled;
+break;
+
+case 'word':
+case 'word riddle':
+case 'word riddle cipher':
+case 'missing word':
+case 'missing word challenge':
+category = PuzzleCategory.word;
+break;
+
+case 'mcq':
+case 'multiple choice':
+case 'multiple choice question':
+case 'multiple choice trivia':
+category = PuzzleCategory.mcq;
+break;
+
+case 'true/false':
+case 'true or false':
+category = PuzzleCategory.trueFalse;
+break;
+
+default:
+category = selectedCategory;
+}
+
+return CategoryQuestion(
+id: question.id,
+category: category,
+question: question.questionText,
+subtitle:
+'${categoryInfo[category]?.title ?? 'Puzzle'} · ${question.category}',
+answer: question.correctAnswer,
+hint: question.hint1 ?? 'No hint available.',
+options: question.options.isEmpty ? null : question.options,
+imageUrl: question.imageUrl,
+locationId: question.destinationId,
+displayBoxContent: question.displayBoxContent,
+);
+}
+
+void _useHint() {
+if (isSolved || _isSubmittingAnswer || hintsUsedCount >= 3) {
+return;
+}
+
+setState(() {
+hintsUsedCount++;
+hintsAvailable = 3 - hintsUsedCount;
+showHintModal = true;
+});
+}
+
+String _currentHintText() {
+if (_challengeQuestions.isEmpty) {
+return currentQuestion.hint;
+}
+
+final question = _challengeQuestions[_challengeQuestionIndex];
+switch (hintsUsedCount) {
+case 1:
+return question.hint1 ?? 'No hint is available for this question.';
+case 2:
+return question.hint2 ??
+question.hint1 ??
+'No further hint is available.';
+case 3:
+return question.hint3 ?? 'Answer revealed: ${question.correctAnswer}';
+default:
+return 'No hint is available for this question.';
+}
+}
+
+Future<void> _submitAnswer({bool timedOut = false}) async {
+// Prevent submitting the same question more than once.
+if (isSolved || _isSubmittingAnswer) return;
+
+setState(() {
+errorMsg = null;
+_isSubmittingAnswer = true;
+});
+
+final String userAnswer = timedOut
+? ''
+: (currentQuestion.category == PuzzleCategory.mcq ||
+currentQuestion.category == PuzzleCategory.word ||
+currentQuestion.category == PuzzleCategory.trueFalse)
+? (selectedOption ?? '')
+: answerInput.trim();
+
+if (!timedOut && userAnswer.isEmpty) {
+setState(() {
+errorMsg = 'Please select or provide an answer before submitting.';
+_isSubmittingAnswer = false;
+});
+return;
+}
+
+if (_attemptId == null || _challengeQuestions.isEmpty) {
+_showMessage(
+'Puzzle attempt is not available. Please restart the challenge.',
+);
+if (mounted) {
+setState(() => _isSubmittingAnswer = false);
+}
+return;
+}
+
+final puzzle = _challengeQuestions[_challengeQuestionIndex];
+
+final bool correct =
+!timedOut &&
+_challengeService.checkAnswer(
+userAnswer: userAnswer,
+correctAnswer: puzzle.correctAnswer,
+);
+
+questionTimer?.cancel();
+
+// -----------------------------------------
+// Calculate marks
+// -----------------------------------------
+
+final int earnedMarks = _challengeService.calculateQuestionScore(
+isCorrect: correct,
+remainingTimeSeconds: timerSeconds,
+hintsUsed: hintsUsedCount,
+);
+
+final remainingTime = timerSeconds < 0 ? 0 : timerSeconds;
+
+final completionTime = elapsedSeconds < 0 ? 0 : elapsedSeconds;
+
+try {
+// -----------------------------------------
+// Save this question's answer
+// -----------------------------------------
+
+await _challengeService.saveQuestionAnswer(
+attemptId: _attemptId!,
+question: puzzle,
+submittedAnswer: userAnswer,
+isCorrect: correct,
+marksObtained: earnedMarks,
+remainingTimeSeconds: remainingTime,
+hintsUsed: hintsUsedCount,
+);
+
+_challengeCompletionTimeSeconds += completionTime;
+
+// Add this question's score.
+score += earnedMarks;
+
+// -----------------------------------------
+// Question 10?
+// -----------------------------------------
+
+final bool isLastQuestion =
+_challengeQuestionIndex >= _challengeQuestions.length - 1;
+
+if (isLastQuestion) {
+if (!mounted) return;
+
+setState(() {
+isSolved = true;
+_lastAnswerWasCorrect = correct;
+_lastAnswerTimedOut = timedOut;
+_lastEarnedMarks = earnedMarks;
+_isSubmittingAnswer = false;
+errorMsg = null;
+});
+
+// Keep the final result visible long enough to read before opening the
+// completion/leaderboard view.
+await Future.delayed(const Duration(milliseconds: 2500));
+
+if (!mounted) return;
+
+await _completePuzzleChallenge(
+completionTimeSeconds: _challengeCompletionTimeSeconds,
+);
+
+if (!mounted) return;
+
+setState(() {
+isSolved = true;
+_isSubmittingAnswer = false;
+viewMode = 'completion';
+});
+
+return;
+}
+
+// -----------------------------------------
+// Move to next question
+// -----------------------------------------
+
+if (!mounted) return;
+
+setState(() {
+isSolved = true;
+_lastAnswerWasCorrect = correct;
+_lastAnswerTimedOut = timedOut;
+_lastEarnedMarks = earnedMarks;
+errorMsg = null;
+});
+
+// Small delay so the user can see the result,
+// then automatically show the next question.
+await Future.delayed(const Duration(milliseconds: 700));
+
+if (!mounted) return;
+
+final previousOffset = _questionScrollController.hasClients
+? _questionScrollController.offset
+: 0.0;
+setState(() {
+_challengeQuestionIndex++;
+questionIndex = _challengeQuestionIndex + 1;
+answerInput = '';
+selectedOption = null;
+timerSeconds = 30;
+elapsedSeconds = 0;
+hintsAvailable = 3;
+hintsUsedCount = 0;
+showHintModal = false;
+isSolved = false;
+_isSubmittingAnswer = false;
+errorMsg = null;
+});
+
+WidgetsBinding.instance.addPostFrameCallback((_) {
+if (!_questionScrollController.hasClients) return;
+final maximum = _questionScrollController.position.maxScrollExtent;
+_questionScrollController.jumpTo(previousOffset.clamp(0.0, maximum));
+});
+
+_startQuestionTimer();
+} catch (e) {
+if (!mounted) return;
+
+setState(() {
+isSolved = false;
+_isSubmittingAnswer = false;
+errorMsg = 'Unable to save your answer. Please try again.';
+});
+
+debugPrint('Puzzle answer error: $e');
+}
+}
+
+Future<void> _completePuzzleChallenge({
+required int completionTimeSeconds,
+}) async {
+if (_attemptId == null) return;
+
+final result = await _challengeService.completeAttempt(
+attemptId: _attemptId!,
+completionTimeSeconds: completionTimeSeconds,
+rewardPoints: epReward,
+);
+
+score = result.totalScore;
+_earnedEpForChallenge = result.pointsEarned;
+_dailyPuzzleScore = result.dailyScore;
+_dailyLeaderboardRank = result.leaderboardRank;
+_rewardedChallengesToday = result.rewardedChallengesToday;
+_challengeWasRewardEligible = result.rewardEligible;
+
+if (result.pointsEarned > 0) {
+_userEp += result.pointsEarned;
+widget.onSolveSuccess?.call(result.pointsEarned);
+}
+await _loadPuzzleHistory();
+}
+
+// ---------- NEW METHOD: _buildPuzzleBody() ----------
+Widget _buildPuzzleBody() {
+return Stack(
+children: [
+Column(
+children: [
+Expanded(
+child: AnimatedSwitcher(
+duration: const Duration(milliseconds: 200),
+child: _buildCurrentView(),
+),
+),
+],
+),
+if (_isLoadingChallenge) ...[
+const ModalBarrier(dismissible: false, color: Color(0x66000000)),
+Center(
+child: Semantics(
+liveRegion: true,
+child: Card(
+margin: const EdgeInsets.all(28),
+child: Padding(
+padding: const EdgeInsets.all(24),
+child: Column(
+mainAxisSize: MainAxisSize.min,
+children: const [
+CircularProgressIndicator(),
+SizedBox(height: 20),
+Text(
+'Preparing your puzzle…',
+textAlign: TextAlign.center,
+style: TextStyle(
+fontSize: 18,
+fontWeight: FontWeight.w700,
+),
+),
+SizedBox(height: 10),
+Text(
+'Please wait while we load or generate questions for your selected destination. This may take a little while.',
+textAlign: TextAlign.center,
+),
+],
+),
+),
+),
+),
+),
+],
+],
+);
+}
+
+// ---------- BUILD ----------
+@override
+Widget build(BuildContext context) {
+final nav = NavigationService();
+
+return MysteryLaneLayout(
+selectedTab: MysteryLaneTab.missions,
+appBarTitle: 'MYSTERYLANE',
+profileImageUrl: _headerProfilePictureUrl,
+onLeaderboardTap: nav.goToLeaderboard,
+onChatTap: () => _showMessage('Chat will be connected later.'),
+onProfileTap: nav.goToProfile,
+onTabSelected: _handleBottomNavigation,
+onHomeTap: nav.goHome,
+child: _buildPuzzleBody(),
+);
+}
+  // ============================================================
+  // UI BUILDERS (Part 2)
+  // ============================================================
 
   Widget _buildCurrentView() {
     switch (viewMode) {
@@ -1423,8 +1336,6 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   Widget _buildCategoriesView() {
     return SingleChildScrollView(
       key: const ValueKey('categories'),
-      // The Scaffold already reserves the bottom bar. Keep only a small inset
-      // so the fourth card is visible without a large empty panel below it.
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1801,7 +1712,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                         subtitle: 'Current Checkpoint - Recommended',
                         icon: Icons.flag_rounded,
                         selected:
-                            _locationSource == PuzzleLocationSource.checkpoint,
+                        _locationSource == PuzzleLocationSource.checkpoint,
                         onTap: () {
                           setState(() {
                             _locationSource = PuzzleLocationSource.checkpoint;
@@ -1818,7 +1729,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                         subtitle: 'Checkpoint location',
                         icon: Icons.flag_outlined,
                         selected:
-                            _locationSource == PuzzleLocationSource.checkpoint &&
+                        _locationSource == PuzzleLocationSource.checkpoint &&
                             _selectedSavedCheckpointIndex == index,
                         onTap: () {
                           setState(() {
@@ -1837,7 +1748,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                         subtitle: 'Blind Box location',
                         icon: Icons.casino_rounded,
                         selected:
-                            _locationSource == PuzzleLocationSource.blindBox &&
+                        _locationSource == PuzzleLocationSource.blindBox &&
                             _selectedBlindBoxIndex == index,
                         onTap: () {
                           setState(() {
@@ -1952,7 +1863,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
           const SizedBox(height: 6),
           const Text(
             'No puzzle destination was selected. This challenge will use '
-            'general Malaysia questions.',
+                'general Malaysia questions.',
             style: TextStyle(
               color: Color(0xFFEDE9FE),
               fontSize: 12,
@@ -2117,7 +2028,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
 
     final image =
         mission.imageUrl ??
-        'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=400&q=80';
+            'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=400&q=80';
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
@@ -2169,7 +2080,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
               ),
             ),
             if ((_locationSource == PuzzleLocationSource.checkpoint &&
-                    _blindBoxLocations.isNotEmpty) ||
+                _blindBoxLocations.isNotEmpty) ||
                 (_locationSource == PuzzleLocationSource.blindBox &&
                     (_blindBoxLocations.length > 1 ||
                         _hasCheckpointLocation))) ...[
@@ -2435,10 +2346,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     final filteredHistory = _historyCategoryFilter == null
         ? _puzzleHistory
         : _puzzleHistory
-              .where((item) =>
-                  _categoryFromStoredType(item.puzzleCategory) ==
-                  _historyCategoryFilter)
-              .toList();
+        .where((item) =>
+    _categoryFromStoredType(item.puzzleCategory) ==
+        _historyCategoryFilter)
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2457,8 +2368,8 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                 _historyCategoryFilter = value == 'all'
                     ? null
                     : playablePuzzleCategories
-                        .where((category) => category.name == value)
-                        .firstOrNull;
+                    .where((category) => category.name == value)
+                    .firstOrNull;
               }),
               itemBuilder: (context) => [
                 const PopupMenuItem<String>(
@@ -2466,7 +2377,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                   child: Text('All categories'),
                 ),
                 ...playablePuzzleCategories.map(
-                  (category) => PopupMenuItem<String>(
+                      (category) => PopupMenuItem<String>(
                     value: category.name,
                     child: Text(categoryInfo[category]!.title),
                   ),
@@ -2548,8 +2459,8 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         ),
         subtitle: Text(
           'Destination: ${item.destinationLabel}\n'
-          '${_formatHistoryDate(item.completedAt)} · '
-          '${item.answers.length} questions · ${item.completionTimeSeconds}s',
+              '${_formatHistoryDate(item.completedAt)} · '
+              '${item.answers.length} questions · ${item.completionTimeSeconds}s',
           style: const TextStyle(fontSize: 9, color: Color(0xFF64748B)),
         ),
         trailing: Column(
@@ -2641,9 +2552,9 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   }
 
   String _historyQuestionText(
-    String storedQuestion,
-    PuzzleCategory? category,
-  ) {
+      String storedQuestion,
+      PuzzleCategory? category,
+      ) {
     if (category != PuzzleCategory.trueFalse) return storedQuestion;
 
     final match = RegExp(
@@ -2656,8 +2567,8 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   }
 
   ({String question, String? answerToCheck}) _trueFalseContent(
-    CategoryQuestion question,
-  ) {
+      CategoryQuestion question,
+      ) {
     if (question.category != PuzzleCategory.trueFalse) {
       return (question: question.question, answerToCheck: null);
     }
@@ -2673,14 +2584,14 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     ).firstMatch(question.question.trim());
     if (match == null) {
       return (
-        question: 'Is the statement below true or false?',
-        answerToCheck: question.question,
+      question: 'Is the statement below true or false?',
+      answerToCheck: question.question,
       );
     }
 
     return (
-      question: match.group(2)!,
-      answerToCheck: match.group(1)!,
+    question: match.group(2)!,
+    answerToCheck: match.group(1)!,
     );
   }
 
@@ -2739,7 +2650,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                 ),
                 const Tooltip(
                   message:
-                      'Challenge locked until all 10 questions are finished',
+                  'Challenge locked until all 10 questions are finished',
                   child: Icon(
                     Icons.lock_rounded,
                     size: 18,
@@ -2823,8 +2734,8 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(malaysiaFallbackNotice(_challengeQuestions)!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF1E40AF))),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF1E40AF))),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -2987,14 +2898,14 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   Widget _buildAnswerForm(CategoryQuestion question) {
     final isChoice =
         question.category == PuzzleCategory.mcq ||
-        question.category == PuzzleCategory.word ||
-        question.category == PuzzleCategory.trueFalse;
+            question.category == PuzzleCategory.word ||
+            question.category == PuzzleCategory.trueFalse;
 
     return Column(
       children: [
         if (isChoice && question.options != null)
           ...question.options!.map(
-            (option) => Container(
+                (option) => Container(
               margin: const EdgeInsets.only(bottom: 8),
               width: double.infinity,
               child: OutlinedButton(
@@ -3253,10 +3164,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
             child: Text(
               _challengeWasRewardEligible
                   ? 'Today: $_dailyPuzzleScore puzzle points • '
-                        '$_rewardedChallengesToday of 5 scoring challenges used.'
+                  '$_rewardedChallengesToday of 5 scoring challenges used.'
                   : 'You have completed today’s 5 scoring challenges. '
-                        'You can keep playing, but this challenge does not add '
-                        'points or change your daily ranking.',
+                  'You can keep playing, but this challenge does not add '
+                  'points or change your daily ranking.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 11,
@@ -3402,6 +3313,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     );
   }
 
+  // ---------- Small helpers ----------
   Widget _roundButton({required IconData icon, required VoidCallback onTap}) {
     return Material(
       color: Colors.white,
@@ -3539,214 +3451,5 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     }
 
     return '${clean.substring(1)}${clean[0]}';
-  }
-}
-
-class _PuzzleBottomBar extends StatelessWidget {
-  final ValueChanged<MysteryLaneTab> onTap;
-
-  const _PuzzleBottomBar({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return BottomAppBar(
-      height: 78,
-      padding: EdgeInsets.zero,
-      elevation: 18,
-      color: Colors.white,
-      shadowColor: const Color(0x220F172A),
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8,
-      child: Row(
-        children: [
-          Expanded(
-            child: _PuzzleBottomItem(
-              icon: Icons.inventory_2_outlined,
-              label: 'BLIND\nBOX',
-              onTap: () => onTap(MysteryLaneTab.blindBox),
-            ),
-          ),
-          Expanded(
-            child: _PuzzleBottomItem(
-              icon: Icons.assignment_outlined,
-              label: 'MISSIONS',
-              selected: true,
-              onTap: () => onTap(MysteryLaneTab.missions),
-            ),
-          ),
-          const SizedBox(width: 72),
-          Expanded(
-            child: _PuzzleBottomItem(
-              icon: Icons.map_outlined,
-              label: 'PLAN',
-              onTap: () => onTap(MysteryLaneTab.plan),
-            ),
-          ),
-          Expanded(
-            child: _PuzzleBottomItem(
-              icon: Icons.groups_2_outlined,
-              label: 'TEAMS',
-              onTap: () => onTap(MysteryLaneTab.teams),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PuzzleProfileButton extends StatelessWidget {
-  final VoidCallback onTap;
-  final String? imageUrl;
-
-  const _PuzzleProfileButton({required this.onTap, required this.imageUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    final cleanUrl = imageUrl?.trim();
-    final ImageProvider? provider = cleanUrl != null && cleanUrl.isNotEmpty
-        ? NetworkImage(cleanUrl)
-        : null;
-
-    return Tooltip(
-      message: 'Profile',
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 38,
-          height: 38,
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFBAE6FD), width: 1.4),
-          ),
-          child: CircleAvatar(
-            backgroundColor: const Color(0xFFE0F2FE),
-            backgroundImage: provider,
-            child: provider == null
-                ? const Icon(
-                    Icons.person_rounded,
-                    size: 20,
-                    color: Color(0xFF0284C7),
-                  )
-                : null,
-          ),
-        ),
-      ),
-    );
-  }
-
-}
-
-class _PuzzleBottomItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _PuzzleBottomItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.selected = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const Color blue = Color(0xFF0284C7);
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              width: 42,
-              height: 29,
-              decoration: BoxDecoration(
-                color: selected ? blue : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                size: 21,
-                color: selected ? Colors.white : const Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.clip,
-              style: TextStyle(
-                color: selected ? blue : const Color(0xFF64748B),
-                fontSize: 8,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.45,
-                height: 1.0,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PuzzleHomeButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _PuzzleHomeButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Container(
-          width: 62,
-          height: 62,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              colors: [Color(0xFF0284C7), Color(0xFF0D9488)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(color: Colors.white, width: 4),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x3D0284C7),
-                blurRadius: 16,
-                offset: Offset(0, 7),
-              ),
-            ],
-          ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.home_rounded, color: Color(0xFFFDE68A), size: 27),
-              Text(
-                'HOME',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }

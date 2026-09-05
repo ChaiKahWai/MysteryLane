@@ -1,25 +1,21 @@
 import 'package:flutter/material.dart';
-import '../../../application/controller/BlindBox_Controller.dart';
-import '../../../data/models/blind_box_history.dart';
-import '../home/home_screen.dart';
-import '../checkpoint/checkpoint_screen.dart';
 import 'package:flutter/services.dart';
-//import '../plan/plan_screen.dart';
-//import '../group/group_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:mysterylane/application/services/blind_box_mission_generation_service.dart';
+// Core UI + navigation
+import '../../../core/app_imports.dart';
 
-import 'package:mysterylane/data/models/checkpoint_destination.dart';
-
+// Application logic
+import '../../../application/controller/BlindBox_Controller.dart';
+import '../../../application/services/blind_box_mission_generation_service.dart';
+import '../../../data/models/blind_box_history.dart';
+import '../../../data/models/checkpoint_destination.dart';
 import '../checkpoint/checkpoint_mission_screen.dart';
+import '../checkpoint/checkpoint_screen.dart';
 
-enum MysteryLaneTab {
-  blindBox,
-  missions,
-  home,
-  plan,
-  teams,
-}
+// ============================================================
+// MODELS
+// ============================================================
 
 class BlindBoxDestinationUi {
   final String id;
@@ -43,14 +39,13 @@ class BlindBoxDestinationUi {
     required this.imageUrl,
     required this.locationName,
     required this.rating,
-    required this.userRatingCount
+    required this.userRatingCount,
   });
 }
 
 class BlindBoxHistoryUi extends BlindBoxDestinationUi {
   final String drawnAtDate;
   final String drawnAtTime;
-
 
   const BlindBoxHistoryUi({
     required super.id,
@@ -68,24 +63,16 @@ class BlindBoxHistoryUi extends BlindBoxDestinationUi {
   });
 }
 
+// ============================================================
+// BLIND BOX PAGE
+// ============================================================
+
 class BlindBoxPage extends StatefulWidget {
-  // Legacy values kept only so older HomeScreen calls still compile.
-  // The real values are loaded from the authenticated user's Supabase profile.
   final int? userEp;
   final int? blindBoxChances;
-
-  /// Presentation depends only on the Application/Logic layer.
-  /// If no controller is injected, production() is used.
   final BlindBoxController? controller;
-
-  /// New user: null until a real Google Places result is returned.
   final BlindBoxDestinationUi? currentDestination;
-
-  /// Later this list should be loaded from Supabase through Logic/Data layers.
-  /// New users start with an empty history.
   final List<BlindBoxHistoryUi> history;
-
-  /// Presentation-only callbacks.
   final VoidCallback? onBack;
   final VoidCallback? onBuyChanceRequested;
   final ValueChanged<BlindBoxDestinationUi>? onStartMission;
@@ -108,7 +95,12 @@ class BlindBoxPage extends StatefulWidget {
   State<BlindBoxPage> createState() => _BlindBoxPageState();
 }
 
+// ============================================================
+// STATE
+// ============================================================
+
 class _BlindBoxPageState extends State<BlindBoxPage> {
+  // ---------- Constants ----------
   static const Color _primary = Color(0xFF0284C7);
   static const Color _pageBg = Color(0xFFF8FAFC);
   static const Color _slate900 = Color(0xFF0F172A);
@@ -118,46 +110,47 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
   static const Color _sky100 = Color(0xFFE0F2FE);
   static const Color _sky200 = Color(0xFFBAE6FD);
 
+  // ---------- Controllers ----------
   late final BlindBoxController _controller;
   late final bool _ownsController;
 
-  /// UI-only state.
+  // ---------- UI state ----------
   bool _showResult = false;
   bool _historyTab = false;
   bool _isDrawing = false;
   bool _isLoadingHistory = false;
   bool _isLoadingBalance = true;
   bool _isBuyingChance = false;
-
   double _radiusKm = 12;
   int _userEp = 0;
   int _blindBoxChances = 0;
 
+  // ---------- Data ----------
   BlindBoxDestinationUi? _currentDestination;
-
-  /// Keeps the real Google Places result for the currently revealed
-  /// destination. The UI model only stores display fields, while Gemini
-  /// mission generation needs the original place id / coordinates / type.
   BlindBoxResult? _currentBlindBoxResult;
-
   List<BlindBoxHistoryUi> _history = [];
 
+  // ---------- Profile picture for header ----------
+  String? _profilePictureUrl;
+
+  // ---------- Getters ----------
   TextStyle get _heading => const TextStyle(
     color: _slate900,
     fontWeight: FontWeight.w900,
   );
-
   TextStyle get _bodyStyle => const TextStyle();
 
+  // ---------- Lifecycle ----------
   @override
   void initState() {
     super.initState();
-
     _ownsController = widget.controller == null;
     _controller = widget.controller ?? BlindBoxController.production();
     _currentDestination = widget.currentDestination;
     _showResult = _currentDestination != null;
     _history = List<BlindBoxHistoryUi>.from(widget.history);
+
+    _loadProfilePicture();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -170,7 +163,6 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
   @override
   void didUpdateWidget(covariant BlindBoxPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-
     if (oldWidget.currentDestination?.id != widget.currentDestination?.id) {
       _currentDestination = widget.currentDestination;
       _currentBlindBoxResult = null;
@@ -186,18 +178,35 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     super.dispose();
   }
 
-  Future<void> _loadBlindBoxBalance({
-    bool showError = false,
-  }) async {
-    if (mounted) {
-      setState(() => _isLoadingBalance = true);
+  // ---------- Profile picture loader ----------
+  Future<void> _loadProfilePicture() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('profile_picture_url')
+          .eq('id', user.id)
+          .maybeSingle();
+      if (mounted) {
+        final picture = profile?['profile_picture_url']?.toString().trim();
+        setState(() {
+          _profilePictureUrl =
+          (picture != null && picture.isNotEmpty) ? picture : null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Profile picture error: $e');
     }
+  }
 
+  // ---------- Business logic ----------
+
+  Future<void> _loadBlindBoxBalance({bool showError = false}) async {
+    if (mounted) setState(() => _isLoadingBalance = true);
     try {
       final balance = await _controller.loadBlindBoxBalance();
-
       if (!mounted) return;
-
       setState(() {
         _userEp = balance.explorationPoints;
         _blindBoxChances = balance.chances;
@@ -205,193 +214,126 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       });
     } catch (error) {
       if (!mounted) return;
-
       setState(() => _isLoadingBalance = false);
-
-      if (showError) {
-        _showError(error);
-      }
-
-      debugPrint(
-        '[BLIND BOX UI] Balance load error: $error',
-      );
+      if (showError) _showError(error);
+      debugPrint('[BLIND BOX UI] Balance load error: $error');
     }
   }
 
   Future<void> _buyBlindBoxChance() async {
     if (_isBuyingChance) return;
-
     if (_blindBoxChances >= 10) {
-      _showError(
-        const BlindBoxException(
-          'You already have the maximum of 10 Blind Box chances.',
-        ),
-      );
+      _showError(const BlindBoxException(
+          'You already have the maximum of 10 Blind Box chances.'));
       return;
     }
-
     if (_userEp < BlindBoxController.blindBoxChanceCostEp) {
-      _showError(
-        const BlindBoxException(
-          'You need 200 Exploration Points to get 1 Blind Box chance.',
-        ),
-      );
+      _showError(const BlindBoxException(
+          'You need 200 Exploration Points to get 1 Blind Box chance.'));
       return;
     }
-
     setState(() => _isBuyingChance = true);
-
     try {
       final balance = await _controller.buyBlindBoxChance();
-
       if (!mounted) return;
-
       setState(() {
         _userEp = balance.explorationPoints;
         _blindBoxChances = balance.chances;
       });
-
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              '1 Blind Box chance added successfully.',
-            ),
-          ),
-        );
+        ..showSnackBar(const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('1 Blind Box chance added successfully.'),
+        ));
     } catch (error) {
       if (!mounted) return;
       _showError(error);
     } finally {
-      if (mounted) {
-        setState(() => _isBuyingChance = false);
-      }
+      if (mounted) setState(() => _isBuyingChance = false);
     }
   }
 
   Future<void> _drawBlindBox() async {
     if (_isDrawing || _isLoadingBalance) return;
-
     if (_blindBoxChances <= 0) {
       await _showChanceDialog();
       return;
     }
-
     setState(() => _isDrawing = true);
-
     try {
       final recentIds = _history.map((item) => item.id).toSet();
-
       final result = await _controller.drawBlindBox(
         radiusKm: _radiusKm,
         recentPlaceIds: recentIds,
       );
-
       if (!mounted) return;
-
       setState(() {
         _currentBlindBoxResult = result;
         _currentDestination = _mapResultToUi(result);
         _showResult = true;
       });
-
       await _loadBlindBoxBalance();
       await _loadBlindBoxHistory();
     } catch (error) {
       if (!mounted) return;
       _showError(error);
     } finally {
-      if (mounted) {
-        setState(() => _isDrawing = false);
-      }
+      if (mounted) setState(() => _isDrawing = false);
     }
   }
 
   Future<void> _redrawBlindBox() async {
     final current = _currentDestination;
     if (_isDrawing || _isLoadingBalance || current == null) return;
-
     if (_blindBoxChances <= 0) {
       await _showChanceDialog();
       return;
     }
-
     setState(() => _isDrawing = true);
-
     try {
       final recentIds = _history.map((item) => item.id).toSet();
-
       final result = await _controller.redrawBlindBox(
         radiusKm: _radiusKm,
         currentPlaceId: current.id,
         recentPlaceIds: recentIds,
       );
-
       if (!mounted) return;
-
       setState(() {
         _currentBlindBoxResult = result;
         _currentDestination = _mapResultToUi(result);
         _showResult = true;
       });
-
       await _loadBlindBoxBalance();
       await _loadBlindBoxHistory();
     } catch (error) {
       if (!mounted) return;
       _showError(error);
     } finally {
-      if (mounted) {
-        setState(() => _isDrawing = false);
-      }
+      if (mounted) setState(() => _isDrawing = false);
     }
   }
 
-  Future<void> _loadBlindBoxHistory({
-    bool showError = false,
-  }) async {
+  Future<void> _loadBlindBoxHistory({bool showError = false}) async {
     if (_isLoadingHistory) return;
-
-    if (mounted) {
-      setState(() => _isLoadingHistory = true);
-    }
-
+    if (mounted) setState(() => _isLoadingHistory = true);
     try {
       final results = await _controller.loadBlindBoxHistory();
-
-      debugPrint(
-        '[BLIND BOX UI] History received: ${results.length}',
-      );
-
+      debugPrint('[BLIND BOX UI] History received: ${results.length}');
       if (!mounted) return;
-
       setState(() {
-        _history = results
-            .map(_mapHistoryResultToUi)
-            .toList(growable: false);
+        _history = results.map(_mapHistoryResultToUi).toList(growable: false);
       });
     } catch (error) {
-      debugPrint(
-        '[BLIND BOX UI] History load error: $error',
-      );
-
-      if (showError && mounted) {
-        _showError(error);
-      }
+      debugPrint('[BLIND BOX UI] History load error: $error');
+      if (showError && mounted) _showError(error);
     } finally {
-      if (mounted) {
-        setState(() => _isLoadingHistory = false);
-      }
+      if (mounted) setState(() => _isLoadingHistory = false);
     }
   }
 
-  BlindBoxHistoryUi _mapHistoryResultToUi(
-      BlindBoxHistoryResult result,
-      ) {
+  BlindBoxHistoryUi _mapHistoryResultToUi(BlindBoxHistoryResult result) {
     final localTime = result.drawnAt.toLocal();
-
     return BlindBoxHistoryUi(
       id: result.placeId,
       title: result.name,
@@ -433,8 +375,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       title: result.name,
       tag: _formatPlaceType(result.primaryType),
       distance: '${result.distanceKm.toStringAsFixed(1)} km',
-      lore:
-      result.description?.trim().isNotEmpty == true
+      lore: result.description?.trim().isNotEmpty == true
           ? result.description!
           : 'A mystery destination is waiting for you to explore.',
       difficulty: 'Explore this destination',
@@ -448,10 +389,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
   }
 
   String _formatPlaceType(String type) {
-    if (type.trim().isEmpty || type == 'unknown') {
-      return 'Discovery';
-    }
-
+    if (type.trim().isEmpty || type == 'unknown') return 'Discovery';
     return type
         .split('_')
         .where((word) => word.isNotEmpty)
@@ -472,109 +410,69 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
 
   Future<void> _copyAddress(String address) async {
     if (address.trim().isEmpty) return;
-
-    await Clipboard.setData(
-      ClipboardData(text: address),
-    );
-
+    await Clipboard.setData(ClipboardData(text: address));
     if (!mounted) return;
-
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text('Address copied to clipboard'),
-        ),
-      );
+      ..showSnackBar(const SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text('Address copied to clipboard'),
+      ));
   }
 
   void _handleBack() {
     if (widget.onBack != null) {
-      widget.onBack!.call();
+      widget.onBack!();
       return;
     }
-
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
   }
 
-  void _replaceWith(Widget page) {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => page),
-    );
-  }
-
   void _handleBottomNavigation(MysteryLaneTab tab) {
-    // Keep this inside the Presentation layer. No business/data logic here.
     if (widget.onBottomNavTap != null) {
       widget.onBottomNavTap!.call(tab);
       return;
     }
 
+    final nav = NavigationService();
     switch (tab) {
       case MysteryLaneTab.blindBox:
-      // Already on Blind Box. Return to the main Blind Box hub.
         setState(() {
           _showResult = false;
           _historyTab = false;
         });
         break;
-
       case MysteryLaneTab.missions:
-        _replaceWith(const CheckpointScreen());
+        nav.goToMissions();
         break;
-
-      case MysteryLaneTab.home:
-      // If Blind Box was opened from Home, popping avoids creating
-      // another duplicate HomeScreen in the navigation stack.
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        } else {
-          _replaceWith(const HomeScreen());
-        }
-        break;
-
-    //case MysteryLaneTab.plan:
-    //  _replaceWith(const PlanScreen());
-    // break;
-
-    // case MysteryLaneTab.teams:
-    //  _replaceWith(const GroupScreen());
-    // break;
       case MysteryLaneTab.plan:
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(
-              behavior: SnackBarBehavior.floating,
-              content: Text('Plan page will be connected later.'),
-            ),
-          );
+          ..showSnackBar(const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('Plan page will be connected later.'),
+          ));
         break;
-
-    //case MysteryLaneTab.teams:
-    //  _replaceWith(const GroupScreen());
-    //  break;
       case MysteryLaneTab.teams:
-      // TODO: Handle this case.
-        throw UnimplementedError();
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('Teams page will be connected later.'),
+          ));
+        break;
     }
   }
 
-  // ==========================================================================
-  // GEMINI CHECKPOINT MISSION GENERATION
-  // ==========================================================================
-
+  // ---------- Gemini Checkpoint Mission Generation ----------
   final BlindBoxMissionGenerationService _missionGenerationService =
   BlindBoxMissionGenerationService();
-
   bool _generatingCheckpointMission = false;
 
   Future<void> _generateAndOpenCheckpointMission() async {
     if (_generatingCheckpointMission) return;
-
     final uiDestination = _currentDestination;
     final place = _currentBlindBoxResult;
 
@@ -583,29 +481,22 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       return;
     }
 
-    // Normal Blind Box draws always keep the original BlindBoxResult.
-    // A destination injected externally through currentDestination does not.
     if (place == null) {
       if (widget.onStartMission != null) {
         widget.onStartMission!.call(uiDestination);
         return;
       }
-
       _showBlindBoxMessage(
         'This destination does not contain the Google Places data needed to generate a mission. Please draw a new Blind Box destination.',
       );
       return;
     }
 
-    setState(() {
-      _generatingCheckpointMission = true;
-    });
-
+    setState(() => _generatingCheckpointMission = true);
     bool loadingDialogOpen = false;
 
     try {
       if (!mounted) return;
-
       loadingDialogOpen = true;
       showDialog<void>(
         context: context,
@@ -650,16 +541,12 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       );
 
       if (!mounted) return;
-
       if (loadingDialogOpen && Navigator.of(context, rootNavigator: true).canPop()) {
         Navigator.of(context, rootNavigator: true).pop();
         loadingDialogOpen = false;
       }
 
-      debugPrint(
-        '[BLIND BOX UI] Ready checkpoint mission: ${generated.missionId}',
-      );
-
+      debugPrint('[BLIND BOX UI] Ready checkpoint mission: ${generated.missionId}');
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => CheckpointMissionScreen(
@@ -669,27 +556,18 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       );
     } catch (error) {
       if (!mounted) return;
-
       if (loadingDialogOpen && Navigator.of(context, rootNavigator: true).canPop()) {
         Navigator.of(context, rootNavigator: true).pop();
         loadingDialogOpen = false;
       }
-
-      _showBlindBoxMessage(
-        error.toString().replaceFirst('Exception: ', ''),
-      );
+      _showBlindBoxMessage(error.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) {
-        setState(() {
-          _generatingCheckpointMission = false;
-        });
-      }
+      if (mounted) setState(() => _generatingCheckpointMission = false);
     }
   }
 
   void _showBlindBoxMessage(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -700,48 +578,56 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       );
   }
 
+  // ---------- BUILD ----------
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _pageBg,
-      extendBody: false,
-      appBar: const PreferredSize(
-        preferredSize: Size.fromHeight(68),
-        child: _MysteryLaneTopBar(),
-      ),
-      body: SafeArea(
-        top: false,
-        bottom: false,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: (_showResult && _currentDestination != null)
-                    ? _buildDestinationResult()
-                    : _buildBlindBoxHub(),
-              ),
+    final nav = NavigationService();
+
+    return MysteryLaneLayout(
+      selectedTab: MysteryLaneTab.blindBox,
+      appBarTitle: 'MYSTERYLANE',
+      profileImageUrl: _profilePictureUrl,
+      onLeaderboardTap: nav.goToLeaderboard,
+      onChatTap: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Chat will be connected later.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      },
+      onProfileTap: nav.goToProfile,
+      onTabSelected: _handleBottomNavigation,
+      onHomeTap: nav.goHome,
+      child: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    return SafeArea(
+      top: false,
+      bottom: false,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: (_showResult && _currentDestination != null)
+                  ? _buildDestinationResult()
+                  : _buildBlindBoxHub(),
             ),
           ),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: _HomeFloatingButton(
-        onTap: () => _handleBottomNavigation(MysteryLaneTab.home),
-      ),
-      bottomNavigationBar: _MysteryLaneBottomBar(
-        onTap: _handleBottomNavigation,
-      ),
     );
   }
 
-
-  // --------------------------------------------------------------------------
-  // SCREEN 1 - BLIND BOX HUB
-  // --------------------------------------------------------------------------
+  // ============================================================
+  // UI BUILD METHODS
+  // ============================================================
 
   Widget _buildBlindBoxHub() {
     return Column(
@@ -783,24 +669,15 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       borderRadius: BorderRadius.circular(20),
       onTap: _showChanceDialog,
       child: Container(
-        constraints: const BoxConstraints(
-          minHeight: 62,
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 8,
-        ),
+        constraints: const BoxConstraints(minHeight: 62),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: const Color(0xFFFFFBEB),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFFFCD34D),
-            width: 1,
-          ),
+          border: Border.all(color: const Color(0xFFFCD34D), width: 1),
         ),
         child: Row(
           children: [
-            // Gift icon
             Container(
               width: 38,
               height: 38,
@@ -814,10 +691,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                 color: Color(0xFFD97706),
               ),
             ),
-
             const SizedBox(width: 8),
-
-            // Middle text
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -849,17 +723,11 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                 ],
               ),
             ),
-
             const SizedBox(width: 6),
-
-            // GET button
             Flexible(
               flex: 0,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEA7900),
                   borderRadius: BorderRadius.circular(14),
@@ -981,10 +849,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                   children: [
                     Text(
                       'Exploration\nPerimeter',
-                      style: _heading.copyWith(
-                        fontSize: 23,
-                        height: .93,
-                      ),
+                      style: _heading.copyWith(fontSize: 23, height: .93),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -1000,8 +865,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                 ),
               ),
               Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                 decoration: BoxDecoration(
                   color: _sky100,
                   borderRadius: BorderRadius.circular(24),
@@ -1034,8 +898,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                 enabledThumbRadius: 12,
                 elevation: 2,
               ),
-              overlayShape:
-              const RoundSliderOverlayShape(overlayRadius: 20),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
             ),
             child: Slider(
               min: 5,
@@ -1081,10 +944,6 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // SCREEN 2 - HISTORY
-  // --------------------------------------------------------------------------
-
   Widget _buildHistoryView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1097,10 +956,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
               Expanded(
                 child: Text(
                   'Blind Box Draw\nHistory',
-                  style: _heading.copyWith(
-                    fontSize: 24,
-                    height: 1.15,
-                  ),
+                  style: _heading.copyWith(fontSize: 24, height: 1.15),
                 ),
               ),
               Padding(
@@ -1186,13 +1042,8 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // SCREEN 3 - DESTINATION REVEALED
-  // --------------------------------------------------------------------------
-
   Widget _buildDestinationResult() {
     final destination = _currentDestination!;
-
     return Column(
       key: const ValueKey('destination_result'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1258,8 +1109,6 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                     const SizedBox(height: 19),
                     const Divider(height: 1, color: Color(0xFFE8EEF4)),
                     const SizedBox(height: 14),
-
-                    // Explore this destination
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1282,22 +1131,14 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 12),
-
-                    // Address + working copy button
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: const Color(0xFFE2E8F0),
-                        ),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1339,9 +1180,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                             borderRadius: BorderRadius.circular(12),
                             child: InkWell(
                               borderRadius: BorderRadius.circular(12),
-                              onTap: () => _copyAddress(
-                                destination.locationName,
-                              ),
+                              onTap: () => _copyAddress(destination.locationName),
                               child: const Padding(
                                 padding: EdgeInsets.all(9),
                                 child: Icon(
@@ -1355,7 +1194,6 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 27),
                     _SolidPrimaryButton(
                       icon: _generatingCheckpointMission
@@ -1389,17 +1227,13 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // DIALOGS
-  // --------------------------------------------------------------------------
-
+  // ---- Dialogs ----
   Future<void> _showHistoryDialog(BlindBoxHistoryUi item) {
     return showDialog<void>(
       context: context,
       barrierColor: const Color(0xA6424D61),
       builder: (dialogContext) {
         final width = MediaQuery.sizeOf(dialogContext).width;
-
         return Dialog(
           insetPadding: EdgeInsets.symmetric(
             horizontal: width < 390 ? 13 : 20,
@@ -1513,10 +1347,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                     const SizedBox(height: 18),
                     Text(
                       item.title,
-                      style: _heading.copyWith(
-                        fontSize: 24,
-                        height: 1.1,
-                      ),
+                      style: _heading.copyWith(fontSize: 24, height: 1.1),
                     ),
                     const SizedBox(height: 7),
                     Text(
@@ -1549,10 +1380,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                       icon: Icons.navigation_rounded,
                       label: 'START CHECKPOINT MISSION',
                       onTap: () {
-                        // 1. Close history detail dialog
                         Navigator.of(dialogContext).pop();
-
-                        // 2. Navigate to Checkpoint page
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => const CheckpointScreen(),
@@ -1713,339 +1541,14 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
 }
 
 // =============================================================================
-// TOP APP BAR
-// =============================================================================
-
-class _MysteryLaneTopBar extends StatelessWidget {
-  const _MysteryLaneTopBar();
-
-  static const Color skyBlue = Color(0xFF0284C7);
-  static const Color teal = Color(0xFF0D9488);
-  static const Color darkText = Color(0xFF0F172A);
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      elevation: 1.5,
-      shadowColor: const Color(0x330284C7),
-      child: SafeArea(
-        bottom: false,
-        child: SizedBox(
-          height: 68,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [skyBlue, teal],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Color(0x300284C7),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.explore_rounded,
-                    color: Colors.white,
-                    size: 23,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Text(
-                    'MYSTERYLANE',
-                    maxLines: 1,
-                    overflow: TextOverflow.clip,
-                    style: TextStyle(
-                      color: darkText,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                ),
-                _TopCircleButton(
-                  background: const Color(0xFFFFFBEB),
-                  border: const Color(0xFFFDE68A),
-                  icon: Icons.emoji_events_rounded,
-                  iconColor: const Color(0xFFD97706),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 42,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F9FF),
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: const Color(0xFFBAE6FD)),
-                  ),
-                  child: const Icon(
-                    Icons.chat_bubble_outline_rounded,
-                    color: skyBlue,
-                    size: 19,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 38,
-                  height: 38,
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                    border: Border.all(
-                      color: const Color(0xFFBAE6FD),
-                      width: 1.4,
-                    ),
-                  ),
-                  child: const CircleAvatar(
-                    backgroundColor: Color(0xFFE0F2FE),
-                    child: Icon(
-                      Icons.person_rounded,
-                      color: skyBlue,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TopCircleButton extends StatelessWidget {
-  final Color background;
-  final Color border;
-  final IconData icon;
-  final Color iconColor;
-
-  const _TopCircleButton({
-    required this.background,
-    required this.border,
-    required this.icon,
-    required this.iconColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 43,
-      height: 43,
-      decoration: BoxDecoration(
-        color: background,
-        shape: BoxShape.circle,
-        border: Border.all(color: border),
-      ),
-      child: Icon(icon, color: iconColor, size: 22),
-    );
-  }
-}
-
-// =============================================================================
-// BOTTOM NAVIGATION
-// =============================================================================
-
-class _MysteryLaneBottomBar extends StatelessWidget {
-  final ValueChanged<MysteryLaneTab> onTap;
-
-  const _MysteryLaneBottomBar({
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return BottomAppBar(
-      height: 78,
-      padding: EdgeInsets.zero,
-      elevation: 18,
-      color: Colors.white,
-      shadowColor: const Color(0x220F172A),
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8,
-      child: Row(
-        children: [
-          Expanded(
-            child: _BottomItem(
-              icon: Icons.inventory_2_outlined,
-              label: 'BLIND\nBOX',
-              selected: true,
-              onTap: () => onTap(MysteryLaneTab.blindBox),
-            ),
-          ),
-          Expanded(
-            child: _BottomItem(
-              icon: Icons.assignment_outlined,
-              label: 'MISSIONS',
-              onTap: () => onTap(MysteryLaneTab.missions),
-            ),
-          ),
-          const SizedBox(width: 72),
-          Expanded(
-            child: _BottomItem(
-              icon: Icons.map_outlined,
-              label: 'PLAN',
-              onTap: () => onTap(MysteryLaneTab.plan),
-            ),
-          ),
-          Expanded(
-            child: _BottomItem(
-              icon: Icons.groups_2_outlined,
-              label: 'TEAMS',
-              onTap: () => onTap(MysteryLaneTab.teams),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BottomItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _BottomItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.selected = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const Color blue = Color(0xFF0284C7);
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              width: 42,
-              height: 29,
-              decoration: BoxDecoration(
-                color: selected ? blue : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                size: 21,
-                color: selected ? Colors.white : const Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.clip,
-              style: TextStyle(
-                color: selected ? blue : const Color(0xFF64748B),
-                fontSize: 8,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.45,
-                height: 1.0,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HomeFloatingButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _HomeFloatingButton({
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Container(
-          width: 62,
-          height: 62,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              colors: [
-                Color(0xFF0284C7),
-                Color(0xFF0D9488),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(color: Colors.white, width: 4),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x3D0284C7),
-                blurRadius: 16,
-                offset: Offset(0, 7),
-              ),
-            ],
-          ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.home_rounded,
-                color: Color(0xFFFDE68A),
-                size: 27,
-              ),
-              Text(
-                'HOME',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
 // REUSABLE UI COMPONENTS
 // =============================================================================
 
+// ---- RoundIconButton ----
 class _RoundIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
-
-  const _RoundIconButton({
-    required this.icon,
-    this.onTap,
-  });
+  const _RoundIconButton({required this.icon, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -2063,23 +1566,17 @@ class _RoundIconButton extends StatelessWidget {
             shape: BoxShape.circle,
             border: Border.all(color: const Color(0xFFDDE5ED)),
           ),
-          child: Icon(
-            icon,
-            color: const Color(0xFF334155),
-            size: 19,
-          ),
+          child: Icon(icon, color: const Color(0xFF334155), size: 19),
         ),
       ),
     );
   }
 }
 
+// ---- EpChip ----
 class _EpChip extends StatelessWidget {
   final int ep;
-
-  const _EpChip({
-    required this.ep,
-  });
+  const _EpChip({required this.ep});
 
   @override
   Widget build(BuildContext context) {
@@ -2093,11 +1590,8 @@ class _EpChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.auto_awesome_rounded,
-            color: Color(0xFF0284C7),
-            size: 17,
-          ),
+          const Icon(Icons.auto_awesome_rounded,
+              color: Color(0xFF0284C7), size: 17),
           const SizedBox(width: 5),
           Text(
             '$ep EP',
@@ -2113,13 +1607,13 @@ class _EpChip extends StatelessWidget {
   }
 }
 
+// ---- SubTabButton ----
 class _SubTabButton extends StatelessWidget {
   final bool selected;
   final IconData icon;
   final String label;
   final int? badge;
   final VoidCallback onTap;
-
   const _SubTabButton({
     required this.selected,
     required this.icon,
@@ -2131,7 +1625,6 @@ class _SubTabButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const primary = Color(0xFF0284C7);
-
     return Material(
       color: selected ? primary : Colors.transparent,
       borderRadius: BorderRadius.circular(14),
@@ -2196,11 +1689,11 @@ class _SubTabButton extends StatelessWidget {
   }
 }
 
+// ---- GradientActionButton ----
 class _GradientActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-
   const _GradientActionButton({
     required this.icon,
     required this.label,
@@ -2214,10 +1707,7 @@ class _GradientActionButton extends StatelessWidget {
       height: 60,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF0284C7),
-            Color(0xFF0D9488),
-          ],
+          colors: [Color(0xFF0284C7), Color(0xFF0D9488)],
         ),
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
@@ -2259,11 +1749,11 @@ class _GradientActionButton extends StatelessWidget {
   }
 }
 
+// ---- SolidPrimaryButton ----
 class _SolidPrimaryButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-
   const _SolidPrimaryButton({
     required this.icon,
     required this.label,
@@ -2277,11 +1767,7 @@ class _SolidPrimaryButton extends StatelessWidget {
       height: 55,
       child: ElevatedButton.icon(
         onPressed: onTap,
-        icon: Icon(
-          icon,
-          color: Colors.white,
-          size: 18,
-        ),
+        icon: Icon(icon, color: Colors.white, size: 18),
         label: Text(
           label,
           style: const TextStyle(
@@ -2303,6 +1789,7 @@ class _SolidPrimaryButton extends StatelessWidget {
   }
 }
 
+// ---- OutlineActionButton ----
 class _OutlineActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -2310,7 +1797,6 @@ class _OutlineActionButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool isLoading;
   final String? loadingLabel;
-
   const _OutlineActionButton({
     required this.icon,
     required this.label,
@@ -2398,12 +1884,11 @@ class _OutlineActionButton extends StatelessWidget {
     );
   }
 }
+
+// ---- DestinationHero ----
 class _DestinationHero extends StatelessWidget {
   final BlindBoxDestinationUi destination;
-
-  const _DestinationHero({
-    required this.destination,
-  });
+  const _DestinationHero({required this.destination});
 
   @override
   Widget build(BuildContext context) {
@@ -2412,17 +1897,10 @@ class _DestinationHero extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // ================================================================
-          // DESTINATION IMAGE
-          // ================================================================
           _NetworkImage(
             url: destination.imageUrl,
             fit: BoxFit.cover,
           ),
-
-          // ================================================================
-          // DARK GRADIENT
-          // ================================================================
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -2437,25 +1915,16 @@ class _DestinationHero extends StatelessWidget {
               ),
             ),
           ),
-
-          // ================================================================
-          // TOP LEFT - GOOGLE RATING
-          // ================================================================
           if (destination.rating != null)
             Positioned(
               top: 14,
               left: 14,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 11,
-                  vertical: 7,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                 decoration: BoxDecoration(
                   color: const Color(0xEEFFF7ED),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: const Color(0xFFFCD34D),
-                  ),
+                  border: Border.all(color: const Color(0xFFFCD34D)),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x33000000),
@@ -2467,13 +1936,9 @@ class _DestinationHero extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.star_rounded,
-                      color: Color(0xFFF59E0B),
-                      size: 16,
-                    ),
+                    const Icon(Icons.star_rounded,
+                        color: Color(0xFFF59E0B), size: 16),
                     const SizedBox(width: 4),
-
                     Text(
                       destination.rating!.toStringAsFixed(1),
                       style: const TextStyle(
@@ -2482,29 +1947,19 @@ class _DestinationHero extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-
                   ],
                 ),
               ),
             ),
-
-          // ================================================================
-          // TOP RIGHT - MYSTERY SPOT
-          // ================================================================
           Positioned(
             top: 14,
             right: 14,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 7,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
                 color: const Color(0xDD17243B),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: const Color(0x997C6A2B),
-                ),
+                border: Border.all(color: const Color(0x997C6A2B)),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x33000000),
@@ -2523,11 +1978,6 @@ class _DestinationHero extends StatelessWidget {
               ),
             ),
           ),
-
-          // ================================================================
-          // BOTTOM CONTENT
-          // CATEGORY + TITLE + DISTANCE
-          // ================================================================
           Positioned(
             left: 18,
             right: 18,
@@ -2535,14 +1985,10 @@ class _DestinationHero extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // ----------------------------------------------------------
-                // CATEGORY + DESTINATION NAME
-                // ----------------------------------------------------------
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Category
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -2570,33 +2016,20 @@ class _DestinationHero extends StatelessWidget {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 6),
-
-                      // Destination Name
                       _AutoFitDestinationTitle(
                         text: destination.title,
                       ),
                     ],
                   ),
                 ),
-
                 const SizedBox(width: 10),
-
-                // ----------------------------------------------------------
-                // DISTANCE
-                // ----------------------------------------------------------
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 11,
-                    vertical: 9,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
                   decoration: BoxDecoration(
                     color: const Color(0xE60284C7),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: const Color(0xFF7DD3FC),
-                    ),
+                    border: Border.all(color: const Color(0xFF7DD3FC)),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x33000000),
@@ -2632,15 +2065,12 @@ class _DestinationHero extends StatelessWidget {
       ),
     );
   }
-
 }
 
+// ---- AutoFitDestinationTitle ----
 class _AutoFitDestinationTitle extends StatelessWidget {
   final String text;
-
-  const _AutoFitDestinationTitle({
-    required this.text,
-  });
+  const _AutoFitDestinationTitle({required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -2649,9 +2079,7 @@ class _AutoFitDestinationTitle extends StatelessWidget {
         const maxFontSize = 28.0;
         const minFontSize = 16.0;
         const maxLines = 3;
-
         double fontSize = maxFontSize;
-
         while (fontSize > minFontSize) {
           final painter = TextPainter(
             text: TextSpan(
@@ -2665,14 +2093,9 @@ class _AutoFitDestinationTitle extends StatelessWidget {
             maxLines: maxLines,
             textDirection: TextDirection.ltr,
           )..layout(maxWidth: constraints.maxWidth);
-
-          if (!painter.didExceedMaxLines) {
-            break;
-          }
-
+          if (!painter.didExceedMaxLines) break;
           fontSize -= 1;
         }
-
         return Text(
           text,
           maxLines: maxLines,
@@ -2696,14 +2119,11 @@ class _AutoFitDestinationTitle extends StatelessWidget {
   }
 }
 
+// ---- HistoryCard ----
 class _HistoryCard extends StatelessWidget {
   final BlindBoxHistoryUi item;
   final VoidCallback onTap;
-
-  const _HistoryCard({
-    required this.item,
-    required this.onTap,
-  });
+  const _HistoryCard({required this.item, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -2833,11 +2253,11 @@ class _HistoryCard extends StatelessWidget {
   }
 }
 
+// ---- HistoryMeta ----
 class _HistoryMeta extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String text;
-
   const _HistoryMeta({
     required this.icon,
     required this.iconColor,
@@ -2863,11 +2283,11 @@ class _HistoryMeta extends StatelessWidget {
   }
 }
 
+// ---- DialogInfoRow ----
 class _DialogInfoRow extends StatelessWidget {
   final String label;
   final String value;
   final Color valueColor;
-
   const _DialogInfoRow({
     required this.label,
     required this.value,
@@ -2901,14 +2321,11 @@ class _DialogInfoRow extends StatelessWidget {
   }
 }
 
+// ---- NetworkImage ----
 class _NetworkImage extends StatelessWidget {
   final String url;
   final BoxFit fit;
-
-  const _NetworkImage({
-    required this.url,
-    required this.fit,
-  });
+  const _NetworkImage({required this.url, required this.fit});
 
   @override
   Widget build(BuildContext context) {
@@ -2924,7 +2341,6 @@ class _NetworkImage extends StatelessWidget {
         ),
       );
     }
-
     return Image.network(
       url,
       fit: fit,

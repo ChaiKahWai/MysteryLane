@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/app_imports.dart';
 import '../../../core/config/supabase_config.dart';
 import '../Blindbox/BlindBox_Screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
@@ -20,11 +21,32 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color skyBlue = Color(0xFF0284C7);
   static const Color teal = Color(0xFF0D9488);
   static const Color darkText = Color(0xFF0F172A);
-  static const Color pageBackground = Color(0xFFF8FAFC);
 
-  String _selectedItem = 'Home';
+  // IndexedStack state
+  int _selectedIndex = 0;
+  final List<Widget> _screens = [
+    const _HomeContent(),       // index 0: Home (hero)
+    const BlindBoxPage(),       // index 1: Blind Box
+    const CheckpointScreen(),   // index 2: Missions
+    const PlanScreen(),         // index 3: Plan
+    const GroupScreen(),        // index 4: Teams
+  ];
 
   String? _headerProfilePictureUrl;
+
+  // Map tab to index
+  int _tabToIndex(MysteryLaneTab tab) {
+    switch (tab) {
+      case MysteryLaneTab.blindBox:
+        return 1;
+      case MysteryLaneTab.missions:
+        return 2;
+      case MysteryLaneTab.plan:
+        return 3;
+      case MysteryLaneTab.teams:
+        return 4;
+    }
+  }
 
   @override
   void initState() {
@@ -35,225 +57,121 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadHeaderProfile() async {
     try {
       final user = SupabaseConfig.client.auth.currentUser;
-
       if (user == null) {
-        if (mounted) {
-          setState(() {
-            _headerProfilePictureUrl = null;
-          });
-        }
+        if (mounted) setState(() => _headerProfilePictureUrl = null);
         return;
       }
-
       final profile = await SupabaseConfig.client
           .from('profiles')
           .select('profile_picture_url')
           .eq('id', user.id)
           .maybeSingle();
-
       if (!mounted) return;
-
-      final picture =
-      profile?['profile_picture_url']?.toString().trim();
-
+      final picture = profile?['profile_picture_url']?.toString().trim();
       setState(() {
         _headerProfilePictureUrl =
-        picture != null && picture.isNotEmpty
-            ? picture
-            : null;
+        (picture != null && picture.isNotEmpty) ? picture : null;
       });
     } catch (error) {
-      debugPrint(
-        'HOME HEADER PROFILE PHOTO ERROR: $error',
-      );
+      debugPrint('HOME HEADER PROFILE PHOTO ERROR: $error');
     }
   }
 
-  void _showPressedMessage(String feature) {
-    setState(() => _selectedItem = feature);
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(20, 0, 20, 92),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          content: Text('$feature pressed - UI only for now.'),
-          duration: const Duration(milliseconds: 1200),
-        ),
-      );
+  // ---------- Navigation helpers ----------
+  void _handleTabSelection(MysteryLaneTab tab) {
+    setState(() {
+      _selectedIndex = _tabToIndex(tab);
+    });
   }
 
-  // ============================================================
-  // OPEN PROFILE SCREEN
-  // ============================================================
+  void _goHome() {
+    setState(() {
+      _selectedIndex = 0;
+    });
+  }
 
   Future<void> _openProfile() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ProfileScreen(),
-      ),
-    );
-
-    // Reload after returning from ProfileScreen so a newly
-    // changed profile picture is shown immediately.
+    await NavigationService().goToProfile();
     await _loadHeaderProfile();
   }
 
-  // ============================================================
-  // OPEN LEADERBOARD SCREEN
-  // ============================================================
-
   void _openLeaderboard() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-        const LeaderboardScreen(),
+    NavigationService().goToLeaderboard();
+  }
+
+  void _openChat() {
+    NavigationService().goToChat();
+  }
+
+  // ---------- Build ----------
+  @override
+  Widget build(BuildContext context) {
+    // We need to manually build the Scaffold because we use IndexedStack.
+    // We'll use MysteryLaneAppBar and MysteryLaneBottomBar directly.
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      extendBody: true,
+      appBar: MysteryLaneAppBar(
+        title: 'MYSTERYLANE',
+        onLeaderboardTap: _openLeaderboard,
+        onChatTap: _openChat,
+        onProfileTap: _openProfile,
+        profileImageUrl: _headerProfilePictureUrl,
+      ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _screens,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: MysteryLaneHomeButton(
+        onTap: _goHome,
+      ),
+      bottomNavigationBar: MysteryLaneBottomBar(
+        selectedTab: _indexToTab(_selectedIndex),
+        onTabSelected: _handleTabSelection,
       ),
     );
   }
 
-  void _openBlindBoxScreen() {
-    _showPressedMessage('Blind Box');
+  // Helper to convert index back to tab (for highlighting)
+  MysteryLaneTab _indexToTab(int index) {
+    switch (index) {
+      case 1:
+        return MysteryLaneTab.blindBox;
+      case 2:
+        return MysteryLaneTab.missions;
+      case 3:
+        return MysteryLaneTab.plan;
+      case 4:
+        return MysteryLaneTab.teams;
+      default:
+      // Home tab has no corresponding bottom bar item, so we default to blindBox
+        return MysteryLaneTab.blindBox;
+    }
   }
+}
 
-  void _openCheckpointScreen() {
-    setState(() => _selectedItem = 'Missions');
+// ============================================================
+// HOME CONTENT (extracted from original build)
+// ============================================================
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const CheckpointScreen(),
-      ),
-    ).then((_) {
-      if (!mounted) return;
-      setState(() => _selectedItem = 'Home');
-    });
-  }
-
-  void _openPlanScreen() {
-    setState(() => _selectedItem = 'Plan');
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const PlanScreen()),
-    ).then((_) {
-      if (mounted) setState(() => _selectedItem = 'Home');
-    });
-  }
+class _HomeContent extends StatelessWidget {
+  const _HomeContent();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: pageBackground,
-      extendBody: true,
-      appBar: _buildTopAppBar(),
-      body: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 120),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildWelcomeRow(),
-              const SizedBox(height: 18),
-              _buildDiscoveryHero(),
-            ],
-          ),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: _buildHomeButton(),
-      bottomNavigationBar: _buildBottomBar(),
-    );
-  }
-
-  PreferredSizeWidget _buildTopAppBar() {
-    return AppBar(
-      toolbarHeight: 68,
-      elevation: 0,
-      scrolledUnderElevation: 2,
-      backgroundColor: Colors.white.withValues(alpha: 0.97),
-      surfaceTintColor: Colors.white,
-      titleSpacing: 16,
-      title: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => _showPressedMessage('Home'),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _MysteryLaneLogo(),
-              SizedBox(width: 10),
-              Text(
-                'MYSTERYLANE',
-                style: TextStyle(
-                  color: darkText,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        _TopActionButton(
-          tooltip: 'Leaderboard',
-          icon: Icons.emoji_events_rounded,
-          background: const Color(0xFFFFFBEB),
-          foreground: const Color(0xFFD97706),
-          onTap: _openLeaderboard,
-        ),
-        const SizedBox(width: 6),
-        _TopActionButton(
-          tooltip: 'Chat',
-          icon:
-          Icons
-              .chat_bubble_outline_rounded,
-          background:
-          const Color(
-            0xFFF0F9FF,
-          ),
-          foreground:
-          skyBlue,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ChatListScreen()),
-            );
-          },
-        ),
-
-        const SizedBox(
-          width: 6,
-        ),
-
-        // ======================================================
-        // PROFILE PICTURE BUTTON
-        // ======================================================
-
-        _ProfileButton(
-          onTap: _openProfile,
-          imageUrl: _headerProfilePictureUrl,
-        ),
-
-        const SizedBox(
-          width: 12,
-        ),
-      ],
-      bottom: const PreferredSize(
-        preferredSize: Size.fromHeight(1),
-        child: Divider(
-          height: 1,
-          thickness: 1,
-          color: Color(0xFFE2E8F0),
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 120),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildWelcomeRow(),
+            const SizedBox(height: 18),
+            _buildDiscoveryHero(context),
+          ],
         ),
       ),
     );
@@ -278,7 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(
                 'Discover somewhere new',
                 style: TextStyle(
-                  color: darkText,
+                  color: Color(0xFF0F172A),
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
                 ),
@@ -299,13 +217,13 @@ class _HomeScreenState extends State<HomeScreen> {
               Icon(
                 Icons.auto_awesome_rounded,
                 size: 15,
-                color: skyBlue,
+                color: Color(0xFF0284C7),
               ),
               SizedBox(width: 5),
               Text(
                 'EXPLORE',
                 style: TextStyle(
-                  color: skyBlue,
+                  color: Color(0xFF0284C7),
                   fontSize: 10,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.2,
@@ -318,7 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDiscoveryHero() {
+  Widget _buildDiscoveryHero(BuildContext context) {
     return Container(
       height: 470,
       decoration: BoxDecoration(
@@ -342,7 +260,6 @@ class _HomeScreenState extends State<HomeScreen> {
             fit: BoxFit.cover,
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
-
               return const ColoredBox(
                 color: Color(0xFF0C4A6E),
                 child: Center(
@@ -389,10 +306,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.28),
+                      color: Colors.black.withOpacity(0.28),
                       borderRadius: BorderRadius.circular(99),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.25),
+                        color: Colors.white.withOpacity(0.25),
                       ),
                     ),
                     child: const Text(
@@ -449,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.96),
+                  color: Colors.white.withOpacity(0.96),
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(24),
                   ),
@@ -460,7 +377,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [skyBlue, teal],
+                        colors: [Color(0xFF0284C7), Color(0xFF0D9488)],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
@@ -477,7 +394,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Colors.transparent,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(16),
-                        onTap: _openBlindBoxScreen,
+                        onTap: () {
+                          // Navigate to Blind Box using NavigationService
+                          NavigationService().goToBlindBox();
+                        },
                         child: const Center(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -508,320 +428,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildHomeButton() {
-    final bool active = _selectedItem == 'Home';
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: () => _showPressedMessage('Home'),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: active ? 66 : 62,
-          height: active ? 66 : 62,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              colors: [skyBlue, teal],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(color: Colors.white, width: 4),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x3D0284C7),
-                blurRadius: 16,
-                offset: Offset(0, 7),
-              ),
-            ],
-          ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.home_rounded,
-                color: Color(0xFFFDE68A),
-                size: 27,
-              ),
-              Text(
-                'HOME',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomBar() {
-    return BottomAppBar(
-      height: 78,
-      padding: EdgeInsets.zero,
-      color: Colors.white.withValues(alpha: 0.98),
-      elevation: 18,
-      shadowColor: const Color(0x330284C7),
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8,
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            Expanded(
-              child: _BottomItem(
-                icon: Icons.inventory_2_outlined,
-                label: 'BLIND BOX',
-                active: _selectedItem == 'Blind Box',
-                onTap: _openBlindBoxScreen,
-              ),
-            ),
-            Expanded(
-              child: _BottomItem(
-                icon: Icons.assignment_outlined,
-                label: 'MISSIONS',
-                active: _selectedItem == 'Missions',
-                onTap: _openCheckpointScreen,
-              ),
-            ),
-            const SizedBox(width: 74),
-            Expanded(
-              child: _BottomItem(
-                icon: Icons.map_outlined,
-                label: 'PLAN',
-                active: _selectedItem == 'Plan',
-                onTap: _openPlanScreen,
-              ),
-            ),
-            Expanded(
-              child: _BottomItem(
-                icon: Icons.groups_2_outlined,
-                label: 'TEAMS',
-                active: _selectedItem == 'Teams',
-                onTap: () {
-                  setState(() => _selectedItem = 'Teams');
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const GroupScreen()),
-                  ).then((_) {
-                    if (mounted) setState(() => _selectedItem = 'Home');
-                  });
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MysteryLaneLogo extends StatelessWidget {
-  const _MysteryLaneLogo();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [
-            _HomeScreenState.skyBlue,
-            _HomeScreenState.teal,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x300284C7),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: const Icon(
-        Icons.explore_rounded,
-        color: Colors.white,
-        size: 23,
-      ),
-    );
-  }
-}
-
-class _TopActionButton extends StatelessWidget {
-  final String tooltip;
-  final IconData icon;
-  final Color background;
-  final Color foreground;
-  final VoidCallback onTap;
-
-  const _TopActionButton({
-    required this.tooltip,
-    required this.icon,
-    required this.background,
-    required this.foreground,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(99),
-        onTap: onTap,
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: background,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: foreground.withValues(alpha: 0.20),
-            ),
-          ),
-          child: Icon(
-            icon,
-            color: foreground,
-            size: 20,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileButton extends StatelessWidget {
-  final VoidCallback onTap;
-  final String? imageUrl;
-
-  const _ProfileButton({
-    required this.onTap,
-    required this.imageUrl,
-  });
-
-  @override
-  Widget build(
-      BuildContext context,
-      ) {
-    final String? cleanUrl =
-    imageUrl?.trim();
-
-    final ImageProvider? provider =
-    cleanUrl != null &&
-        cleanUrl.isNotEmpty
-        ? NetworkImage(cleanUrl)
-        : null;
-
-    return Tooltip(
-      message: 'Profile',
-      child: InkWell(
-        customBorder:
-        const CircleBorder(),
-        onTap: onTap,
-        child: Container(
-          width: 38,
-          height: 38,
-          padding:
-          const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color:
-              const Color(
-                0xFFBAE6FD,
-              ),
-              width: 1.4,
-            ),
-          ),
-          child: CircleAvatar(
-            backgroundColor:
-            const Color(
-              0xFFE0F2FE,
-            ),
-            backgroundImage:
-            provider,
-            child: provider == null
-                ? const Icon(
-              Icons.person_rounded,
-              size: 20,
-              color: Color(
-                0xFF0284C7,
-              ),
-            )
-                : null,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _BottomItem({
-    required this.icon,
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const Color blue = Color(0xFF0284C7);
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              width: 42,
-              height: 29,
-              decoration: BoxDecoration(
-                color: active ? blue : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                size: 21,
-                color: active ? Colors.white : const Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.clip,
-              style: TextStyle(
-                color: active ? blue : const Color(0xFF64748B),
-                fontSize: 8,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.45,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

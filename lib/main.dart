@@ -8,6 +8,7 @@ import 'presentation/screens/auth/welcome_screen.dart';
 import 'presentation/screens/auth/login_screen.dart';
 import 'presentation/screens/profile/reset_password_screen.dart';
 import 'presentation/screens/home/home_screen.dart';
+import 'core/services/navigation_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -237,8 +238,8 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
         SupabaseConfig.client.auth.currentSession;
 
     return MaterialApp(
-      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
+      navigatorKey: NavigationService().navigatorKey,
       title: 'MYsteryLane',
 
       // If user already logged in before,
