@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/puzzle_model.dart';
 import '../models/puzzle_question_quality.dart';
+import '../models/puzzle_selection.dart';
 
 class PuzzleRepository {
   final SupabaseClient _supabase;
@@ -73,7 +76,7 @@ class PuzzleRepository {
         allowPreparation: false,
       );
     }
-    return usable;
+    return uniquePuzzleQuestions(usable);
   }
 
   // ============================================================
@@ -84,24 +87,25 @@ class PuzzleRepository {
     required String userId,
     String? destinationId,
     required String puzzleType,
+    String? historyCategory,
     int questionCount = 10,
   }) async {
-    final questions = await getQuestions(
+    var questions = await getQuestions(
       destinationId: destinationId,
       puzzleType: puzzleType,
+      allowPreparation: false,
     );
 
-    if (questions.length <= questionCount) {
-      questions.shuffle();
-      return questions;
-    }
-
-    final previousAttempts = await _supabase
+    // Read every completed round, not just the API's default first page.
+    final previousAttempts = await _readPages((from, to) => _supabase
         .from('puzzle_attempts')
         .select('attempt_id, completed_at')
         .eq('user_id', userId)
+        .eq('puzzle_category', historyCategory ?? puzzleType)
         .not('completed_at', 'is', null)
-        .order('completed_at', ascending: false);
+        .order('completed_at', ascending: false)
+        .order('attempt_id')
+        .range(from, to));
 
     final attemptIds = (previousAttempts as List)
         .map((row) => row['attempt_id']?.toString())
@@ -112,10 +116,27 @@ class PuzzleRepository {
     final answeredPuzzleIds = <String>{};
     final recentlyAnsweredPuzzleIds = <String>{};
     if (attemptIds.isNotEmpty) {
-      final previousAnswers = await _supabase
-          .from('puzzle_attempt_answers')
-          .select('puzzle_id, attempt_id')
-          .inFilter('attempt_id', attemptIds);
+      final previousAnswers = <Map<String, dynamic>>[];
+      // Keep URLs bounded and paginate answers so long-term players do not
+      // have old questions incorrectly classified as unseen.
+      for (var start = 0; start < attemptIds.length; start += 50) {
+        final ids = attemptIds.skip(start).take(50).toList();
+        previousAnswers.addAll(await _readPages((from, to) => _supabase
+            .from('puzzle_attempt_answers')
+            .select(
+              'puzzle_id, attempt_id, '
+              'puzzle_questions(question_text, destination_id)',
+            )
+            .inFilter('attempt_id', ids)
+            .order('attempt_id').order('puzzle_id')
+            .range(from, to)));
+      }
+
+      // General questions are shared across destinations; avoid the latest
+      // round's IDs even when it was at a different destination.
+      recentlyAnsweredPuzzleIds.addAll((previousAnswers as List)
+          .where((row) => row['attempt_id']?.toString() == attemptIds.first)
+          .map((row) => row['puzzle_id'].toString()));
 
       answeredPuzzleIds.addAll(
         (previousAnswers as List)
@@ -124,9 +145,59 @@ class PuzzleRepository {
             .where((id) => id.isNotEmpty),
       );
 
-      final latestAttemptId = attemptIds.first;
+      final poolIds = questions.map((q) => q.id).toSet();
+      final poolTextKeys = questions
+          .map((q) => puzzleTextKey(q.questionText))
+          .toSet();
+      String answerKey(dynamic row) => row['puzzle_questions'] is Map
+          ? puzzleTextKey(
+              row['puzzle_questions']['question_text']?.toString() ?? '',
+            )
+          : '';
+      String? answerDestinationId(dynamic row) =>
+          row['puzzle_questions'] is Map
+          ? row['puzzle_questions']['destination_id']?.toString()
+          : null;
+      // Question wording can legitimately be similar at different places.
+      // Only history explicitly linked to this exact destination may mark its
+      // local rows seen. General rows are shared by their stable puzzle IDs;
+      // a missing relation must never suppress a destination question.
+      bool belongsToCurrentPool(dynamic row) {
+        final rowDestinationId = answerDestinationId(row);
+        return rowDestinationId != null && rowDestinationId == destinationId;
+      }
+
+      final relevantPreviousAnswers = (previousAnswers as List)
+          .where(belongsToCurrentPool)
+          .toList();
+      final answeredKeys = relevantPreviousAnswers.map(answerKey).toSet();
+      answeredPuzzleIds.addAll(
+        questions
+            .where((q) => answeredKeys.contains(puzzleTextKey(q.questionText)))
+            .map((q) => q.id),
+      );
+      final relevantAttempts = relevantPreviousAnswers
+          .where(
+            (row) =>
+                poolIds.contains(row['puzzle_id']?.toString()) ||
+                poolTextKeys.contains(answerKey(row)),
+          )
+          .map((row) => row['attempt_id']?.toString())
+          .toSet();
+      final latestAttemptId = attemptIds
+          .where(relevantAttempts.contains)
+          .firstOrNull;
+      final recentKeys = relevantPreviousAnswers
+          .where((row) => row['attempt_id']?.toString() == latestAttemptId)
+          .map(answerKey)
+          .toSet();
       recentlyAnsweredPuzzleIds.addAll(
-        (previousAnswers as List)
+        questions
+            .where((q) => recentKeys.contains(puzzleTextKey(q.questionText)))
+            .map((q) => q.id),
+      );
+      recentlyAnsweredPuzzleIds.addAll(
+        relevantPreviousAnswers
             .where((row) => row['attempt_id']?.toString() == latestAttemptId)
             .map((row) => row['puzzle_id']?.toString())
             .whereType<String>()
@@ -134,42 +205,119 @@ class PuzzleRepository {
       );
     }
 
-    // Prefer questions the player has not answered before. Once every
-    // question has been seen, reset the pool naturally by using all of them.
-    final unusedQuestions = questions
-        .where((question) => !answeredPuzzleIds.contains(question.id))
-        .toList();
-
-    final selection = <PuzzleQuestion>[...unusedQuestions];
-    if (selection.length < questionCount) {
-      final previouslySeenQuestions = questions
-          .where(
-            (question) =>
-                answeredPuzzleIds.contains(question.id) &&
-                !recentlyAnsweredPuzzleIds.contains(question.id),
-          )
-          .toList();
-      previouslySeenQuestions.shuffle();
-      selection.addAll(
-        previouslySeenQuestions.take(questionCount - selection.length),
-      );
-
-      if (selection.length < questionCount) {
-        final recentQuestions = questions
-            .where(
-              (question) => recentlyAnsweredPuzzleIds.contains(question.id),
-            )
-            .toList();
-        recentQuestions.shuffle();
-        selection.addAll(
-          recentQuestions.take(questionCount - selection.length),
-        );
+    // Every playable text category follows one selection contract: saved
+    // destination questions first, then same-category Malaysia General rows.
+    // This also applies automatically when a new category bank is added.
+    const destinationFirstTypes = {
+      'Multiple Choice Question',
+      'Guess the Word',
+      'Scrambled Word',
+      'Missing Word Challenge',
+      'True or False',
+    };
+    if (destinationId != null && destinationFirstTypes.contains(puzzleType)) {
+      final general = questions.where((q) => !answeredPuzzleIds.contains(q.id) &&
+                  !recentlyAnsweredPuzzleIds.contains(q.id)).length >= questionCount
+          ? <PuzzleQuestion>[]
+          : (await _supabase.from('puzzle_questions').select()
+              .isFilter('destination_id', null)
+              .eq('category', 'Malaysia General Knowledge')
+              .eq('puzzle_type', puzzleType).eq('is_active', true) as List)
+              .map((row) => PuzzleQuestion.fromMap(Map<String, dynamic>.from(row)))
+              .toList();
+      final round = selectDestinationFirstRound(questions, general,
+          answeredPuzzleIds, recentlyAnsweredPuzzleIds, count: questionCount);
+      if (round.length != questionCount) {
+        throw const PuzzlePreparationException('The saved question library is incomplete. Please contact support. Your draw is saved.');
       }
+      return round;
     }
 
+    String? preparationFailure;
+    if (selectPuzzleRound(questions, answeredPuzzleIds,
+            recentlyAnsweredPuzzleIds, count: questionCount).length < questionCount) {
+      try {
+        final preparation = await _supabase.functions.invoke(
+          'generate-destination-questions',
+          body: {
+            if (destinationId != null) 'destination_id': destinationId,
+            'random_mode': destinationId == null,
+            'puzzle_type': puzzleType,
+            'exclude_question_ids': {
+              ...recentlyAnsweredPuzzleIds,
+              ...answeredPuzzleIds,
+            }.take(1000).toList(),
+          },
+        );
+        // Another user or the draw's background worker may already be filling
+        // this bank. Read saved results rather than launching duplicate work.
+        if (preparation.status == 202) {
+          for (var poll = 0; poll < 40; poll++) {
+            await Future<void>.delayed(const Duration(seconds: 3));
+            questions = await getQuestions(destinationId: destinationId,
+                puzzleType: puzzleType, allowPreparation: false);
+            if (selectPuzzleRound(questions, answeredPuzzleIds,
+                    recentlyAnsweredPuzzleIds, count: questionCount).length >= questionCount) {
+              break;
+            }
+          }
+        }
+      } on FunctionException catch (error) {
+        final details = error.details;
+        preparationFailure = details is Map && details['error'] is String
+            ? details['error'] as String
+            : 'Question generation could not reach the server. Please check your connection.';
+      } catch (_) {
+        preparationFailure = 'Question generation could not reach the server. Please check your connection.';
+        // Keep usable saved questions when the provider is unavailable.
+        // The selection rule below still prevents a ten-out-of-ten repeat.
+      }
+      questions = await getQuestions(
+        destinationId: destinationId,
+        puzzleType: puzzleType,
+        allowPreparation: false,
+      );
+    }
+    final selection = selectPuzzleRound(
+      questions,
+      answeredPuzzleIds,
+      recentlyAnsweredPuzzleIds,
+      count: questionCount,
+    );
+    if (selection.length < questionCount) {
+      throw PuzzlePreparationException(
+        preparationFailure ?? 'We are still preparing enough different questions for this challenge. '
+        'Your progress is saved. Please try again shortly or choose another puzzle category.',
+      );
+    }
     selection.shuffle();
+    // Replenishment is independent of this ready round: never hold a playable
+    // database selection hostage to the model's availability.
+    if (destinationId != null) {
+      unawaited(_growSharedBank(destinationId));
+    }
+    return selection;
+  }
 
-    return selection.take(questionCount).toList();
+  Future<List<Map<String, dynamic>>> _readPages(
+    Future<List<Map<String, dynamic>>> Function(int from, int to) fetch,
+  ) async {
+    const pageSize = 500;
+    final rows = <Map<String, dynamic>>[];
+    for (var from = 0; ; from += pageSize) {
+      final page = await fetch(from, from + pageSize - 1);
+      rows.addAll(page);
+      if (page.length < pageSize) return rows;
+    }
+  }
+
+  Future<void> _growSharedBank(String destinationId) async {
+    try {
+      await _supabase.functions.invoke('generate-destination-questions',
+          body: {'destination_id': destinationId, 'prepare_all': true});
+    } catch (_) {
+      // Saved rounds still work. A later draw/play can resume replenishment.
+    }
   }
 
   Future<List<PuzzleChallengeHistory>> getPuzzleHistory({
@@ -197,7 +345,9 @@ class PuzzleRepository {
         .select(
           'attempt_id, submitted_answer, is_correct, marks_obtained, '
           'remaining_time_seconds, hints_used, answered_at, '
-          'puzzle_questions(question_text, correct_answer, timer_seconds, '
+          'question_text_snapshot, correct_answer_snapshot, '
+          'question_category_snapshot, timer_seconds_snapshot, '
+          'puzzle_questions(question_text, correct_answer, timer_seconds, category, '
           'blind_box_destinations(name))',
         )
         .inFilter('attempt_id', attemptIds)
@@ -218,13 +368,26 @@ class PuzzleRepository {
         destinationsByAttempt
             .putIfAbsent(row['attempt_id'].toString(), () => <String>{})
             .add(destinationName);
+      } else if (question['category'] == 'Malaysia General Knowledge') {
+        destinationsByAttempt
+            .putIfAbsent(row['attempt_id'].toString(), () => <String>{})
+            .add('Malaysia General Knowledge');
       }
-      final limit = _parseInt(question['timer_seconds'], 30);
+      final snapshotQuestion = row['question_text_snapshot']?.toString().trim();
+      final snapshotAnswer = row['correct_answer_snapshot']?.toString().trim();
+      final limit = _parseInt(
+        row['timer_seconds_snapshot'] ?? question['timer_seconds'],
+        30,
+      );
       final remaining = _parseInt(row['remaining_time_seconds'], 0);
       final answer = PuzzleAnswerHistory(
-        questionText: question['question_text']?.toString() ?? 'Question',
+        questionText: snapshotQuestion != null && snapshotQuestion.isNotEmpty
+            ? snapshotQuestion
+            : question['question_text']?.toString() ?? 'Question',
         submittedAnswer: row['submitted_answer']?.toString() ?? '',
-        correctAnswer: question['correct_answer']?.toString() ?? '',
+        correctAnswer: snapshotAnswer != null && snapshotAnswer.isNotEmpty
+            ? snapshotAnswer
+            : question['correct_answer']?.toString() ?? '',
         isCorrect: row['is_correct'] == true,
         marksObtained: _parseInt(row['marks_obtained'], 0),
         timeTakenSeconds: (limit - remaining).clamp(0, limit),
@@ -311,6 +474,10 @@ class PuzzleRepository {
   Future<void> savePuzzleAnswer({
     required String attemptId,
     required String puzzleId,
+    required String questionText,
+    required String correctAnswer,
+    required String questionCategory,
+    required int timerSeconds,
     required String submittedAnswer,
     required bool isCorrect,
     required int marksObtained,
@@ -320,6 +487,10 @@ class PuzzleRepository {
     await _supabase.from('puzzle_attempt_answers').insert({
       'attempt_id': attemptId,
       'puzzle_id': puzzleId,
+      'question_text_snapshot': questionText,
+      'correct_answer_snapshot': correctAnswer,
+      'question_category_snapshot': questionCategory,
+      'timer_seconds_snapshot': timerSeconds,
       'submitted_answer': submittedAnswer,
       'is_correct': isCorrect,
       'marks_obtained': marksObtained,

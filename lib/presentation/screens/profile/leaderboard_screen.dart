@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/config/supabase_config.dart';
+import 'profile_screen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -471,21 +472,33 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ? NetworkImage(imageUrl)
         : null;
 
-    return Container(
-      width: 38,
-      height: 38,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFFBAE6FD), width: 1.4),
-      ),
-      child: CircleAvatar(
-        backgroundColor: const Color(0xFFE0F2FE),
-        backgroundImage: provider,
-        child: provider == null
-            ? const Icon(Icons.person_rounded, size: 20, color: _blue)
-            : null,
+    return Tooltip(
+      message: 'Profile',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+          );
+          if (mounted) await _loadLeaderboard();
+        },
+        child: Container(
+          width: 38,
+          height: 38,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFBAE6FD), width: 1.4),
+          ),
+          child: CircleAvatar(
+            backgroundColor: const Color(0xFFE0F2FE),
+            backgroundImage: provider,
+            child: provider == null
+                ? const Icon(Icons.person_rounded, size: 20, color: _blue)
+                : null,
+          ),
+        ),
       ),
     );
   }

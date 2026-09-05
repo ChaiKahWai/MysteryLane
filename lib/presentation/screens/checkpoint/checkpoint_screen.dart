@@ -956,7 +956,7 @@ class _CheckpointScreenState
                           Colors.white,
 
                           fontSize:
-                          11,
+                          11.5,
 
                           fontWeight:
                           FontWeight
@@ -965,6 +965,8 @@ class _CheckpointScreenState
                       ),
                     ),
                   ),
+
+                  const SizedBox(width: 4),
 
                   Expanded(
                     child:
@@ -997,7 +999,7 @@ class _CheckpointScreenState
                             ),
 
                             fontSize:
-                            10,
+                            11.5,
 
                             fontWeight:
                             FontWeight

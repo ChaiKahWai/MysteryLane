@@ -1,0 +1,591 @@
+{
+  "date": "2026-09-05",
+  "project": "jhaozaxmpjqzogsbpebz",
+  "batch1": [
+    {
+      "destination_id": "0184a6ab-58d5-4a66-b2fb-14c5c16f75e1",
+      "inserted": 10
+    },
+    {
+      "destination_id": "06a80068-f7a6-4698-ac7c-9159061b3072",
+      "inserted": 10
+    },
+    {
+      "destination_id": "09ebd8fb-ef7d-4a06-8fff-3f12f62d1e8a",
+      "inserted": 10
+    },
+    {
+      "destination_id": "1920db78-d496-4532-bbfb-ab80d1fc5af1",
+      "inserted": 10
+    },
+    {
+      "destination_id": "212e8ff1-f030-4e12-a084-888b7c5f0721",
+      "inserted": 10
+    },
+    {
+      "destination_id": "21de5d74-114c-4996-a51d-80b2adc08b77",
+      "inserted": 10
+    },
+    {
+      "destination_id": "238b4307-7bef-4d35-ab5b-24666bf790de",
+      "inserted": 10
+    },
+    {
+      "destination_id": "30d0ca6e-0dde-447b-8055-ffbfad0df891",
+      "inserted": 10
+    },
+    {
+      "destination_id": "319b04d9-13c1-4a82-802b-0914e7b4fa09",
+      "inserted": 10
+    },
+    {
+      "destination_id": "399954f6-d724-4a72-8778-9ce3715d0986",
+      "inserted": 10
+    },
+    {
+      "destination_id": "3cfb9ec2-dc01-47ae-a6e4-a5ae2e1a6492",
+      "inserted": 10
+    },
+    {
+      "destination_id": "3efa592f-cddb-4971-9f61-b947787b808b",
+      "inserted": 10
+    },
+    {
+      "destination_id": "47f13c59-9ff6-4af1-a982-10d7e9c7b174",
+      "inserted": 10
+    },
+    {
+      "destination_id": "4d777c0d-cc82-43e1-8dd0-4ef5d28211d2",
+      "inserted": 10
+    },
+    {
+      "destination_id": "58a6a89c-57d0-4ec3-a5bd-7f0e09d5fa1b",
+      "inserted": 10
+    },
+    {
+      "destination_id": "5e3bab79-0fd9-4396-8b9f-7b0c14a5e3e7",
+      "inserted": 10
+    },
+    {
+      "destination_id": "612d6d0e-20f8-46d0-815a-1c0ff5513048",
+      "inserted": 10
+    },
+    {
+      "destination_id": "7f10d299-0adf-483f-80b9-75e0ae2b8bce",
+      "inserted": 10
+    },
+    {
+      "destination_id": "836e38cf-2b18-4d14-9a70-18e452e30da9",
+      "inserted": 10
+    },
+    {
+      "destination_id": "8fed186b-5515-45cf-a7eb-71dbaea29db5",
+      "inserted": 10
+    },
+    {
+      "destination_id": "922f48a9-c091-4df5-b526-ade34cfb321c",
+      "inserted": 10
+    },
+    {
+      "destination_id": "a56af1d9-128b-45bf-866e-29637b5ae6d6",
+      "inserted": 10
+    },
+    {
+      "destination_id": "ab68f636-f443-460d-8a33-d55a24fa8009",
+      "inserted": 10
+    },
+    {
+      "destination_id": "b1601c3b-5906-4ee8-b7bc-0be1117d8749",
+      "inserted": 10
+    },
+    {
+      "destination_id": "b25b7891-ec9e-4e75-be2e-a716087360cc",
+      "inserted": 10
+    },
+    {
+      "destination_id": "d8fd1684-d130-4121-8d1a-8cce5dd12724",
+      "inserted": 10
+    },
+    {
+      "destination_id": "d946cc1d-d693-4198-b3dd-3d3373d0a26e",
+      "inserted": 10
+    },
+    {
+      "destination_id": "dfaa3f8d-31fb-4711-be56-dac3c17448cb",
+      "inserted": 10
+    },
+    {
+      "destination_id": "e2e65e87-2ae6-4182-884f-38a21dcb986c",
+      "inserted": 10
+    },
+    {
+      "destination_id": "f591632d-1d93-4b93-8232-b8786a3b8a11",
+      "inserted": 10
+    },
+    {
+      "destination_id": "fbfbcd12-e020-41ce-8536-319cee8c59e9",
+      "inserted": 10
+    }
+  ],
+  "batch2": [
+    {
+      "destination_id": "033e58b4-515a-4fe2-9c73-b8389bc7c5e7",
+      "inserted": 10
+    },
+    {
+      "destination_id": "09bd410d-fcff-4195-9c84-78bf54faaf73",
+      "inserted": 8
+    },
+    {
+      "destination_id": "1c0dfea7-5a89-4890-8eaf-d59c809aa8dd",
+      "inserted": 10
+    },
+    {
+      "destination_id": "26e2fb5d-01ce-4875-be87-1b2c30c0614d",
+      "inserted": 10
+    },
+    {
+      "destination_id": "2b492355-550e-4323-97d2-223e7fea9c14",
+      "inserted": 10
+    },
+    {
+      "destination_id": "4459e800-5557-47ec-92e2-50975d8c8114",
+      "inserted": 10
+    },
+    {
+      "destination_id": "44f20bae-a632-4c84-b426-181965bbe5d7",
+      "inserted": 10
+    },
+    {
+      "destination_id": "565483b2-a68c-47ce-828a-d900b3783892",
+      "inserted": 10
+    },
+    {
+      "destination_id": "615e8bc3-7044-458a-8270-1debdd8b09b1",
+      "inserted": 10
+    },
+    {
+      "destination_id": "62ee47f2-7f6f-498a-b132-385dfa0da0c2",
+      "inserted": 10
+    },
+    {
+      "destination_id": "6e849b2a-a4f2-4112-aeb8-6e15a3ce260b",
+      "inserted": 10
+    },
+    {
+      "destination_id": "86b17e6b-043f-4456-8d9e-d72ed048c8b4",
+      "inserted": 10
+    },
+    {
+      "destination_id": "b1d03801-8498-44f3-a627-82726048fd9b",
+      "inserted": 10
+    },
+    {
+      "destination_id": "c1e85eae-da89-48ba-842f-4639a12d5e5c",
+      "inserted": 10
+    },
+    {
+      "destination_id": "c65563f1-d202-4ec1-89d1-bd89b5b5ee07",
+      "inserted": 10
+    },
+    {
+      "destination_id": "d2c5055e-3071-46ad-9f65-d8f17354a0da",
+      "inserted": 10
+    },
+    {
+      "destination_id": "e1f18f5d-cb2f-4f16-88ab-6cc72a42c777",
+      "inserted": 10
+    },
+    {
+      "destination_id": "f2082456-08c3-476f-bee5-2ee8717ac971",
+      "inserted": 10
+    }
+  ],
+  "validation": [
+    {
+      "expected": 488,
+      "matched": 488,
+      "verified": 488
+    }
+  ],
+  "integrity": [
+    {
+      "general_mcq": 100,
+      "duplicate_text_groups": 0
+    }
+  ],
+  "counts": [
+    {
+      "destination_id": "13ba5124-e3ab-44cd-b9b2-9036d8823a94",
+      "name": "Aquaria KLCC",
+      "destination_source": "GOOGLE",
+      "active_mcq": 77
+    },
+    {
+      "destination_id": "21de5d74-114c-4996-a51d-80b2adc08b77",
+      "name": "Asy-Syakirin Mosque",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "58a6a89c-57d0-4ec3-a5bd-7f0e09d5fa1b",
+      "name": "Bamboo Hills",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "4d777c0d-cc82-43e1-8dd0-4ef5d28211d2",
+      "name": "BananaBro • Sunway Putra Mall",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "8fed186b-5515-45cf-a7eb-71dbaea29db5",
+      "name": "Batu Caves",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "fbfbcd12-e020-41ce-8536-319cee8c59e9",
+      "name": "Batu Metropolitan Park",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "212e8ff1-f030-4e12-a084-888b7c5f0721",
+      "name": "Cantor Arts Center at Stanford University",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "30d0ca6e-0dde-447b-8055-ffbfad0df891",
+      "name": "Central Market",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "dfaa3f8d-31fb-4711-be56-dac3c17448cb",
+      "name": "CHAGEE Avenue K",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "7f10d299-0adf-483f-80b9-75e0ae2b8bce",
+      "name": "Cotton On Avenue K",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "319b04d9-13c1-4a82-802b-0914e7b4fa09",
+      "name": "CU Mart 5070, Avenue K",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "5e3bab79-0fd9-4396-8b9f-7b0c14a5e3e7",
+      "name": "Cuesta Park",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "d946cc1d-d693-4198-b3dd-3d3373d0a26e",
+      "name": "De Mookatha Mookata 泰式烧烤火锅",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "a56af1d9-128b-45bf-866e-29637b5ae6d6",
+      "name": "Genting Highlands",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "c65563f1-d202-4ec1-89d1-bd89b5b5ee07",
+      "name": "Golden Triangle KL",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "06a80068-f7a6-4698-ac7c-9159061b3072",
+      "name": "Guru Nanak Darbar Tatt Khalsa Diwan Gurdwara",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "d8fd1684-d130-4121-8d1a-8cce5dd12724",
+      "name": "Haidilao Hot Pot",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "ab68f636-f443-460d-8a33-d55a24fa8009",
+      "name": "Ilham Gallery",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "b25b7891-ec9e-4e75-be2e-a716087360cc",
+      "name": "Intel Museum",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "922f48a9-c091-4df5-b526-ade34cfb321c",
+      "name": "Kelab Sultan Sulaiman",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "2689299b-350d-4595-816c-6e024a167548",
+      "name": "KL Bird Park",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "c1ed4d58-7389-466e-9161-c7c100b3438f",
+      "name": "KL East Park",
+      "destination_source": "GOOGLE",
+      "active_mcq": 80
+    },
+    {
+      "destination_id": "49b1b06e-4a76-445a-ab5b-067cd6058b9d",
+      "name": "KLCC Park",
+      "destination_source": "GOOGLE",
+      "active_mcq": 76
+    },
+    {
+      "destination_id": "26e2fb5d-01ce-4875-be87-1b2c30c0614d",
+      "name": "Kuala Lumpur City Centre",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "47f13c59-9ff6-4af1-a982-10d7e9c7b174",
+      "name": "Kuala Lumpur Convention Centre",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "09bd410d-fcff-4195-9c84-78bf54faaf73",
+      "name": "Lembaga Tabung Haji",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "565483b2-a68c-47ce-828a-d900b3783892",
+      "name": "Little India Brickfields",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "2b492355-550e-4323-97d2-223e7fea9c14",
+      "name": "Masjid Jamek Kampung Baru",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "29144d59-8410-46e7-aa77-1e66e745535d",
+      "name": "Merdeka 118 Precinct",
+      "destination_source": "GOOGLE",
+      "active_mcq": 20
+    },
+    {
+      "destination_id": "70e763c6-81f1-4a13-99c0-a84f475b9397",
+      "name": "Merdeka Square",
+      "destination_source": "GOOGLE",
+      "active_mcq": 12
+    },
+    {
+      "destination_id": "0184a6ab-58d5-4a66-b2fb-14c5c16f75e1",
+      "name": "Mid Valley Megamall",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "5e54607c-e210-436a-a980-c297df4a598e",
+      "name": "National Art Gallery",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "1c0dfea7-5a89-4890-8eaf-d59c809aa8dd",
+      "name": "Ombak KLCC",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "b1d03801-8498-44f3-a627-82726048fd9b",
+      "name": "Pao Mo Live 泡沫 Live Bar & Restaurant",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "612d6d0e-20f8-46d0-815a-1c0ff5513048",
+      "name": "Pavilion Kuala Lumpur",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "238b4307-7bef-4d35-ab5b-24666bf790de",
+      "name": "Perdana Botanical Gardens",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "674df36a-4dba-4085-9038-d2fdac02c055",
+      "name": "Petaling Street Market",
+      "destination_source": "GOOGLE",
+      "active_mcq": 57
+    },
+    {
+      "destination_id": "0d8b58ad-4c4a-43f2-b964-8b5865f66ab6",
+      "name": "Plaza Arkadia",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "f2082456-08c3-476f-bee5-2ee8717ac971",
+      "name": "Plaza GM",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "615e8bc3-7044-458a-8270-1debdd8b09b1",
+      "name": "Pusat Servis Kereta P & T",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "86b17e6b-043f-4456-8d9e-d72ed048c8b4",
+      "name": "Putra",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "62ee47f2-7f6f-498a-b132-385dfa0da0c2",
+      "name": "Putrajaya",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "3cfb9ec2-dc01-47ae-a6e4-a5ae2e1a6492",
+      "name": "Royal Selangor Visitor Centre",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "e1f18f5d-cb2f-4f16-88ab-6cc72a42c777",
+      "name": "Rumah Biru Kampung Baru",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "6e849b2a-a4f2-4112-aeb8-6e15a3ce260b",
+      "name": "Saloma Bridge (Kampung Baru Entrance)",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "44f20bae-a632-4c84-b426-181965bbe5d7",
+      "name": "Setapak",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "3efa592f-cddb-4971-9f61-b947787b808b",
+      "name": "Shree Lakshmi Narayan Mandir",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "4459e800-5557-47ec-92e2-50975d8c8114",
+      "name": "Signatures Food Court - Suria KLCC",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "152bad45-d179-4cd5-b6fc-2e89b68ff1b2",
+      "name": "Sultan Abdul Samad Jamek Mosque",
+      "destination_source": "GOOGLE",
+      "active_mcq": 20
+    },
+    {
+      "destination_id": "d5359b0d-6b14-4de1-9005-c33d4e383119",
+      "name": "Sunway Lagoon",
+      "destination_source": "GOOGLE",
+      "active_mcq": 30
+    },
+    {
+      "destination_id": "b1601c3b-5906-4ee8-b7bc-0be1117d8749",
+      "name": "Sunway Pyramid Shopping Mall",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "f591632d-1d93-4b93-8232-b8786a3b8a11",
+      "name": "Sunway Velocity Mall",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "033e58b4-515a-4fe2-9c73-b8389bc7c5e7",
+      "name": "Taman Connaught Night Market (Wednesday)",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "836e38cf-2b18-4d14-9a70-18e452e30da9",
+      "name": "Taman Tasik Danau Kota",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "1920db78-d496-4532-bbfb-ab80d1fc5af1",
+      "name": "The Exchange 106 @ TRX",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "e2e65e87-2ae6-4182-884f-38a21dcb986c",
+      "name": "The Exchange TRX",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "f72efff8-ce91-4b75-b949-4c82a30e50ee",
+      "name": "The National Museum of Malaysia",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "09ebd8fb-ef7d-4a06-8fff-3f12f62d1e8a",
+      "name": "Titiwangsa Lake Gardens",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "399954f6-d724-4a72-8778-9ce3715d0986",
+      "name": "Titiwangsa Lake Gardens",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "c1e85eae-da89-48ba-842f-4639a12d5e5c",
+      "name": "Tunku Abdul Rahman University of Management and Technology (TAR UMT)",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "d2c5055e-3071-46ad-9f65-d8f17354a0da",
+      "name": "Wangsa Bowl @ Wangsa Walk Mall",
+      "destination_source": "GOOGLE",
+      "active_mcq": 10
+    },
+    {
+      "destination_id": "38a1321f-66e3-4002-a609-156357264805",
+      "name": "Zoo Negara Malaysia",
+      "destination_source": "GOOGLE",
+      "active_mcq": 50
+    }
+  ]
+}
