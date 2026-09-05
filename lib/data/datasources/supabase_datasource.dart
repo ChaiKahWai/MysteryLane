@@ -127,13 +127,12 @@ class SupabaseDataSource {
         },
       );
 
-      // The draw has already succeeded atomically at this point. Wait for the
-      // destination's Gemini question bank so the puzzle opens with researched
-      // trivia, but never convert a Gemini outage into a failed Blind Box draw.
+      // Start server-side preparation for every text category. The endpoint
+      // acknowledges immediately while the shared question banks grow.
       try {
         await _client.functions.invoke(
           'generate-destination-questions',
-          body: {'destination_id': destinationId},
+          body: {'destination_id': destinationId, 'prepare_all': true},
         );
       } on FunctionException {
         // Preserve the successful draw. The existing destination bank remains

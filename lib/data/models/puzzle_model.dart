@@ -4,6 +4,7 @@ class PuzzleQuestion {
   final String puzzleType;
   final String category;
   final String questionText;
+  final String? displayBoxContent;
 
   final String optionA;
   final String optionB;
@@ -23,12 +24,16 @@ class PuzzleQuestion {
   final String? imageUrl;
   final bool isActive;
 
+  bool get isMalaysiaGeneral =>
+      destinationId == null && category == 'Malaysia General Knowledge';
+
   const PuzzleQuestion({
     required this.id,
     this.destinationId,
     required this.puzzleType,
     required this.category,
     required this.questionText,
+    this.displayBoxContent,
     required this.optionA,
     required this.optionB,
     required this.optionC,
@@ -58,6 +63,7 @@ class PuzzleQuestion {
       puzzleType: map['puzzle_type']?.toString() ?? '',
       category: map['category']?.toString() ?? '',
       questionText: map['question_text']?.toString() ?? '',
+      displayBoxContent: map['display_box_content']?.toString(),
       optionA: map['option_a']?.toString() ?? '',
       optionB: map['option_b']?.toString() ?? '',
       optionC: map['option_c']?.toString() ?? '',

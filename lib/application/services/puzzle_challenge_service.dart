@@ -30,11 +30,13 @@ class PuzzleChallengeService {
     required String userId,
     String? destinationId,
     required String puzzleType,
+    String? historyCategory,
   }) async {
     return _repository.getRandomQuestions(
       userId: userId,
       destinationId: destinationId,
       puzzleType: puzzleType,
+      historyCategory: historyCategory,
       questionCount: questionsPerChallenge,
     );
   }
@@ -61,8 +63,13 @@ class PuzzleChallengeService {
     required String userAnswer,
     required String correctAnswer,
   }) {
-    return userAnswer.trim().toLowerCase() ==
-        correctAnswer.trim().toLowerCase();
+    String normalize(String value) => value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+    final submitted = normalize(userAnswer);
+    return submitted.isNotEmpty && submitted == normalize(correctAnswer);
   }
 
   // ============================================================
@@ -257,6 +264,10 @@ class PuzzleChallengeService {
     await _repository.savePuzzleAnswer(
       attemptId: attemptId,
       puzzleId: question.id,
+      questionText: question.questionText,
+      correctAnswer: question.correctAnswer,
+      questionCategory: question.category,
+      timerSeconds: question.timerSeconds,
       submittedAnswer: submittedAnswer,
       isCorrect: isCorrect,
       marksObtained: marksObtained,
