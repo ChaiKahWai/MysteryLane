@@ -5,103 +5,103 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/config/supabase_config.dart';
 
 class RegisterScreen extends StatefulWidget {
-const RegisterScreen({super.key});
+  const RegisterScreen({super.key});
 
-@override
-State<RegisterScreen> createState() => _RegisterScreenState();
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-final _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
 
-final TextEditingController _fullNameController =
-TextEditingController();
+  final TextEditingController _fullNameController =
+  TextEditingController();
 
-final TextEditingController _emailController =
-TextEditingController();
+  final TextEditingController _emailController =
+  TextEditingController();
 
-final TextEditingController _phoneController =
-TextEditingController();
+  final TextEditingController _phoneController =
+  TextEditingController();
 
-final TextEditingController _passwordController =
-TextEditingController();
+  final TextEditingController _passwordController =
+  TextEditingController();
 
-final TextEditingController _confirmPasswordController =
-TextEditingController();
+  final TextEditingController _confirmPasswordController =
+  TextEditingController();
 
-bool _showPassword = false;
-bool _showConfirmPassword = false;
-bool _isLoading = false;
+  bool _showPassword = false;
+  bool _showConfirmPassword = false;
+  bool _isLoading = false;
 
-bool get _hasMinLength =>
-_passwordController.text.length >= 8;
+  bool get _hasMinLength =>
+      _passwordController.text.length >= 8;
 
-bool get _hasUppercase =>
-RegExp(r'[A-Z]').hasMatch(
-_passwordController.text,
-);
+  bool get _hasUppercase =>
+      RegExp(r'[A-Z]').hasMatch(
+        _passwordController.text,
+      );
 
-bool get _hasLowercase =>
-RegExp(r'[a-z]').hasMatch(
-_passwordController.text,
-);
+  bool get _hasLowercase =>
+      RegExp(r'[a-z]').hasMatch(
+        _passwordController.text,
+      );
 
-bool get _hasNumber =>
-RegExp(r'[0-9]').hasMatch(
-_passwordController.text,
-);
+  bool get _hasNumber =>
+      RegExp(r'[0-9]').hasMatch(
+        _passwordController.text,
+      );
 
-bool get _hasSpecialCharacter =>
-RegExp(r'[^A-Za-z0-9]').hasMatch(
-_passwordController.text,
-);
+  bool get _hasSpecialCharacter =>
+      RegExp(r'[^A-Za-z0-9]').hasMatch(
+        _passwordController.text,
+      );
 
-bool get _isStrongPassword =>
-_hasMinLength &&
-_hasUppercase &&
-_hasLowercase &&
-_hasNumber &&
-_hasSpecialCharacter;
+  bool get _isStrongPassword =>
+      _hasMinLength &&
+          _hasUppercase &&
+          _hasLowercase &&
+          _hasNumber &&
+          _hasSpecialCharacter;
 
-@override
-void dispose() {
-_fullNameController.dispose();
-_emailController.dispose();
-_phoneController.dispose();
-_passwordController.dispose();
-_confirmPasswordController.dispose();
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
 
-super.dispose();
-}
+    super.dispose();
+  }
 
-Future<void> _register() async {
-FocusScope.of(context).unfocus();
+  Future<void> _register() async {
+    FocusScope.of(context).unfocus();
 
-if (!_formKey.currentState!.validate()) {
-return;
-}
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
-final fullName =
-_fullNameController.text.trim();
+    final fullName =
+    _fullNameController.text.trim();
 
-final email =
-_emailController.text.trim().toLowerCase();
+    final email =
+    _emailController.text.trim().toLowerCase();
 
-final phoneNumber =
-_phoneController.text.trim();
+    final phoneNumber =
+    _phoneController.text.trim();
 
-final password =
-_passwordController.text;
+    final password =
+        _passwordController.text;
 
-setState(() {
-_isLoading = true;
-});
+    setState(() {
+      _isLoading = true;
+    });
 
-try {
-final AuthResponse response =
-await SupabaseConfig.client.auth.signUp(
-email: email,
-password: password,
+    try {
+      final AuthResponse response =
+      await SupabaseConfig.client.auth.signUp(
+        email: email,
+        password: password,
 
 // The email is stored and managed by Supabase Authentication.
 // Do NOT duplicate the login email in public.profiles.
@@ -109,22 +109,22 @@ password: password,
 // Only non-auth profile information is kept temporarily in
 // Auth metadata. After email verification, main.dart can use
 // these values to create the public.profiles row.
-data: {
-'full_name': fullName,
-'phone_number': phoneNumber,
-},
+      data: {
+      'full_name': fullName,
+      'phone_number': phoneNumber,
+      },
 
-emailRedirectTo:
-'mysterylane://login-callback',
-);
+        emailRedirectTo:
+        'mysterylane://login-callback',
+      );
 
-final User? user = response.user;
+      final User? user = response.user;
 
-if (user == null) {
-throw Exception(
-'Unable to create traveller account.',
-);
-}
+      if (user == null) {
+        throw Exception(
+          'Unable to create traveller account.',
+        );
+      }
 
 if (!mounted) return;
 
