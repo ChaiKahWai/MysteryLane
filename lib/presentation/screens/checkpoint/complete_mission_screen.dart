@@ -1,42 +1,36 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
-class CompleteMissionScreen
-    extends StatelessWidget {
-  const CompleteMissionScreen({
-    super.key,
-    required this.title,
-    required this.reward,
-    required this.totalPoints,
-  });
-
+class CompleteMissionScreen extends StatelessWidget {
   final String title;
 
   final int reward;
 
   final int totalPoints;
 
-  static const Color skyBlue =
-  Color(
-    0xFF0284C7,
-  );
+  // ============================================================
+  // NEW
+  // ============================================================
 
-  static const Color darkBlue =
-  Color(
-    0xFF0369A1,
-  );
+  final String? photoPath;
 
-  static const Color pageBackground =
-  Color(
-    0xFFF8FAFC,
-  );
+  final String? verificationReason;
 
-  static const Color darkText =
-  Color(
-    0xFF0F172A,
-  );
+  final double? verificationConfidence;
+
+  const CompleteMissionScreen({
+    super.key,
+    required this.title,
+    required this.reward,
+    required this.totalPoints,
+    this.photoPath,
+    this.verificationReason,
+    this.verificationConfidence,
+  });
 
   // ============================================================
-  // RETURN TO CHECKPOINT SCREEN
+  // RETURN TO CHECKPOINT
   // ============================================================
 
   void _returnToCheckpoint(
@@ -48,69 +42,96 @@ class CompleteMissionScreen
     );
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(
       BuildContext context,
       ) {
     return Scaffold(
       backgroundColor:
-      pageBackground,
+      const Color(
+        0xFFF8FAFC,
+      ),
 
       body: SafeArea(
-        child:
-        SingleChildScrollView(
+        child: SingleChildScrollView(
           padding:
-          const EdgeInsets
-              .fromLTRB(
+          const EdgeInsets.fromLTRB(
             18,
-            18,
+            12,
             18,
             30,
           ),
 
           child: Column(
-            crossAxisAlignment:
-            CrossAxisAlignment
-                .stretch,
-
             children: [
+              // =================================================
+              // HEADER
+              // =================================================
+
               _buildHeader(
                 context,
               ),
 
               const SizedBox(
-                height:
-                24,
+                height: 18,
               ),
 
-              _buildSuccessCard(),
+              // =================================================
+              // COMPLETION HERO
+              // =================================================
+
+              _buildCompletionHero(),
 
               const SizedBox(
-                height:
-                18,
+                height: 18,
               ),
 
-              _buildEvidenceCard(),
+              // =================================================
+              // MISSION VERIFICATION
+              // =================================================
+
+              _buildVerificationCard(),
 
               const SizedBox(
-                height:
-                22,
+                height: 20,
               ),
+
+              // =================================================
+              // RETURN BUTTON
+              // =================================================
 
               SizedBox(
-                height:
-                52,
+                width:
+                double.infinity,
 
                 child:
-                FilledButton.icon(
+                ElevatedButton.icon(
                   onPressed: () {
                     _returnToCheckpoint(
                       context,
                     );
                   },
 
+                  icon:
+                  const Icon(
+                    Icons
+                        .explore_rounded,
+
+                    size:
+                    18,
+                  ),
+
+                  label:
+                  const Text(
+                    'RETURN TO CHECKPOINTS',
+                  ),
+
                   style:
-                  FilledButton
+                  ElevatedButton
                       .styleFrom(
                     backgroundColor:
                     const Color(
@@ -120,47 +141,47 @@ class CompleteMissionScreen
                     foregroundColor:
                     Colors.white,
 
+                    elevation: 0,
+
+                    padding:
+                    const EdgeInsets
+                        .symmetric(
+                      vertical: 16,
+                    ),
+
+                    textStyle:
+                    const TextStyle(
+                      fontSize: 12,
+
+                      fontWeight:
+                      FontWeight.w800,
+
+                      letterSpacing:
+                      0.4,
+                    ),
+
                     shape:
                     RoundedRectangleBorder(
                       borderRadius:
-                      BorderRadius
-                          .circular(
-                        26,
+                      BorderRadius.circular(
+                        30,
                       ),
-                    ),
-                  ),
-
-                  icon:
-                  const Icon(
-                    Icons
-                        .explore_rounded,
-                  ),
-
-                  label:
-                  const Text(
-                    'RETURN TO CHECKPOINTS',
-
-                    style:
-                    TextStyle(
-                      fontSize:
-                      12,
-
-                      fontWeight:
-                      FontWeight
-                          .w900,
                     ),
                   ),
                 ),
               ),
 
               const SizedBox(
-                height:
-                10,
+                height: 10,
               ),
 
+              // =================================================
+              // PUZZLE
+              // =================================================
+
               SizedBox(
-                height:
-                52,
+                width:
+                double.infinity,
 
                 child:
                 OutlinedButton.icon(
@@ -169,6 +190,10 @@ class CompleteMissionScreen
                       context,
                     ).showSnackBar(
                       const SnackBar(
+                        behavior:
+                        SnackBarBehavior
+                            .floating,
+
                         content:
                         Text(
                           'Puzzle Challenge will be connected later.',
@@ -177,46 +202,59 @@ class CompleteMissionScreen
                     );
                   },
 
-                  style:
-                  OutlinedButton
-                      .styleFrom(
-                    foregroundColor:
-                    skyBlue,
-
-                    side:
-                    const BorderSide(
-                      color:
-                      skyBlue,
-                    ),
-
-                    shape:
-                    RoundedRectangleBorder(
-                      borderRadius:
-                      BorderRadius
-                          .circular(
-                        26,
-                      ),
-                    ),
-                  ),
-
                   icon:
                   const Icon(
                     Icons
                         .auto_awesome_rounded,
+
+                    size:
+                    18,
                   ),
 
                   label:
                   const Text(
                     'PUZZLE CHALLENGE',
+                  ),
 
-                    style:
-                    TextStyle(
-                      fontSize:
-                      12,
+                  style:
+                  OutlinedButton
+                      .styleFrom(
+                    foregroundColor:
+                    const Color(
+                      0xFF0284C7,
+                    ),
+
+                    side:
+                    const BorderSide(
+                      color:
+                      Color(
+                        0xFF0284C7,
+                      ),
+                    ),
+
+                    padding:
+                    const EdgeInsets
+                        .symmetric(
+                      vertical: 16,
+                    ),
+
+                    textStyle:
+                    const TextStyle(
+                      fontSize: 12,
 
                       fontWeight:
-                      FontWeight
-                          .w900,
+                      FontWeight.w800,
+
+                      letterSpacing:
+                      0.4,
+                    ),
+
+                    shape:
+                    RoundedRectangleBorder(
+                      borderRadius:
+                      BorderRadius.circular(
+                        30,
+                      ),
                     ),
                   ),
                 ),
@@ -247,13 +285,19 @@ class CompleteMissionScreen
           icon:
           const Icon(
             Icons
-                .arrow_back_rounded,
+                .arrow_back_ios_new_rounded,
+
+            color:
+            Color(
+              0xFF0F172A,
+            ),
+
+            size: 20,
           ),
         ),
 
         const Expanded(
-          child:
-          Text(
+          child: Text(
             'Mission Completed!',
 
             textAlign:
@@ -262,10 +306,11 @@ class CompleteMissionScreen
             style:
             TextStyle(
               color:
-              darkText,
+              Color(
+                0xFF0F172A,
+              ),
 
-              fontSize:
-              21,
+              fontSize: 20,
 
               fontWeight:
               FontWeight.w900,
@@ -275,13 +320,9 @@ class CompleteMissionScreen
 
         Container(
           padding:
-          const EdgeInsets
-              .symmetric(
-            horizontal:
-            10,
-
-            vertical:
-            8,
+          const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 7,
           ),
 
           decoration:
@@ -292,13 +333,11 @@ class CompleteMissionScreen
             ),
 
             borderRadius:
-            BorderRadius
-                .circular(
+            BorderRadius.circular(
               20,
             ),
 
-            border:
-            Border.all(
+            border: Border.all(
               color:
               const Color(
                 0xFFBAE6FD,
@@ -306,23 +345,22 @@ class CompleteMissionScreen
             ),
           ),
 
-          child:
-          Row(
+          child: Row(
             children: [
               const Icon(
                 Icons
                     .toll_rounded,
 
-                size:
-                17,
+                size: 15,
 
                 color:
-                skyBlue,
+                Color(
+                  0xFF0284C7,
+                ),
               ),
 
               const SizedBox(
-                width:
-                4,
+                width: 4,
               ),
 
               Text(
@@ -331,13 +369,14 @@ class CompleteMissionScreen
                 style:
                 const TextStyle(
                   color:
-                  skyBlue,
+                  Color(
+                    0xFF0284C7,
+                  ),
 
-                  fontSize:
-                  13,
+                  fontSize: 11,
 
                   fontWeight:
-                  FontWeight.w900,
+                  FontWeight.w800,
                 ),
               ),
             ],
@@ -348,18 +387,20 @@ class CompleteMissionScreen
   }
 
   // ============================================================
-  // SUCCESS CARD
+  // COMPLETION HERO
   // ============================================================
 
-  Widget _buildSuccessCard() {
+  Widget _buildCompletionHero() {
     return Container(
+      width:
+      double.infinity,
+
       padding:
-      const EdgeInsets
-          .fromLTRB(
-        22,
-        28,
-        22,
-        25,
+      const EdgeInsets.fromLTRB(
+        20,
+        27,
+        20,
+        24,
       ),
 
       decoration:
@@ -367,8 +408,12 @@ class CompleteMissionScreen
         gradient:
         const LinearGradient(
           colors: [
-            skyBlue,
-            darkBlue,
+            Color(
+              0xFF0284C7,
+            ),
+            Color(
+              0xFF0369A1,
+            ),
           ],
 
           begin:
@@ -380,7 +425,7 @@ class CompleteMissionScreen
 
         borderRadius:
         BorderRadius.circular(
-          30,
+          28,
         ),
 
         boxShadow:
@@ -388,30 +433,26 @@ class CompleteMissionScreen
           BoxShadow(
             color:
             Color(
-              0x330284C7,
+              0x260284C7,
             ),
 
-            blurRadius:
-            22,
+            blurRadius: 18,
 
             offset:
             Offset(
               0,
-              10,
+              8,
             ),
           ),
         ],
       ),
 
-      child:
-      Column(
+      child: Column(
         children: [
+          // Trophy
           Container(
-            width:
-            86,
-
-            height:
-            86,
+            width: 82,
+            height: 82,
 
             decoration:
             BoxDecoration(
@@ -420,39 +461,35 @@ class CompleteMissionScreen
 
               color:
               const Color(
-                0x33FBBF24,
+                0x1AFFFFFF,
               ),
 
               border:
               Border.all(
                 color:
                 const Color(
-                  0xFFFCD34D,
+                  0xFFFACC15,
                 ),
 
-                width:
-                2,
+                width: 2,
               ),
             ),
 
             child:
             const Icon(
-              Icons
-                  .emoji_events_rounded,
+              Icons.emoji_events_rounded,
+
+              size: 37,
 
               color:
               Color(
-                0xFFFCD34D,
+                0xFFFACC15,
               ),
-
-              size:
-              44,
             ),
           ),
 
           const SizedBox(
-            height:
-            16,
+            height: 18,
           ),
 
           Text(
@@ -466,8 +503,7 @@ class CompleteMissionScreen
               color:
               Colors.white,
 
-              fontSize:
-              24,
+              fontSize: 20,
 
               fontWeight:
               FontWeight.w900,
@@ -475,8 +511,7 @@ class CompleteMissionScreen
           ),
 
           const SizedBox(
-            height:
-            8,
+            height: 7,
           ),
 
           const Text(
@@ -489,31 +524,22 @@ class CompleteMissionScreen
             TextStyle(
               color:
               Color(
-                0xFFDBEAFE,
+                0xFFBAE6FD,
               ),
 
-              fontSize:
-              12,
-
-              height:
-              1.4,
+              fontSize: 11,
             ),
           ),
 
           const SizedBox(
-            height:
-            18,
+            height: 17,
           ),
 
           Container(
             padding:
-            const EdgeInsets
-                .symmetric(
-              horizontal:
-              16,
-
-              vertical:
-              10,
+            const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 10,
             ),
 
             decoration:
@@ -524,29 +550,29 @@ class CompleteMissionScreen
               ),
 
               borderRadius:
-              BorderRadius
-                  .circular(
-                22,
+              BorderRadius.circular(
+                30,
               ),
             ),
 
-            child:
-            Row(
+            child: Row(
               mainAxisSize:
               MainAxisSize.min,
 
               children: [
                 const Icon(
-                  Icons
-                      .star_rounded,
+                  Icons.star_rounded,
 
                   color:
-                  darkText,
+                  Color(
+                    0xFF0F172A,
+                  ),
+
+                  size: 21,
                 ),
 
                 const SizedBox(
-                  width:
-                  5,
+                  width: 6,
                 ),
 
                 Text(
@@ -555,7 +581,11 @@ class CompleteMissionScreen
                   style:
                   const TextStyle(
                     color:
-                    darkText,
+                    Color(
+                      0xFF0F172A,
+                    ),
+
+                    fontSize: 12,
 
                     fontWeight:
                     FontWeight.w900,
@@ -570,11 +600,14 @@ class CompleteMissionScreen
   }
 
   // ============================================================
-  // EVIDENCE CARD
+  // VERIFICATION CARD
   // ============================================================
 
-  Widget _buildEvidenceCard() {
+  Widget _buildVerificationCard() {
     return Container(
+      width:
+      double.infinity,
+
       padding:
       const EdgeInsets.all(
         18,
@@ -599,39 +632,44 @@ class CompleteMissionScreen
         ),
       ),
 
-      child:
-      Column(
+      child: Column(
         crossAxisAlignment:
-        CrossAxisAlignment
-            .start,
+        CrossAxisAlignment.start,
 
         children: [
-          const Row(
+          // ====================================================
+          // TITLE + VERIFIED BADGE
+          // ====================================================
+
+          Row(
             children: [
-              Icon(
-                Icons
-                    .verified_rounded,
+              const Icon(
+                Icons.verified_rounded,
 
                 color:
                 Color(
                   0xFF059669,
                 ),
+
+                size: 21,
               ),
 
-              SizedBox(
-                width:
-                8,
+              const SizedBox(
+                width: 8,
               ),
 
-              Expanded(
-                child:
-                Text(
+              const Expanded(
+                child: Text(
                   'Mission Verification',
 
                   style:
                   TextStyle(
                     color:
-                    darkText,
+                    Color(
+                      0xFF0F172A,
+                    ),
+
+                    fontSize: 14,
 
                     fontWeight:
                     FontWeight.w800,
@@ -639,106 +677,388 @@ class CompleteMissionScreen
                 ),
               ),
 
-              _VerifiedPill(),
+              const _VerifiedPill(),
             ],
           ),
 
           const SizedBox(
-            height:
-            16,
+            height: 16,
           ),
 
-          Container(
-            height:
-            150,
+          // ====================================================
+          // ACTUAL SUBMITTED PHOTO
+          // ====================================================
 
-            width:
-            double.infinity,
-
-            decoration:
-            BoxDecoration(
-              color:
-              const Color(
-                0xFFEFF6FF,
-              ),
-
+          if (photoPath != null &&
+              photoPath!.isNotEmpty &&
+              File(photoPath!).existsSync())
+            ClipRRect(
               borderRadius:
-              BorderRadius
-                  .circular(
+              BorderRadius.circular(
                 18,
               ),
-            ),
 
-            child:
-            const Column(
-              mainAxisAlignment:
-              MainAxisAlignment
-                  .center,
-
-              children: [
-                Icon(
-                  Icons
-                      .photo_camera_rounded,
-
-                  size:
-                  52,
-
-                  color:
-                  Color(
-                    0xFF2563EB,
-                  ),
+              child: Image.file(
+                File(
+                  photoPath!,
                 ),
 
-                SizedBox(
-                  height:
-                  8,
+                width:
+                double.infinity,
+
+                height: 230,
+
+                fit:
+                BoxFit.cover,
+              ),
+            )
+          else
+            Container(
+              width:
+              double.infinity,
+
+              height: 150,
+
+              decoration:
+              BoxDecoration(
+                color:
+                const Color(
+                  0xFFEFF6FF,
                 ),
 
-                Text(
-                  'Mission Photo Submitted',
+                borderRadius:
+                BorderRadius.circular(
+                  18,
+                ),
+              ),
 
-                  style:
-                  TextStyle(
+              child:
+              const Column(
+                mainAxisAlignment:
+                MainAxisAlignment.center,
+
+                children: [
+                  Icon(
+                    Icons
+                        .camera_alt_rounded,
+
                     color:
                     Color(
-                      0xFF475569,
+                      0xFF2563EB,
                     ),
 
-                    fontWeight:
-                    FontWeight.w600,
+                    size: 40,
                   ),
-                ),
 
-                SizedBox(
-                  height:
-                  4,
-                ),
+                  SizedBox(
+                    height: 10,
+                  ),
 
-                Text(
-                  'GPS Confirmed',
+                  Text(
+                    'Mission Photo Submitted',
 
-                  style:
-                  TextStyle(
-                    color:
-                    Color(
-                      0xFF059669,
+                    style:
+                    TextStyle(
+                      color:
+                      Color(
+                        0xFF334155,
+                      ),
+
+                      fontWeight:
+                      FontWeight.w600,
                     ),
-
-                    fontSize:
-                    12,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+
+          const SizedBox(
+            height: 15,
           ),
+
+          // ====================================================
+          // GPS STATUS
+          // ====================================================
+
+          _buildVerificationRow(
+            icon:
+            Icons.my_location_rounded,
+
+            label:
+            'GPS Confirmed',
+
+            value:
+            'VERIFIED',
+          ),
+
+          const SizedBox(
+            height: 10,
+          ),
+
+          // ====================================================
+          // GEMINI STATUS
+          // ====================================================
+
+          _buildVerificationRow(
+            icon:
+            Icons
+                .psychology_alt_rounded,
+
+            label:
+            'Gemini Photo Verification',
+
+            value:
+            'VERIFIED',
+          ),
+
+          // ====================================================
+          // GEMINI REASON
+          // ====================================================
+
+          if (verificationReason !=
+              null &&
+              verificationReason!
+                  .isNotEmpty) ...[
+            const SizedBox(
+              height: 16,
+            ),
+
+            Container(
+              width:
+              double.infinity,
+
+              padding:
+              const EdgeInsets.all(
+                14,
+              ),
+
+              decoration:
+              BoxDecoration(
+                color:
+                const Color(
+                  0xFFF0FDF4,
+                ),
+
+                borderRadius:
+                BorderRadius.circular(
+                  15,
+                ),
+
+                border:
+                Border.all(
+                  color:
+                  const Color(
+                    0xFFBBF7D0,
+                  ),
+                ),
+              ),
+
+              child: Column(
+                crossAxisAlignment:
+                CrossAxisAlignment.start,
+
+                children: [
+                  const Text(
+                    'Gemini Verification Result',
+
+                    style:
+                    TextStyle(
+                      color:
+                      Color(
+                        0xFF047857,
+                      ),
+
+                      fontSize: 11,
+
+                      fontWeight:
+                      FontWeight.w800,
+                    ),
+                  ),
+
+                  const SizedBox(
+                    height: 7,
+                  ),
+
+                  Text(
+                    verificationReason!,
+
+                    style:
+                    const TextStyle(
+                      color:
+                      Color(
+                        0xFF475569,
+                      ),
+
+                      fontSize: 12,
+
+                      height: 1.45,
+                    ),
+                  ),
+
+                  if (verificationConfidence !=
+                      null) ...[
+                    const SizedBox(
+                      height: 10,
+                    ),
+
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons
+                              .analytics_outlined,
+
+                          size: 15,
+
+                          color:
+                          Color(
+                            0xFF059669,
+                          ),
+                        ),
+
+                        const SizedBox(
+                          width: 5,
+                        ),
+
+                        Text(
+                          'Confidence: '
+                              '${(verificationConfidence! * 100).toStringAsFixed(0)}%',
+
+                          style:
+                          const TextStyle(
+                            color:
+                            Color(
+                              0xFF047857,
+                            ),
+
+                            fontSize:
+                            11,
+
+                            fontWeight:
+                            FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+
+  // ============================================================
+  // VERIFICATION ROW
+  // ============================================================
+
+  Widget _buildVerificationRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 35,
+          height: 35,
+
+          decoration:
+          BoxDecoration(
+            color:
+            const Color(
+              0xFFECFDF5,
+            ),
+
+            borderRadius:
+            BorderRadius.circular(
+              10,
+            ),
+          ),
+
+          child: Icon(
+            icon,
+
+            size: 18,
+
+            color:
+            const Color(
+              0xFF059669,
+            ),
+          ),
+        ),
+
+        const SizedBox(
+          width: 10,
+        ),
+
+        Expanded(
+          child: Text(
+            label,
+
+            style:
+            const TextStyle(
+              color:
+              Color(
+                0xFF475569,
+              ),
+
+              fontSize: 12,
+
+              fontWeight:
+              FontWeight.w600,
+            ),
+          ),
+        ),
+
+        Container(
+          padding:
+          const EdgeInsets.symmetric(
+            horizontal: 9,
+            vertical: 5,
+          ),
+
+          decoration:
+          BoxDecoration(
+            color:
+            const Color(
+              0xFFECFDF5,
+            ),
+
+            borderRadius:
+            BorderRadius.circular(
+              20,
+            ),
+          ),
+
+          child: Text(
+            value,
+
+            style:
+            const TextStyle(
+              color:
+              Color(
+                0xFF059669,
+              ),
+
+              fontSize: 9,
+
+              fontWeight:
+              FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _VerifiedPill
-    extends StatelessWidget {
+// ============================================================
+// VERIFIED PILL
+// ============================================================
+
+class _VerifiedPill extends StatelessWidget {
   const _VerifiedPill();
 
   @override
@@ -747,13 +1067,9 @@ class _VerifiedPill
       ) {
     return Container(
       padding:
-      const EdgeInsets
-          .symmetric(
-        horizontal:
-        9,
-
-        vertical:
-        5,
+      const EdgeInsets.symmetric(
+        horizontal: 9,
+        vertical: 5,
       ),
 
       decoration:
@@ -765,7 +1081,7 @@ class _VerifiedPill
 
         borderRadius:
         BorderRadius.circular(
-          18,
+          20,
         ),
       ),
 
@@ -776,19 +1092,16 @@ class _VerifiedPill
 
         children: [
           Icon(
-            Icons
-                .check_circle_rounded,
+            Icons.check_circle,
 
             color:
             Colors.white,
 
-            size:
-            13,
+            size: 11,
           ),
 
           SizedBox(
-            width:
-            4,
+            width: 4,
           ),
 
           Text(
@@ -800,7 +1113,7 @@ class _VerifiedPill
               Colors.white,
 
               fontSize:
-              9,
+              8,
 
               fontWeight:
               FontWeight.w900,
