@@ -43,6 +43,7 @@ class TripPlan {
   final String mode;
   final String visibility;
   final String? inviteCode;
+  final String? groupId;
   final bool routeAccepted;
   final List<ItineraryStop> stops;
 
@@ -54,6 +55,7 @@ class TripPlan {
     required this.mode,
     required this.visibility,
     required this.inviteCode,
+    this.groupId,
     required this.routeAccepted,
     required this.stops,
   });

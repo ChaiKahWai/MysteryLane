@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../application/controller/trip_planner_controller.dart';
@@ -12,6 +13,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../../../application/services/group_service.dart';
+import '../group/team_detail_screen.dart';
+import '../group/group_screen.dart';
+import '../../../data/models/travel_group_model.dart';
 
 class PlanScreen extends StatefulWidget {
   const PlanScreen({super.key});
@@ -32,9 +37,13 @@ class _PlanScreenState extends State<PlanScreen> {
 
   final name = TextEditingController(),
       placeSearch = TextEditingController(),
-      planSearch = TextEditingController();
+      planSearch = TextEditingController(),
+      teamName = TextEditingController();
 
+  final GroupService _groupService = GroupService();
   final FocusNode _placeSearchFocus = FocusNode();
+
+  int teamMaxCapacity = 5;
 
   TripPlannerController? api;
   String? error;
@@ -88,7 +97,581 @@ class _PlanScreenState extends State<PlanScreen> {
     name.dispose();
     placeSearch.dispose();
     planSearch.dispose();
+    teamName.dispose();
     super.dispose();
+  }
+
+  // =========================================================================
+  // UNIFIED FEATURE: DUPLICATE PLAN (CHOOSE SOLO OR TEAM)
+  // =========================================================================
+  Future<void> _duplicatePlanDialog() async {
+    if (_currentPlan == null) return;
+
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      note('Please sign in first.');
+      return;
+    }
+
+    // Generate a unique default name
+    String baseName = '${_currentPlan!.name} (Copy)';
+    String uniqueName = baseName;
+    int copyNumber = 2;
+    while (plans.any((p) => p.name.toLowerCase() == uniqueName.toLowerCase())) {
+      uniqueName = '${_currentPlan!.name} (Copy $copyNumber)';
+      copyNumber++;
+    }
+
+    final newPlanNameCtrl = TextEditingController(text: uniqueName);
+    final squadNameCtrl = TextEditingController(text: '${_currentPlan!.name} Squad');
+    String selectedMode = 'solo';
+    bool isPublic = false;
+    int maxCap = 5;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.content_copy_rounded, color: blue),
+              SizedBox(width: 8),
+              Text('Duplicate Trip Plan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Create a new copy of this itinerary with all destinations and dates.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 16),
+
+                // 1. New Plan Name
+                label('NEW PLAN NAME *'),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: newPlanNameCtrl,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                // 2. Select Expedition Mode
+                label('CHOOSE EXPEDITION MODE *'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        avatar: const Icon(Icons.person, size: 16),
+                        label: const Center(child: Text('Solo')),
+                        selected: selectedMode == 'solo',
+                        selectedColor: blue,
+                        labelStyle: TextStyle(
+                          color: selectedMode == 'solo' ? Colors.white : ink,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        onSelected: (_) => setDialogState(() => selectedMode = 'solo'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ChoiceChip(
+                        avatar: const Icon(Icons.groups, size: 16),
+                        label: const Center(child: Text('Team')),
+                        selected: selectedMode == 'team',
+                        selectedColor: blue,
+                        labelStyle: TextStyle(
+                          color: selectedMode == 'team' ? Colors.white : ink,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        onSelected: (_) => setDialogState(() => selectedMode = 'team'),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // 3. Team Configurations (Only shown if Team mode chosen)
+                if (selectedMode == 'team') ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        label('SQUAD NAME'),
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: squadNameCtrl,
+                          decoration: InputDecoration(
+                            fillColor: Colors.white,
+                            filled: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Access', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            Row(
+                              children: [
+                                ChoiceChip(
+                                  label: const Text('Public', style: TextStyle(fontSize: 10)),
+                                  selected: isPublic,
+                                  onSelected: (_) => setDialogState(() => isPublic = true),
+                                ),
+                                const SizedBox(width: 4),
+                                ChoiceChip(
+                                  label: const Text('Private', style: TextStyle(fontSize: 10)),
+                                  selected: !isPublic,
+                                  onSelected: (_) => setDialogState(() => isPublic = false),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Capacity', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, size: 18, color: blue),
+                                  onPressed: maxCap > 2 ? () => setDialogState(() => maxCap--) : null,
+                                ),
+                                Text('$maxCap', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline, size: 18, color: blue),
+                                  onPressed: maxCap < 10 ? () => setDialogState(() => maxCap++) : null,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: blue),
+              child: const Text('Create Copy'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      final finalPlanName = newPlanNameCtrl.text.trim().isNotEmpty
+          ? newPlanNameCtrl.text.trim()
+          : uniqueName;
+
+      // Final uniqueness check (in case user changed to an existing name)
+      if (plans.any((p) => p.name.toLowerCase() == finalPlanName.toLowerCase())) {
+        note('A plan named "$finalPlanName" already exists. Please choose a different name.');
+        return;
+      }
+
+      setState(() => loading = true);
+
+      try {
+        String? newCode;
+        String? newGroupId;
+
+        // If Team mode was chosen, create the squad in travel_groups
+        if (selectedMode == 'team') {
+          final finalTeamName = squadNameCtrl.text.trim().isNotEmpty
+              ? squadNameCtrl.text.trim()
+              : '$finalPlanName Squad';
+
+          final newTeam = await _groupService.createTeam(
+            ownerId: user.id,
+            teamName: finalTeamName,
+            teamType: isPublic ? 'PUBLIC' : 'PRIVATE',
+            maxCapacity: maxCap,
+          );
+
+          newCode = newTeam.invitationCode;
+          newGroupId = newTeam.groupId; // Capture the group_id
+        }
+
+        // Save the new cloned plan – pass groupId if team mode
+        final clonedPlan = await api!.savePlan(
+          TripPlan(
+            id: '',
+            name: finalPlanName,
+            startDate: _currentPlan!.startDate,
+            endDate: _currentPlan!.endDate,
+            mode: selectedMode,
+            visibility: isPublic ? 'public' : 'private',
+            inviteCode: newCode,
+            groupId: newGroupId, // Now we pass group_id
+            routeAccepted: _currentPlan!.routeAccepted,
+            stops: List.from(_currentPlan!.stops),
+          ),
+        );
+
+        if (mounted) {
+          setState(() {
+            _currentPlan = clonedPlan;
+            name.text = clonedPlan.name;
+            mode = selectedMode;
+            // Insert at top
+            plans = [clonedPlan, ...plans];
+            _allPlans = [clonedPlan, ..._allPlans];
+            _displayedPlans = [clonedPlan, ..._displayedPlans];
+            _lastViewedPlanId = clonedPlan.id; // reset cache
+          });
+
+          if (selectedMode == 'team') {
+            await _loadSquadForPlan(); // refresh squad info
+            if (newCode != null) {
+              _showTeamCodeSuccessDialog(newCode);
+            }
+          } else {
+            note('Solo copy "$finalPlanName" created successfully.');
+          }
+        }
+      } catch (e) {
+        note('Unable to duplicate plan: $e');
+      } finally {
+        if (mounted) setState(() => loading = false);
+      }
+    }
+  }
+
+  // --- SQUAD MANAGEMENT STATE ---
+  TravelGroup? _currentTeam;
+  List<Map<String, dynamic>> _teamMembers = [];
+  bool _loadingTeam = false;
+
+  /// Loads real squad and members for the current team plan
+  Future<void> _loadSquadForPlan() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null || mode != 'team') return;
+
+    setState(() => _loadingTeam = true);
+
+    try {
+      String? targetGroupId;
+
+      // 1. If we have an invite code, find group by code
+      if (_currentPlan?.inviteCode != null && _currentPlan!.inviteCode!.isNotEmpty) {
+        // Direct query to travel_groups by invitation_code
+        final res = await Supabase.instance.client
+            .from('travel_groups')
+            .select()
+            .eq('invitation_code', _currentPlan!.inviteCode!)
+            .maybeSingle();
+        if (res != null) {
+          targetGroupId = res['group_id'] as String;
+        }
+      }
+
+      // 2. Fallback: Check user's active teams
+      if (targetGroupId == null) {
+        final myTeams = await _groupService.getUserTeams(user.id);
+        if (myTeams.isNotEmpty) {
+          final firstTeam = myTeams.first;
+          targetGroupId = (firstTeam['group_id'] ?? firstTeam['travel_groups']?['group_id']) as String?;
+        }
+      }
+
+      // 3. Fetch full squad details and member profiles
+      if (targetGroupId != null) {
+        final data = await _groupService.getTeamDetails(targetGroupId);
+        if (mounted) {
+          setState(() {
+            _currentTeam = data['team'] as TravelGroup?;
+            final rawMembers = data['members'] as List<dynamic>? ?? [];
+            _teamMembers = rawMembers
+                .map((m) => Map<String, dynamic>.from(m as Map<dynamic, dynamic>))
+                .toList();
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading squad in planner: $e');
+    } finally {
+      if (mounted) setState(() => _loadingTeam = false);
+    }
+  }
+
+  /// Interactive Manage Squad Bottom Sheet
+  void _openManageSquadBottomSheet() {
+    final user = Supabase.instance.client.auth.currentUser;
+    final isOwner = _currentTeam?.ownerId == user?.id;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => Container(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Sheet Handlebar
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+
+              // Header: Squad Name & Type
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _currentTeam?.teamName ?? '${name.text} Squad',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: ink,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_teamMembers.length} / ${_currentTeam?.maxCapacity ?? 5} Members',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (_currentTeam?.teamType == 'PUBLIC')
+                          ? const Color(0xFFDCFCE7)
+                          : const Color(0xFFE0F2FE),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _currentTeam?.teamType ?? 'PRIVATE',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: (_currentTeam?.teamType == 'PUBLIC')
+                            ? const Color(0xFF16A34A)
+                            : blue,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Private Invitation Code Box (if private)
+              if (_currentTeam?.invitationCode != null || _currentPlan?.inviteCode != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.vpn_key_outlined, size: 18, color: blue),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'INVITATION CODE',
+                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8)),
+                          ),
+                          SelectableText(
+                            _currentTeam?.invitationCode ?? _currentPlan?.inviteCode ?? '',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2,
+                              color: ink,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.copy_rounded, size: 18, color: blue),
+                        tooltip: 'Copy Code',
+                        onPressed: () {
+                          final code = _currentTeam?.invitationCode ?? _currentPlan?.inviteCode ?? '';
+                          Clipboard.setData(ClipboardData(text: code));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Copied code "$code" to clipboard!'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Members List Section
+              const Text(
+                'SQUAD MEMBERS',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 8),
+
+              if (_teamMembers.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'No members joined yet. Share the code to invite friends!',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _teamMembers.length,
+                    separatorBuilder: (_, __) => const Divider(height: 12),
+                    itemBuilder: (ctx, i) {
+                      final m = _teamMembers[i];
+                      final profile = m['profiles'] as Map<String, dynamic>?;
+                      final memberRole = m['member_role']?.toString() ?? 'MEMBER';
+                      final fullName = profile?['full_name'] ?? 'Traveler';
+                      final initials = fullName.length >= 2
+                          ? fullName.substring(0, 2).toUpperCase()
+                          : 'TR';
+
+                      return Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: memberRole == 'OWNER' ? blue : const Color(0xFF94A3B8),
+                            child: Text(
+                              initials,
+                              style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      fullName,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
+                                    ),
+                                    if (m['user_id'] == user?.id)
+                                      const Text(' (You)', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                                  ],
+                                ),
+                                Text(
+                                  'Level ${profile?['progress_level'] ?? 1} • ${profile?['exploration_points'] ?? 0} pts',
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: memberRole == 'OWNER' ? const Color(0xFFFEF3C7) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                if (memberRole == 'OWNER') ...[
+                                  const Icon(Icons.star, size: 12, color: Colors.amber),
+                                  const SizedBox(width: 4),
+                                ],
+                                Text(
+                                  memberRole == 'OWNER' ? 'HOST' : 'MEMBER',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: memberRole == 'OWNER' ? const Color(0xFFD97706) : const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+
+              const SizedBox(height: 20),
+
+              // Action: Go to Full Team Hub Screen
+              if (_currentTeam != null)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      openPage(TeamDetailScreen(groupId: _currentTeam!.groupId));
+                    },
+                    icon: const Icon(Icons.settings_outlined, size: 18),
+                    label: const Text('Open Full Team Hub', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   int get days => end.difference(start).inDays + 1;
@@ -134,6 +717,9 @@ class _PlanScreenState extends State<PlanScreen> {
         page = 1;
         history = false;
         name.clear();
+        teamName.clear();
+        teamMaxCapacity = 5;
+        mode = 'solo';
         places = [];
         stops = [];
         route = null;
@@ -155,6 +741,11 @@ class _PlanScreenState extends State<PlanScreen> {
       accepted = p.routeAccepted;
       history = end.isBefore(today);
       route = null; // reset first
+
+      // Load squad if team plan
+      if (p.mode == 'team') {
+        _loadSquadForPlan();
+      }
 
       // CHANGE HERE: Only clear maps if this is a DIFFERENT plan
       if (_lastViewedPlanId != p.id) {
@@ -273,8 +864,6 @@ class _PlanScreenState extends State<PlanScreen> {
     } finally {
       if (mounted) setState(() => loading = false);
     }
-      final r = await api!.search(placeSearch.text);
-      if (mounted) setState(() => places = r);
   }
 
   Future<void> nearby() async {
@@ -560,42 +1149,146 @@ class _PlanScreenState extends State<PlanScreen> {
     }
 
     setState(() => loading = true);
+
     try {
       normalizeStops();
+
+      String? generatedCode;
+      String? newGroupId;
+
+      // --- CREATE SQUAD IN SUPABASE IF TEAM EXPEDITION ---
+      if (mode == 'team') {
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user == null) {
+          note('Please sign in to create a team expedition.');
+          setState(() => loading = false);
+          return;
+        }
+
+        final finalTeamName = teamName.text.trim().isNotEmpty
+            ? teamName.text.trim()
+            : '${name.text.trim()} Squad';
+
+        final teamType = openPublic ? 'PUBLIC' : 'PRIVATE';
+
+        // 1. Create team via GroupService
+        final newGroup = await _groupService.createTeam(
+          ownerId: user.id,
+          teamName: finalTeamName,
+          teamType: teamType,
+          maxCapacity: teamMaxCapacity,
+        );
+
+        generatedCode = newGroup.invitationCode;
+        newGroupId = newGroup.groupId;
+
+        // 2. Update user profile team status
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'team_status': openPublic ? 'PUBLIC_TEAM' : 'PRIVATE_TEAM'})
+            .eq('id', user.id);
+      }
+
+      // --- SAVE TRIP PLAN ---
       final p = await api!.savePlan(TripPlan(
-          id: '',
-          name: name.text.trim(),
-          startDate: start,
-          endDate: end,
-          mode: mode,
-          visibility: openPublic ? 'public' : 'private',
-          inviteCode: openPublic ? null : '123456',
-          routeAccepted: accepted,
-          stops: stops));
+        id: '',
+        name: name.text.trim(),
+        startDate: start,
+        endDate: end,
+        mode: mode,
+        visibility: openPublic ? 'public' : 'private',
+        inviteCode: generatedCode,
+        groupId: newGroupId,
+        routeAccepted: accepted,
+        stops: stops,
+      ));
+
       if (mounted) {
         setState(() {
-          plans = [p, ...plans];              // Keep this
-          _allPlans = [p, ..._allPlans];      // ADD THIS
-          _displayedPlans = [p, ..._displayedPlans]; // ADD THIS
-          page = 3;
+          _currentPlan = p;
+          plans = [p, ...plans];
+          _allPlans = [p, ..._allPlans];
+          _displayedPlans = [p, ..._displayedPlans];
+          page = 3; // Navigate to Itinerary view
           history = false;
           isCreating = false;
-          dashboardPage = 0;                  // ADD THIS: Takes you back to Page 1
+          dashboardPage = 0;
         });
+
+        if (mode == 'team') {
+          _loadSquadForPlan(); // <-- Trigger squad fetch
+        }
+
+        // Show dialog with code if private team
+        if (mode == 'team' && generatedCode != null) {
+          _showTeamCodeSuccessDialog(generatedCode);
+        } else {
+          note('Trip plan created successfully.');
+        }
       }
-      note('Trip plan created successfully.');
     } on PostgrestException catch (e) {
-      // 23505 is the "Unique Violation" error code in PostgreSQL
       if (e.code == '23505') {
         note('A plan with this name already exists. Please choose a different name.');
       } else {
-        note('Unable to save plan: $e');
+        note('Unable to save plan: ${e.message}');
       }
     } catch (e) {
       note('Unable to save plan: $e');
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  // Dialog showing the generated 6-character private invite code
+  void _showTeamCodeSuccessDialog(String code) {
+    if (code == null || code.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.celebration, color: blue),
+            SizedBox(width: 8),
+            Text('Squad Ready!'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Your team expedition has been created! Share this invitation code with your squad members to join via the Teams screen:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F9FF),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBAE6FD), width: 1.5),
+              ),
+              child: SelectableText(
+                code,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 4,
+                  color: blue,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: FilledButton.styleFrom(backgroundColor: blue),
+            child: const Text('Got it!'),
+          ),
+        ],
+      ),
+    );
   }
 
   void openPage(Widget page) =>
@@ -825,18 +1518,147 @@ class _PlanScreenState extends State<PlanScreen> {
             label('SELECT EXPEDITION MODE'),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: modeButton('Solo', 'solo')),
+              Expanded(child: modeButton('Solo Expedition', 'solo')),
               const SizedBox(width: 10),
-              Expanded(child: modeButton('Team', 'team')),
+              Expanded(child: modeButton('Team Expedition', 'team')),
             ]),
+
+            // --- TEAM EXPEDITION CONFIGURATION ---
             if (mode == 'team') ...[
-              const SizedBox(height: 15),
-              Row(children: [
-                const Expanded(child: Text('Open to Public?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                yesNo(),
-              ]),
-              const SizedBox(height: 10),
-              detailBox('Private Code:', '123456', 'TEAM MODE'),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F9FF),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFBAE6FD)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.groups_rounded, color: blue, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'CREATE SQUAD SETTINGS',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          letterSpacing: 1,
+                          color: blue,
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+
+                    // Team Name input field
+                    label('SQUAD NAME *'),
+                    const SizedBox(height: 6),
+                    field(
+                      teamName,
+                      name.text.isNotEmpty ? '${name.text.trim()} Squad' : 'Enter Squad Name',
+                          (_) {},
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Access Type (Public vs Private Code)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Access Type',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
+                            ),
+                            Text(
+                              openPublic ? 'Public: Listed in Teams tab' : 'Private: Requires 6-char code',
+                              style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: border),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              small('PUBLIC', openPublic, () => setState(() => openPublic = true)),
+                              small('PRIVATE', !openPublic, () => setState(() => openPublic = false)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Member Capacity stepper
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Max Capacity',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
+                        ),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, color: blue, size: 22),
+                              onPressed: teamMaxCapacity > 2
+                                  ? () => setState(() => teamMaxCapacity--)
+                                  : null,
+                            ),
+                            Text(
+                              '$teamMaxCapacity Members',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline, color: blue, size: 22),
+                              onPressed: teamMaxCapacity < 10
+                                  ? () => setState(() => teamMaxCapacity++)
+                                  : null,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 20),
+
+                    // Info explanation card
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            openPublic ? Icons.public : Icons.lock_outline,
+                            size: 16,
+                            color: openPublic ? const Color(0xFF00A774) : blue,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              openPublic
+                                  ? 'Other travelers can browse and request to join this squad in the Teams UI.'
+                                  : 'A unique 6-character invitation code will be generated upon creation.',
+                              style: const TextStyle(fontSize: 11, color: ink),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
             const SizedBox(height: 20),
             label('PLAN ROUTE PREVIEW'),
@@ -1252,26 +2074,141 @@ class _PlanScreenState extends State<PlanScreen> {
             child: detailBox(
                 'DATES', '${date(start)} →\n${date(end)}', '$days Days Trip')),
         const SizedBox(width: 12),
-        Expanded(child: detailBox('TEAM CODE', '#123456', 'TEAM MODE')),
+        Expanded(
+          child: detailBox(
+            mode == 'team' ? 'TEAM CODE' : 'EXPEDITION',
+            mode == 'team' ? (_currentPlan?.inviteCode ?? 'PUBLIC') : 'SOLO',
+            mode == 'team' ? 'TEAM MODE' : 'SOLO MODE',
+          ),
+        ),
       ]),
+      const SizedBox(height: 14),
+      const SizedBox(height: 14),
+
+      // --- SINGLE "DUPLICATE PLAN" ACTION ---
+      InkWell(
+        onTap: _duplicatePlanDialog,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.content_copy_rounded, size: 20, color: blue),
+              SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Duplicate Trip Plan',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
+                    ),
+                    Text(
+                      'Create a new copy of this plan as Solo or Team Expedition.',
+                      style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, size: 12, color: blue),
+            ],
+          ),
+        ),
+      ),
       const SizedBox(height: 24),
-      Row(children: [
-        Expanded(child: label('SQUAD MEMBERS (3)')),
-        TextButton(
-            onPressed: () {},
-            child: const Text('Manage Squad Members',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)))
-      ]),
-      const SizedBox(height: 8),
-      SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: [
-            member('AV', 'Alex Vance (Host)', ink, true),
-            const SizedBox(width: 8),
-            member('SL', 'Sophia L.', const Color(0xFFFACC15), false),
-            const SizedBox(width: 8),
-            member('KT', 'Kenji T.', ink, false),
-          ])),
+      // --- DYNAMIC SQUAD MEMBERS SECTION (TEAM EXPEDITION ONLY) ---
+      if (mode == 'team') ...[
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              child: label('SQUAD MEMBERS (${_teamMembers.isNotEmpty ? _teamMembers.length : 1})'),
+            ),
+            TextButton.icon(
+              onPressed: _openManageSquadBottomSheet,
+              icon: const Icon(Icons.settings_outlined, size: 14, color: blue),
+              label: const Text(
+                'Manage Squad Members',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        if (_loadingTeam)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(color: blue),
+          )
+        else if (_teamMembers.isEmpty)
+        // Fallback if members haven't loaded yet or just created
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                member(
+                  'ME',
+                  'You (Host)',
+                  blue,
+                  true,
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: _openManageSquadBottomSheet,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.person_add_alt_1_outlined, size: 14, color: blue),
+                        SizedBox(width: 6),
+                        Text(
+                          'Invite Squad',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _teamMembers.map((m) {
+                final profile = m['profiles'] as Map<String, dynamic>?;
+                final role = m['member_role']?.toString() ?? 'MEMBER';
+                final isHost = role == 'OWNER';
+                final fullName = profile?['full_name'] ?? 'Traveler';
+                final initials = fullName.length >= 2
+                    ? fullName.substring(0, 2).toUpperCase()
+                    : 'TR';
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: member(
+                    initials,
+                    isHost ? '$fullName (Host)' : fullName,
+                    isHost ? blue : const Color(0xFF64748B),
+                    isHost,
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+      ],
       const Divider(height: 40),
       Row(children: [
         Expanded(child: label('DAY-BY-DAY ITINERARY')),
@@ -2206,16 +3143,21 @@ class _PlanScreenState extends State<PlanScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE0F2FE),
+                                color: p.mode == 'team' ? const Color(0xFFE0F2FE) : const Color(0xFFF1F5F9),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFFBAE6FD)),
+                                border: Border.all(
+                                  color: p.mode == 'team' ? const Color(0xFFBAE6FD) : const Color(0xFFE2E8F0),
+                                ),
                               ),
-                              // Uses the actual mode (TEAM or SOLO)
-                              child: Text(p.mode.toUpperCase(),
-                                  style: const TextStyle(
-                                      fontSize: 9,
-                                      color: blue,
-                                      fontWeight: FontWeight.bold)),
+                              // Displays actual mode (TEAM or SOLO)
+                              child: Text(
+                                p.mode.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: p.mode == 'team' ? blue : const Color(0xFF64748B),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                             const SizedBox(width: 8),
                             const Icon(Icons.arrow_forward, color: blue)
@@ -2261,7 +3203,7 @@ class _PlanScreenState extends State<PlanScreen> {
                                   ),
                                   child: Text(
                                       'Day ${s.dayNumber}: ${s.name}',
-                                      maxLines: 2, // Prevents long names from breaking the card
+                                      maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                           fontSize: 10,
@@ -2273,25 +3215,45 @@ class _PlanScreenState extends State<PlanScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        // Footer Row (Squad & Code)
+
+                        // ✅ DYNAMIC FOOTER: Differentiates Solo vs Team
                         Row(children: [
-                          const Icon(Icons.people_alt_outlined, size: 14, color: Color(0xFF64748B)),
-                          const SizedBox(width: 6),
-                          // Note: Hardcoding "3" to match the prototype.
-                          // If you have a dynamic member list, you can use `${p.members.length}` here.
-                          const Text('Squad: 3 Members',
-                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF0F9FF),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFFBAE6FD)),
+                          if (p.mode == 'solo') ...[
+                            const Icon(Icons.person_outline, size: 15, color: Color(0xFF64748B)),
+                            const SizedBox(width: 6),
+                            const Text('Solo Expedition',
+                                style: TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text('PERSONAL',
+                                  style: TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
                             ),
-                            child: Text('Code: #${p.inviteCode ?? '123456'}',
-                                style: const TextStyle(fontSize: 10, color: blue, fontWeight: FontWeight.bold)),
-                          )
+                          ] else ...[
+                            const Icon(Icons.people_alt_outlined, size: 15, color: blue),
+                            const SizedBox(width: 6),
+                            const Text('Team Expedition',
+                                style: TextStyle(fontSize: 10, color: blue, fontWeight: FontWeight.w600)),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0F9FF),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFBAE6FD)),
+                              ),
+                              child: Text(
+                                (p.inviteCode != null && p.inviteCode!.isNotEmpty)
+                                    ? 'Code: #${p.inviteCode}'
+                                    : 'PUBLIC SQUAD',
+                                style: const TextStyle(fontSize: 10, color: blue, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ]
                         ]),
                       ])
               )
@@ -2512,7 +3474,14 @@ class _PlanScreenState extends State<PlanScreen> {
             children: [
               pw.Expanded(child: gridBox('SQUAD MODE', plan.mode.toUpperCase())),
               pw.SizedBox(width: 10),
-              pw.Expanded(child: gridBox('TEAM CODE', '#123456')),
+              pw.Expanded(
+                child: gridBox(
+                  'TEAM CODE',
+                  plan.mode == 'team'
+                      ? (plan.inviteCode != null && plan.inviteCode!.isNotEmpty ? '#${plan.inviteCode}' : 'PUBLIC')
+                      : 'N/A (SOLO)',
+                ),
+              ),
             ],
           ),
           pw.SizedBox(height: 20),

@@ -1,5 +1,3 @@
-// lib/application/services/group_service.dart
-
 import 'dart:math';
 import '../../data/repositories/group_repository.dart';
 import '../../data/models/travel_group_model.dart';
@@ -118,5 +116,31 @@ class GroupService {
 
   Future<void> leaveTeam(String groupId, String userId) async {
     await _repository.leaveTeam(groupId: groupId, userId: userId);
+  }
+
+  Future<void> disbandTeam(String groupId, String ownerId) async {
+    await _repository.disbandTeam(groupId: groupId, ownerId: ownerId);
+  }
+
+  Future<void> transferOwnershipAndLeave({
+    required String groupId,
+    required String currentOwnerId,
+    required String newOwnerId,
+  }) async {
+    await _repository.transferOwnershipAndLeave(
+      groupId: groupId,
+      currentOwnerId: currentOwnerId,
+      newOwnerId: newOwnerId,
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // NEW: Remove a member (for owner)
+  // -------------------------------------------------------------------------
+  Future<void> removeMember({
+    required String groupId,
+    required String userId,
+  }) async {
+    await _repository.removeTeamMember(groupId: groupId, userId: userId);
   }
 }
