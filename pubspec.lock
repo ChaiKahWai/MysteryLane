@@ -161,22 +161,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.15"
-  dio:
+  dlibphonenumber:
     dependency: transitive
     description:
-      name: dio
-      sha256: "0df44ebba85e503958eb75d07eedd3c86275a58c1d3eda2f2ce8f0a2c3abbb3c"
+      name: dlibphonenumber
+      sha256: bd19797bba652e30f1ef61ebb1bf48142b4ff235ee5ca31cc97d1f1f35d38a49
       url: "https://pub.dev"
     source: hosted
-    version: "5.11.0"
-  dio_web_adapter:
+    version: "1.1.71"
+  equatable:
     dependency: transitive
     description:
-      name: dio_web_adapter
-      sha256: "0786d0b7295a373de356fc0af4f6f1d0ab2844ed31b19dfc5e7556b70e24212c"
+      name: equatable
+      sha256: "3bce007a596ff8b3119c45d68aaef631272537c03d30e5d4534dd24bf4c5eaa2"
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.1"
+    version: "2.1.0"
   fake_async:
     dependency: transitive
     description:
@@ -544,6 +544,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.0"
+  intl_phone_number_input:
+    dependency: "direct main"
+    description:
+      name: intl_phone_number_input
+      sha256: "9d4d7f174cfc3a85b238e0b465ec0e7232fc0815a779e5a58fbf118dee26dfa0"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.7.5"
   json_annotation:
     dependency: transitive
     description:
@@ -752,6 +760,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.9.1"
+  protobuf:
+    dependency: transitive
+    description:
+      name: protobuf
+      sha256: "75ec242d22e950bdcc79ee38dd520ce4ee0bc491d7fadc4ea47694604d22bf06"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.0.0"
   printing:
     dependency: "direct main"
     description:

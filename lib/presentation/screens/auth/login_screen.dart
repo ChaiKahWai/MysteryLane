@@ -38,153 +38,154 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _signIn() async {
     FocusScope.of(context).unfocus();
 
+    final String email =
+    _emailController.text.trim().toLowerCase();
+    final String password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showMessage(
+        'Please complete all required login fields.',
+        isError: true,
+      );
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      final email =
-      _emailController.text.trim().toLowerCase();
-      final password =
-          _passwordController.text;
-
       final AuthResponse response =
       await SupabaseConfig.client.auth.signInWithPassword(
         email: email,
         password: password,
       );
 
-      final User? signedInUser =
-          response.user ??
-              SupabaseConfig.client.auth.currentUser;
+      final User? user = response.user;
+      final Session? session = response.session;
 
-      final Session? signedInSession =
-          response.session ??
-              SupabaseConfig.client.auth.currentSession;
-
-      // SECURITY:
-      // Never allow a traveller into MYsteryLane unless Supabase has
-      // recorded that the registration email was confirmed.
-      //
-      // Supabase should already block an unverified account when
-      // "Confirm email" is enabled. This second check is intentional
-      // defence in depth so the Flutter app cannot accidentally navigate
-      // to Home if a session is ever returned for an unverified account.
-      if (signedInUser == null ||
-          signedInSession == null) {
-        throw const AuthException(
-          'Unable to create an authenticated session.',
+      if (user == null || session == null) {
+        if (!mounted) return;
+        _showMessage(
+          'Invalid email or password. Please try again.',
+          isError: true,
         );
+        return;
       }
 
-      if (signedInUser.emailConfirmedAt == null) {
-        // Remove any session that may have been returned.
+      if (user.emailConfirmedAt == null) {
         await SupabaseConfig.client.auth.signOut();
-
         if (!mounted) return;
+        _showMessage(
+          'Please verify your email address before logging in.',
+          isError: true,
+        );
+        return;
+      }
 
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Email verification is required. Please open the verification email sent during registration and click the verification link before signing in.',
-              ),
-              backgroundColor: Colors.redAccent,
-              duration: Duration(seconds: 5),
-            ),
-          );
+      final Map<String, dynamic>? profile =
+      await SupabaseConfig.client
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
 
+      if (profile == null) {
+        await SupabaseConfig.client.auth.signOut();
+        if (!mounted) return;
+        _showMessage(
+          'Unable to retrieve your traveller profile. Please try again.',
+          isError: true,
+        );
         return;
       }
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
+      _showMessage(
+        'Login successful. Welcome to MYsteryLane!',
+        isError: false,
+      );
+
+      await Future<void>.delayed(
+        const Duration(milliseconds: 900),
+      );
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) =>
-          const HomeScreen(),
+          builder: (_) => const HomeScreen(),
         ),
       );
     } on AuthException catch (error) {
+      if (!mounted) return;
+
       final String errorCode =
           error.code?.toLowerCase() ?? '';
       final String errorMessage =
       error.message.toLowerCase();
 
-      final bool emailNotConfirmed =
-          errorCode == 'email_not_confirmed' ||
-              errorMessage.contains(
-                'email not confirmed',
-              ) ||
-              errorMessage.contains(
-                'email_not_confirmed',
-              );
-
-      if (emailNotConfirmed &&
-          SupabaseConfig.client.auth.currentSession != null) {
+      if (errorCode == 'email_not_confirmed' ||
+          errorMessage.contains('email not confirmed') ||
+          errorMessage.contains('email_not_confirmed')) {
         try {
           await SupabaseConfig.client.auth.signOut();
-        } catch (_) {
-          // Keep the original verification error as the user-facing result.
-        }
+        } catch (_) {}
+
+        if (!mounted) return;
+        _showMessage(
+          'Please verify your email address before logging in.',
+          isError: true,
+        );
+        return;
       }
 
-      if (!mounted) return;
-
-      String message =
-          'Unable to sign in. Please try again.';
-
-      if (emailNotConfirmed) {
-        message =
-        'Email verification is required. Please open the verification email sent during registration and click the verification link before signing in.';
-      } else if (errorCode ==
-          'invalid_credentials' ||
-          errorMessage.contains(
-            'invalid login credentials',
-          )) {
-        message =
-        'Invalid email or password. Please try again.';
-      } else {
-        message = error.message;
+      if (errorCode == 'invalid_credentials' ||
+          errorMessage.contains('invalid login credentials') ||
+          errorMessage.contains('invalid credentials')) {
+        _showMessage(
+          'Invalid email or password. Please try again.',
+          isError: true,
+        );
+        return;
       }
 
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(
-              seconds: 5,
-            ),
-          ),
-        );
-    } catch (error) {
+      _showMessage(
+        'Unable to complete the request. Please try again.',
+        isError: true,
+      );
+    } catch (_) {
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              'An unexpected error occurred: $error',
-            ),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
+      _showMessage(
+        'Unable to complete the request. Please try again.',
+        isError: true,
+      );
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _showMessage(
+      String message, {
+        bool isError = false,
+      }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor:
+          isError ? Colors.redAccent : Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   void _openForgotPassword() {
@@ -396,7 +397,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         validator: (value) {
                           if (value == null ||
                               value.trim().isEmpty) {
-                            return 'Please enter your email address.';
+                            return null;
                           }
 
                           if (!_isValidEmail(
@@ -511,7 +512,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         validator: (value) {
                           if (value == null ||
                               value.isEmpty) {
-                            return 'Please enter your password.';
+                            return null;
                           }
 
                           return null;
@@ -570,3 +571,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+

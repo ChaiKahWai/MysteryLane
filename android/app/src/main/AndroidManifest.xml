@@ -38,10 +38,9 @@
                     android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- PASSWORD RESET DEEP LINK -->
+            <!-- MYsteryLane AUTHENTICATION DEEP LINKS -->
             <intent-filter>
-                <action
-                    android:name="android.intent.action.VIEW" />
+                <action android:name="android.intent.action.VIEW" />
 
                 <category
                     android:name="android.intent.category.DEFAULT" />
@@ -49,9 +48,15 @@
                 <category
                     android:name="android.intent.category.BROWSABLE" />
 
+                <!-- Registration / Email Verification -->
                 <data
                     android:scheme="mysterylane"
-                    android:host="reset-password" />
+                    android:host="login-callback" />
+
+                <!-- Forgot Password / Password Recovery -->
+                <data
+                    android:scheme="mysterylane"
+                    android:host="reset-password-callback" />
             </intent-filter>
 
         </activity>
