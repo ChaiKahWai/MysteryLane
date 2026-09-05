@@ -4,8 +4,11 @@ import '../../../data/models/blind_box_history.dart';
 import '../home/home_screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import 'package:flutter/services.dart';
-//import '../plan/plan_screen.dart';
-//import '../group/group_screen.dart';
+import '../plan/plan_screen.dart';
+import '../profile/leaderboard_screen.dart';
+import '../group/chat_list_screen.dart';
+import '../profile/profile_screen.dart';
+import '../group/group_screen.dart';
 
 import 'package:mysterylane/application/services/blind_box_mission_generation_service.dart';
 
@@ -540,18 +543,14 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     //  _replaceWith(const PlanScreen());
     // break;
 
-    // case MysteryLaneTab.teams:
-    //  _replaceWith(const GroupScreen());
-    // break;
+      case MysteryLaneTab.teams:
+        _replaceWith(const GroupScreen());
+        break;
       case MysteryLaneTab.plan:
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(
-              behavior: SnackBarBehavior.floating,
-              content: Text('Plan page will be connected later.'),
-            ),
-          );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const PlanScreen()),
+        );
         break;
 
     //case MysteryLaneTab.teams:
@@ -1723,6 +1722,27 @@ class _MysteryLaneTopBar extends StatelessWidget {
   static const Color teal = Color(0xFF0D9488);
   static const Color darkText = Color(0xFF0F172A);
 
+  void _openChat(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ChatListScreen()),
+    );
+  }
+
+  void _openLeaderboard(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
+    );
+  }
+
+  void _openProfile(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -1775,46 +1795,69 @@ class _MysteryLaneTopBar extends StatelessWidget {
                     ),
                   ),
                 ),
-                _TopCircleButton(
-                  background: const Color(0xFFFFFBEB),
-                  border: const Color(0xFFFDE68A),
-                  icon: Icons.emoji_events_rounded,
-                  iconColor: const Color(0xFFD97706),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 42,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F9FF),
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: const Color(0xFFBAE6FD)),
-                  ),
-                  child: const Icon(
-                    Icons.chat_bubble_outline_rounded,
-                    color: skyBlue,
-                    size: 19,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 38,
-                  height: 38,
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                    border: Border.all(
-                      color: const Color(0xFFBAE6FD),
-                      width: 1.4,
+                // Leaderboard
+                InkWell(
+                  onTap: () => _openLeaderboard(context),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 43,
+                    height: 43,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: const Icon(
+                      Icons.emoji_events_rounded,
+                      color: Color(0xFFD97706),
+                      size: 22,
                     ),
                   ),
-                  child: const CircleAvatar(
-                    backgroundColor: Color(0xFFE0F2FE),
-                    child: Icon(
-                      Icons.person_rounded,
+                ),
+                const SizedBox(width: 6),
+                // Chat
+                InkWell(
+                  onTap: () => _openChat(context),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 42,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                    ),
+                    child: const Icon(
+                      Icons.chat_bubble_outline_rounded,
                       color: skyBlue,
-                      size: 20,
+                      size: 19,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                // Profile
+                InkWell(
+                  onTap: () => _openProfile(context),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(
+                        color: const Color(0xFFBAE6FD),
+                        width: 1.4,
+                      ),
+                    ),
+                    child: const CircleAvatar(
+                      backgroundColor: Color(0xFFE0F2FE),
+                      child: Icon(
+                        Icons.person_rounded,
+                        color: skyBlue,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),

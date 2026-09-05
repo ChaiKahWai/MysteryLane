@@ -15,8 +15,10 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../../../application/services/group_service.dart';
 import '../group/team_detail_screen.dart';
-import '../group/group_screen.dart';
 import '../../../data/models/travel_group_model.dart';
+import '../group/chat_list_screen.dart';
+import '../profile/leaderboard_screen.dart';
+import '../group/group_screen.dart';
 
 class PlanScreen extends StatefulWidget {
   const PlanScreen({super.key});
@@ -1454,11 +1456,23 @@ class _PlanScreenState extends State<PlanScreen> {
                           fontWeight: FontWeight.w900,
                           letterSpacing: -.5)))),
         ),
+        // Leaderboard – now navigates
         action(Icons.emoji_events_rounded, const Color(0xFFFFFBEB),
-            const Color(0xFFD97706), () => note('Leaderboard is not available yet.')),
+            const Color(0xFFD97706), () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
+              );
+            }),
         const SizedBox(width: 6),
+        // Chat – now navigates
         action(Icons.chat_bubble_outline_rounded, const Color(0xFFF0F9FF), blue,
-            () => note('Chat is not available yet.')),
+                () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChatListScreen()),
+              );
+            }),
         const SizedBox(width: 6),
         InkWell(
             onTap: () => openPage(const ProfileScreen()),
@@ -2526,8 +2540,12 @@ class _PlanScreenState extends State<PlanScreen> {
               const SizedBox(width: 72),
               Expanded(child: nav(Icons.map_outlined, 'PLAN', true, () {})),
               Expanded(
-                  child: nav(Icons.groups_2_outlined, 'TEAMS', false,
-                      () => note('Teams is not available yet.')))
+                child: nav(Icons.groups_2_outlined, 'TEAMS', false,
+                        () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const GroupScreen()),
+                    )),
+              ),
             ])),
         Positioned(
             top: -26,

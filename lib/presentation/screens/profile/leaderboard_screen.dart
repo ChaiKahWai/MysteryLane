@@ -4,6 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../../core/config/supabase_config.dart';
 import 'profile_screen.dart';
+import '../plan/plan_screen.dart';
+import '../group/group_screen.dart';
+import '../group/chat_list_screen.dart';
+import '../Blindbox/BlindBox_Screen.dart';
+import '../checkpoint/checkpoint_screen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -396,7 +401,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       child: Row(
         children: [
           const SizedBox(width: 16),
-
           Container(
             width: 38,
             height: 38,
@@ -421,9 +425,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               size: 23,
             ),
           ),
-
           const SizedBox(width: 10),
-
           const Expanded(
             child: Text(
               'MYSTERYLANE',
@@ -438,27 +440,31 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               ),
             ),
           ),
-
+          // Leaderboard – static (no action)
           const _HeaderActionButton(
             tooltip: 'Leaderboard',
             icon: Icons.emoji_events_rounded,
             background: Color(0xFFFFFBEB),
             foreground: Color(0xFFD97706),
           ),
-
           const SizedBox(width: 6),
-
-          const _HeaderActionButton(
-            tooltip: 'Chat',
-            icon: Icons.chat_bubble_outline_rounded,
-            background: Color(0xFFF0F9FF),
-            foreground: _blue,
+          // Chat – now tappable
+          InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChatListScreen()),
+              );
+            },
+            child: const _HeaderActionButton(
+              tooltip: 'Chat',
+              icon: Icons.chat_bubble_outline_rounded,
+              background: Color(0xFFF0F9FF),
+              foreground: _blue,
+            ),
           ),
-
           const SizedBox(width: 6),
-
           _buildHeaderProfilePicture(),
-
           const SizedBox(width: 12),
         ],
       ),
@@ -1239,7 +1245,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 icon: Icons.inventory_2_outlined,
                 label: 'BLIND BOX',
                 onTap: () {
-                  _showNavigationMessage('Blind Box');
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BlindBoxPage()),
+                  );
                 },
               ),
             ),
@@ -1249,7 +1258,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 icon: Icons.assignment_outlined,
                 label: 'MISSIONS',
                 onTap: () {
-                  _showNavigationMessage('Missions');
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CheckpointScreen()),
+                  );
                 },
               ),
             ),
@@ -1261,7 +1273,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 icon: Icons.map_outlined,
                 label: 'PLAN',
                 onTap: () {
-                  _showNavigationMessage('Plan');
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PlanScreen()),
+                  );
                 },
               ),
             ),
@@ -1271,7 +1286,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 icon: Icons.groups_2_outlined,
                 label: 'TEAMS',
                 onTap: () {
-                  _showNavigationMessage('Teams');
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const GroupScreen()),
+                  );
                 },
               ),
             ),

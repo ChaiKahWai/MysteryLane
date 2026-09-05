@@ -13,6 +13,9 @@ import '../../../core/services/image_picker_service.dart';
 import '../auth/welcome_screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import 'achievement_screen.dart';
+import '../Blindbox/BlindBox_Screen.dart';
+import '../plan/plan_screen.dart';
+import '../group/group_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
 const ProfileScreen({super.key});
@@ -2605,10 +2608,11 @@ Expanded(
 child: _buildProfileBottomItem(
 icon: Icons.inventory_2_outlined,
 label: 'BLIND BOX',
-onTap: () {
-_showMessage(
-'Blind Box is not connected yet.',
-);
+    onTap: () {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const BlindBoxPage()),
+      );
 },
 ),
 ),
@@ -2637,10 +2641,11 @@ Expanded(
 child: _buildProfileBottomItem(
 icon: Icons.map_outlined,
 label: 'PLAN',
-onTap: () {
-_showMessage(
-'Plan is not connected yet.',
-);
+    onTap: () {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const PlanScreen()),
+      );
 },
 ),
 ),
@@ -2649,10 +2654,11 @@ Expanded(
 child: _buildProfileBottomItem(
 icon: Icons.groups_2_outlined,
 label: 'TEAMS',
-onTap: () {
-_showMessage(
-'Teams is not connected yet.',
-);
+    onTap: () {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const GroupScreen()),
+      );
 },
 ),
 ),

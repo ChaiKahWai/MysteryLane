@@ -12,6 +12,8 @@ import '../home/home_screen.dart';
 import '../puzzle/puzzle_screen.dart';
 
 import 'checkpoint_mission_screen.dart';
+import '../group/group_screen.dart';
+import '../plan/plan_screen.dart';
 
 class CheckpointScreen extends StatefulWidget {
   /// ============================================================
@@ -2673,12 +2675,13 @@ class _CheckpointScreenState extends State<CheckpointScreen> {
               label:
               'PLAN',
 
-              onTap:
-                  () {
-                _showMessage(
-                  'Plan page will be connected later.',
-                );
+              onTap: () {
+              Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const PlanScreen()),
+              );
               },
+
             ),
           ),
 
@@ -2692,10 +2695,9 @@ class _CheckpointScreenState extends State<CheckpointScreen> {
               label:
               'TEAMS',
 
-              onTap:
-                  () {
-                _showMessage(
-                  'Teams page will be connected later.',
+              onTap: () {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const GroupScreen()),
                 );
               },
             ),
