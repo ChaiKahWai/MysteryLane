@@ -19,19 +19,22 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  // ---- COLORS (matching HomeScreen) ----
   static const Color skyBlue = Color(0xFF0284C7);
   static const Color teal = Color(0xFF0D9488);
   static const Color darkText = Color(0xFF0F172A);
   static const Color greyText = Color(0xFF64748B);
   static const Color pageBackground = Color(0xFFF8FAFC);
   static const Color borderColor = Color(0xFFE2E8F0);
+  static const Color cardBorder = Color(0xFFE8EDF2);
 
   final GroupService _groupService = GroupService();
   final ChatService _chatService = ChatService();
+  final TextEditingController _searchController = TextEditingController();
+
   List<Map<String, dynamic>> _myTeams = [];
   Map<String, dynamic> _lastMessages = {};
   bool _loading = true;
+  String _searchQuery = '';
 
   String? _headerProfilePictureUrl;
 
@@ -40,6 +43,17 @@ class _ChatListScreenState extends State<ChatListScreen> {
     super.initState();
     _loadHeaderProfile();
     _loadData();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadHeaderProfile() async {
@@ -86,6 +100,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
     } finally {
       setState(() => _loading = false);
     }
+  }
+
+  List<Map<String, dynamic>> get _filteredTeams {
+    if (_searchQuery.isEmpty) return _myTeams;
+    return _myTeams.where((team) {
+      final name = team['travel_groups']?['team_name']?.toLowerCase() ?? '';
+      return name.contains(_searchQuery.toLowerCase());
+    }).toList();
   }
 
   String _formatTime(String iso) {
@@ -147,55 +169,128 @@ class _ChatListScreenState extends State<ChatListScreen> {
     // already here
   }
 
+  void _goBack() {
+    Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: pageBackground,
+      backgroundColor: Colors.white,
       extendBody: true,
       appBar: _buildTopAppBar(),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _myTeams.isEmpty
-          ? const Center(child: Text('You are not in any team yet'))
-          : ListView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 90),
-        itemCount: _myTeams.length,
-        itemBuilder: (ctx, index) {
-          final team = _myTeams[index];
-          final groupData = team['travel_groups'];
-          final groupId = groupData['group_id'];
-          final lastMsg = _lastMessages[groupId];
-          return Card(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            child: ListTile(
-              leading: CircleAvatar(
-                child: Text(groupData['team_name'][0]),
-              ),
-              title: Text(groupData['team_name']),
-              subtitle: lastMsg != null
-                  ? Text(
-                '${lastMsg['full_name']}: ${lastMsg['message']}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              )
-                  : const Text('No messages yet'),
-              trailing: lastMsg != null
-                  ? Text(
-                _formatTime(lastMsg['sent_at']),
-                style: const TextStyle(fontSize: 12),
-              )
-                  : null,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => TeamChatScreen(groupId: groupId),
+          : Column(
+        children: [
+          // ---- Header: Back button + centered title + chat icon ----
+          SizedBox(
+            height: 56,
+            child: Stack(
+              children: [
+                const Align(
+                  alignment: Alignment.center,
+                  child: Text(
+                    'Expedition Chat Hub',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: darkText,
+                    ),
                   ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8.0),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: darkText),
+                      onPressed: _goBack,
+                      tooltip: 'Back',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ),
+                ),
+                const Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: EdgeInsets.only(right: 16.0),
+                    child: Icon(
+                      Icons.chat_bubble_outline,
+                      color: greyText,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // ---- Search Bar ----
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search teams...',
+                prefixIcon: const Icon(Icons.search, color: greyText),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                  icon: const Icon(Icons.clear, color: greyText),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: cardBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: skyBlue),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _filteredTeams.isEmpty
+                ? const Center(
+              child: Text('No teams match your search'),
+            )
+                : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 90),
+              itemCount: _filteredTeams.length,
+              itemBuilder: (ctx, index) {
+                final team = _filteredTeams[index];
+                final groupData = team['travel_groups'];
+                final groupId = groupData['group_id'];
+                final lastMsg = _lastMessages[groupId];
+                return _ChatListItem(
+                  teamName: groupData['team_name'],
+                  lastMessage: lastMsg,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TeamChatScreen(groupId: groupId),
+                      ),
+                    );
+                  },
+                  formatTime: _formatTime,
                 );
               },
             ),
-          );
-        },
+          ),
+        ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: _buildHomeButton(),
@@ -203,13 +298,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  // ---- TOP APP BAR (same as HomeScreen) ----
+  // ---- TOP APP BAR (unchanged) ----
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
+      automaticallyImplyLeading: false,
       toolbarHeight: 68,
       elevation: 0,
       scrolledUnderElevation: 2,
-      backgroundColor: Colors.white.withValues(alpha: 0.97),
+      backgroundColor: Colors.white,
       surfaceTintColor: Colors.white,
       titleSpacing: 16,
       title: InkWell(
@@ -269,12 +365,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  // ---- BOTTOM BAR (TEAMS selected) ----
+  // ---- BOTTOM BAR (unchanged) ----
   Widget _buildBottomBar() {
     return BottomAppBar(
       height: 78,
       padding: EdgeInsets.zero,
-      color: Colors.white.withValues(alpha: 0.98),
+      color: Colors.white,
       elevation: 18,
       shadowColor: const Color(0x330284C7),
       shape: const CircularNotchedRectangle(),
@@ -327,7 +423,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  // ---- HOME FLOATING BUTTON ----
+  // ---- HOME FLOATING BUTTON (unchanged) ----
   Widget _buildHomeButton() {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -378,7 +474,109 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 }
 
-// ---- Reusable helper widgets (same as GroupScreen) ----
+// ---- Custom chat list item with white + light blue theme ----
+class _ChatListItem extends StatefulWidget {
+  final String teamName;
+  final Map<String, dynamic>? lastMessage;
+  final VoidCallback onTap;
+  final String Function(String) formatTime;
+
+  const _ChatListItem({
+    required this.teamName,
+    required this.lastMessage,
+    required this.onTap,
+    required this.formatTime,
+  });
+
+  @override
+  State<_ChatListItem> createState() => _ChatListItemState();
+}
+
+class _ChatListItemState extends State<_ChatListItem> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) {
+        setState(() => _isPressed = false);
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _isPressed = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _isPressed ? _ChatListScreenState.skyBlue : const Color(0xFFE8EDF2),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _isPressed
+                  ? const Color(0x1A0284C7)
+                  : Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: CircleAvatar(
+            backgroundColor: const Color(0xFFEAF6FE),
+            child: Text(
+              widget.teamName[0],
+              style: const TextStyle(
+                color: _ChatListScreenState.skyBlue,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          title: Text(
+            widget.teamName,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: _ChatListScreenState.darkText,
+            ),
+          ),
+          subtitle: widget.lastMessage != null
+              ? Text(
+            '${widget.lastMessage!['full_name']}: ${widget.lastMessage!['message']}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: _ChatListScreenState.greyText,
+              fontSize: 14,
+            ),
+          )
+              : const Text(
+            'No messages yet',
+            style: TextStyle(
+              color: _ChatListScreenState.greyText,
+              fontSize: 14,
+            ),
+          ),
+          trailing: widget.lastMessage != null
+              ? Text(
+            widget.formatTime(widget.lastMessage!['sent_at']),
+            style: const TextStyle(
+              fontSize: 12,
+              color: _ChatListScreenState.greyText,
+            ),
+          )
+              : null,
+        ),
+      ),
+    );
+  }
+}
+
+// ---- Reusable helper widgets (unchanged) ----
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 

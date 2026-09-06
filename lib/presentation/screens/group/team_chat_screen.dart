@@ -20,7 +20,6 @@ class TeamChatScreen extends StatefulWidget {
 }
 
 class _TeamChatScreenState extends State<TeamChatScreen> {
-  // ---- COLORS ----
   static const Color skyBlue = Color(0xFF0284C7);
   static const Color teal = Color(0xFF0D9488);
   static const Color darkText = Color(0xFF0F172A);
@@ -33,11 +32,13 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   String? _headerProfilePictureUrl;
+  String? _teamName;
 
   @override
   void initState() {
     super.initState();
     _loadHeaderProfile();
+    _loadTeamName();
   }
 
   @override
@@ -68,7 +69,28 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
     }
   }
 
-  // ---- Navigation helpers ----
+  Future<void> _loadTeamName() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('travel_groups')
+          .select('team_name')
+          .eq('group_id', widget.groupId)
+          .maybeSingle();
+      if (mounted) {
+        setState(() {
+          _teamName = response?['team_name'] as String? ?? 'Team Chat';
+        });
+      }
+    } catch (e) {
+      debugPrint('Team name error: $e');
+      if (mounted) {
+        setState(() {
+          _teamName = 'Team Chat';
+        });
+      }
+    }
+  }
+
   void _openBlindBox() {
     Navigator.pushReplacement(
       context,
@@ -132,82 +154,156 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
     }
   }
 
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } else {
+      return '${dt.day}/${dt.month} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom + 80.0;
+
     return Scaffold(
       backgroundColor: pageBackground,
       extendBody: true,
       appBar: _buildTopAppBar(),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<List<ChatMessage>>(
-              stream: _chatService.getMessagesForTeam(widget.groupId),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final messages = snapshot.data!;
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (_scrollController.hasClients) {
-                    _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  }
-                });
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.only(bottom: 12),
-                  itemCount: messages.length,
-                  itemBuilder: (ctx, index) {
-                    final msg = messages[index];
-                    final isMe = msg.userId == Supabase.instance.client.auth.currentUser?.id;
-                    return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isMe ? Colors.blue[200] : Colors.grey[300],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(msg.message),
+      body: Padding(
+        padding: EdgeInsets.only(bottom: bottomPadding),
+        child: Column(
+          children: [
+            // ---- Team name header with back button ----
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  bottom: BorderSide(color: borderColor, width: 1),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // Back button on the left
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: darkText),
+                    onPressed: () => Navigator.pop(context),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  // Centered team name
+                  Expanded(
+                    child: Text(
+                      _teamName ?? 'Loading...',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: darkText,
                       ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send, color: skyBlue),
-                  onPressed: _sendMessage,
-                ),
-              ],
+                  // Placeholder to balance the back button width (so text stays centered)
+                  const SizedBox(width: 48),
+                ],
+              ),
             ),
-          ),
-        ],
+            Expanded(
+              child: StreamBuilder<List<ChatMessage>>(
+                stream: _chatService.getMessagesForTeam(widget.groupId),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final messages = snapshot.data!;
+                  if (messages.isEmpty) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.chat_bubble_outline,
+                              size: 64,
+                              color: greyText,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'No messages yet',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: darkText,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Start the conversation!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: greyText,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (_scrollController.hasClients) {
+                      _scrollController.animateTo(
+                        _scrollController.position.maxScrollExtent,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    }
+                  });
+                  final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+                  return ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(bottom: 12),
+                    itemCount: messages.length,
+                    itemBuilder: (ctx, index) {
+                      final msg = messages[index];
+                      final isMe = msg.userId == currentUserId;
+                      return _buildMessageBubble(msg, isMe);
+                    },
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: InputDecoration(
+                        hintText: 'Type a message...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.send, color: skyBlue),
+                    onPressed: _sendMessage,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: _buildHomeButton(),
@@ -215,9 +311,47 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
     );
   }
 
-  // ---- TOP APP BAR ----
+  Widget _buildMessageBubble(ChatMessage msg, bool isMe) {
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: const BoxConstraints(maxWidth: 280),
+        decoration: BoxDecoration(
+          color: isMe ? Colors.blue[200] : Colors.grey[300],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              msg.fullName ?? 'Unknown',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isMe ? Colors.blue[900] : Colors.grey[800],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(msg.message),
+            const SizedBox(height: 2),
+            Text(
+              _formatTime(msg.sentAt),
+              style: TextStyle(
+                fontSize: 10,
+                color: isMe ? Colors.blue[800] : Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
+      automaticallyImplyLeading: false,
       toolbarHeight: 68,
       elevation: 0,
       scrolledUnderElevation: 2,
@@ -286,7 +420,6 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
     );
   }
 
-  // ---- BOTTOM BAR ----
   Widget _buildBottomBar() {
     return BottomAppBar(
       height: 78,
@@ -344,7 +477,6 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
     );
   }
 
-  // ---- HOME FLOATING BUTTON ----
   Widget _buildHomeButton() {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -395,7 +527,7 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
   }
 }
 
-// ---- Helper widgets (same as before) ----
+// ---- Reusable helper widgets (unchanged) ----
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 

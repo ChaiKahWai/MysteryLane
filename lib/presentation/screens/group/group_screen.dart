@@ -227,6 +227,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
   // ---- TOP APP BAR (same as HomeScreen) ----
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
+      automaticallyImplyLeading: false,
       toolbarHeight: 68,
       elevation: 0,
       scrolledUnderElevation: 2,
