@@ -19,7 +19,7 @@ class GroupScreen extends StatefulWidget {
   State<GroupScreen> createState() => _GroupScreenState();
 }
 
-class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStateMixin {
+class _GroupScreenState extends State<GroupScreen> {
   // ---- COLORS ----
   static const Color skyBlue = Color(0xFF0284C7);
   static const Color teal = Color(0xFF0D9488);
@@ -29,8 +29,9 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
   static const Color borderColor = Color(0xFFE2E8F0);
 
   final GroupService _groupService = GroupService();
-  late TabController _tabController;
-  int _currentTabIndex = 0;
+
+  // ---- Tab state (0 = My Teams, 1 = Public Teams) ----
+  int _selectedTabIndex = 0;
 
   List<Map<String, dynamic>> _myTeams = [];
   List<Map<String, dynamic>> _publicTeams = [];
@@ -49,19 +50,12 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() {
-      setState(() {
-        _currentTabIndex = _tabController.index;
-      });
-    });
     _loadHeaderProfile();
     _loadData();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     super.dispose();
   }
 
@@ -199,6 +193,15 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
       }).toList();
     }
 
+    // Exclude teams the user has already joined
+    final Set<String> joinedGroupIds = _myTeams
+        .map((team) => team['travel_groups']['group_id'] as String)
+        .toSet();
+    filtered = filtered.where((item) {
+      final team = item['team'] as TravelGroup;
+      return !joinedGroupIds.contains(team.groupId);
+    }).toList();
+
     return filtered;
   }
 
@@ -303,8 +306,8 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
               ],
             ),
           ),
-          // ---- PUBLIC TEAMS HEADER ----
-          if (_currentTabIndex == 1)
+          // ---- PUBLIC TEAMS HEADER (shown only when public tab is active) ----
+          if (_selectedTabIndex == 1)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Row(
@@ -336,19 +339,13 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
                 ],
               ),
             ),
-          // ---- TABS + CONTENT ----
+          // ---- CONTENT based on selected tab ----
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _buildMyTeamsList(),
-                _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _buildPublicTeamsList(paginated, totalPages),
-              ],
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _selectedTabIndex == 0
+                ? _buildMyTeamsList()
+                : _buildPublicTeamsList(paginated, totalPages),
           ),
         ],
       ),
@@ -417,7 +414,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- IN‑BODY HEADER ----
+  // ---- IN‑BODY HEADER (custom pill tabs like planner) ----
   Widget _buildBodyHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -435,46 +432,75 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
             ),
           ),
           const SizedBox(height: 10),
+          // Custom tab row
           Container(
-            height: 44,
+            padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
               color: const Color(0xFFF0F9FF),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: const Color(0xFFBAE6FD),
-                width: 1.5,
-              ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x0A0284C7),
-                  blurRadius: 4,
-                  offset: Offset(0, 2),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFD7EAF7)),
             ),
-            child: TabBar(
-              controller: _tabController,
-              indicator: BoxDecoration(
-                color: skyBlue,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              labelColor: Colors.white,
-              unselectedLabelColor: const Color(0xFF475569),
-              labelStyle: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-              unselectedLabelStyle: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-              tabs: const [
-                Tab(text: 'My Teams'),
-                Tab(text: 'Public Teams'),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildTab(
+                    label: 'My Teams',
+                    icon: Icons.people_alt_rounded,
+                    selected: _selectedTabIndex == 0,
+                    onTap: () => setState(() => _selectedTabIndex = 0),
+                  ),
+                ),
+                Expanded(
+                  child: _buildTab(
+                    label: 'Public Teams',
+                    icon: Icons.public_rounded,
+                    selected: _selectedTabIndex == 1,
+                    onTap: () => setState(() => _selectedTabIndex = 1),
+                  ),
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTab({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: selected ? skyBlue : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? Colors.white : const Color(0xFF475569),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'sans-serif',
+                color: selected ? Colors.white : const Color(0xFF334155),
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -582,13 +608,12 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- BODY: My Teams list (updated: "Join a team" is now a blue button, not a card) ----
+  // ---- BODY: My Teams list ----
   Widget _buildMyTeamsList() {
     final filtered = _filterMyTeams();
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
-        // ---- "Join a team" as a prominent button (different UI) ----
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: ElevatedButton.icon(
@@ -620,7 +645,6 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
             ),
           ),
         ),
-        // ---- Team cards (white + light blue border) ----
         if (filtered.isEmpty)
           const Padding(
             padding: EdgeInsets.all(32.0),
@@ -665,7 +689,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- BODY: Public Teams list (unchanged) ----
+  // ---- BODY: Public Teams list ----
   Widget _buildPublicTeamsList(List<Map<String, dynamic>> paginated, int totalPages) {
     if (_filteredPublicTeams.isEmpty) {
       return Center(
@@ -682,7 +706,6 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
       itemCount: paginated.length + 1,
       itemBuilder: (ctx, index) {
         if (index == paginated.length) {
-          // Pagination footer
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 16.0),
             child: Row(
@@ -776,7 +799,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
   }
 }
 
-// ---------- Helper widgets (unchanged) ----------
+// ---------- Helper widgets ----------
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 
