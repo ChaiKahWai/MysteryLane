@@ -756,7 +756,7 @@ class _PlanScreenState extends State<PlanScreen> {
         _lastViewedPlanId = p.id;
       }
 
-      routeDay = days > 1 ? 1 : 0;
+      routeDay = days > 1 ? (stops.firstWhere((s) => s.dayNumber > 0, orElse: () => stops.first).dayNumber) : 0;
       page = 3;
     });
     // If accepted and has at least 2 stops, fetch the route asynchronously
@@ -765,13 +765,19 @@ class _PlanScreenState extends State<PlanScreen> {
     }
   }
 
-// Helper method to fetch route asynchronously
   Future<void> _fetchRoute() async {
+    final s = routeDay == 0 ? stops : stops.where((x) => x.dayNumber == routeDay).toList();
+    if (s.isEmpty) return;
     try {
-      final newRoute = await api!.planEfficientRoute(stops);
+      final position = await api!.getCurrentLocation();
+      final startStop = ItineraryStop(placeId: 'current_location', name: 'My Location', address: 'Your current location', latitude: position.latitude, longitude: position.longitude, dayNumber: routeDay == 0 ? 1 : routeDay, sortOrder: 0, source: 'GPS');
+      final fullRouteStops = [startStop, ...s];
+      final newRoute = await api!.planEfficientRoute(fullRouteStops);
       if (mounted) {
         setState(() {
           route = newRoute;
+          _dayRoutes[routeDay] = newRoute;
+          _dayAccepted[routeDay] = true;
         });
       }
     } catch (_) {}
@@ -957,20 +963,22 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   void generate() async {
-    if (stops.length < 2) {
-      note('Add at least two destinations to plan a route.');
-      return;
-    }
     setState(() => loading = true);
 
     // 1. Get the user's current location
-    // (Ensure your TripPlannerController has a getCurrentLocation method or use LocationDataSource directly)
     final position = await api!.getCurrentLocation();
 
     // 2. Get the stops for the selected day
     final s = routeDay == 0
         ? stops
         : stops.where((x) => x.dayNumber == routeDay).toList();
+
+    // Block only if the SELECTED DAY is empty (allows 1 destination!)
+    if (s.isEmpty) {
+      note('Add at least one destination for this day to plan a route.');
+      setState(() => loading = false);
+      return;
+    }
 
     // 3. Create a "Start" stop representing the current location
     final startStop = ItineraryStop(
@@ -1007,37 +1015,43 @@ class _PlanScreenState extends State<PlanScreen> {
     }
   }
 
-  void accept() {
+  Future<void> accept() async {
     if (route == null) return;
     setState(() {
       accepted = true;
       _dayAccepted[routeDay] = true;
-
-      // Update the local plan object so we remember it
-      if (_currentPlan != null) {
-        _currentPlan = TripPlan(
-          id: _currentPlan!.id,
-          name: _currentPlan!.name,
-          startDate: _currentPlan!.startDate,
-          endDate: _currentPlan!.endDate,
-          mode: _currentPlan!.mode,
-          visibility: _currentPlan!.visibility,
-          inviteCode: _currentPlan!.inviteCode,
-          routeAccepted: true, // Only this changes
-          stops: _currentPlan!.stops,
-        );
-
-        // Find the plan in the main list and update it too
-        final index = plans.indexWhere((x) => x.id == _currentPlan?.id);
-        if (index != -1) {
-          plans[index] = _currentPlan!;
-        }
-      }
     });
+
     reorderStopsFromRoute();
+
+    if (_currentPlan != null) {
+      _currentPlan = TripPlan(
+        id: _currentPlan!.id,
+        name: _currentPlan!.name,
+        startDate: _currentPlan!.startDate,
+        endDate: _currentPlan!.endDate,
+        mode: _currentPlan!.mode,
+        visibility: _currentPlan!.visibility,
+        inviteCode: _currentPlan!.inviteCode,
+        groupId: _currentPlan!.groupId, // Keep teammate's group logic
+        routeAccepted: true,
+        estimatedTravelMinutes: (_currentPlan?.estimatedTravelMinutes ?? 0) + route!.minutes,
+        stops: stops,
+      );
+      final index = plans.indexWhere((x) => x.id == _currentPlan?.id);
+      if (index != -1) plans[index] = _currentPlan!;
+    }
 
     _focusOnStart();
     note('Route accepted.');
+
+    if (_currentPlan != null) {
+      try {
+        await api!.savePlan(_currentPlan!);
+      } catch (e) {
+        note('Failed to save route status: $e');
+      }
+    }
   }
 
   void reorderStopsFromRoute() {
@@ -1139,9 +1153,22 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   Future<void> save() async {
-    if (stops.isEmpty) {
-      note('Add at least one destination first.');
-      return;
+
+    int totalDays = days; // Uses your existing 'days' getter
+
+    if (totalDays == 1) {
+      if (stops.isEmpty) {
+        note('Add at least one destination for Day 1 before starting your adventure.');
+        return;
+      }
+    } else {
+      for (int day = 1; day <= totalDays; day++) {
+        bool hasStopForDay = stops.any((stop) => stop.dayNumber == day);
+        if (!hasStopForDay) {
+          note('Please add at least one destination for Day $day before starting your adventure.');
+          return;
+        }
+      }
     }
 
     final newName = name.text.trim().toLowerCase();
@@ -1406,9 +1433,9 @@ class _PlanScreenState extends State<PlanScreen> {
             child: Stack(children: [
           Column(children: [header(), Expanded(child: body)]),
           Align(alignment: Alignment.bottomCenter, child: bottom()),
-          if (page == 0)
-            Positioned(right: 10, bottom: 200, child: createButton())
-        ])));
+              if (page == 0)
+                Positioned(right: 12, bottom: 140, child: createButton())
+            ])));
   }
 
   Widget header() => Container(
@@ -1677,7 +1704,7 @@ class _PlanScreenState extends State<PlanScreen> {
             const SizedBox(height: 20),
             label('PLAN ROUTE PREVIEW'),
             const SizedBox(height: 12),
-            routePreview(stops),
+            routePreview(routeDay == 0 ? stops : stops.where((x) => x.dayNumber == routeDay).toList()),
             const SizedBox(height: 15),
 
             // ADD THIS BLOCK
@@ -1694,7 +1721,7 @@ class _PlanScreenState extends State<PlanScreen> {
             // End of added block
 
             if (route == null)
-              primary('PLAN ROUTE', generate)
+              secondary('PLAN ROUTE', generate)
             else if (!accepted)
               Row(children: [
                 Expanded(
@@ -1728,25 +1755,31 @@ class _PlanScreenState extends State<PlanScreen> {
                 ),
               ])
             else
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0FDF4),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFBBF7D0)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 18),
-                    SizedBox(width: 8),
-                    Text('Route Plan Accepted', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 13)),
-                  ],
-                ),
+              Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 18),
+                        SizedBox(width: 8),
+                        Text('Route Plan Accepted', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  secondary('RE-PLAN ROUTE', generate), // <--- MOVED INSIDE THE ELSE BLOCK
+                ],
               ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 10),
             primary('START YOUR ADVENTURE', loading ? null : save)
           ],
         ),
@@ -1889,9 +1922,10 @@ class _PlanScreenState extends State<PlanScreen> {
             const SizedBox(width: 6),
             Text(s,
                 style: TextStyle(
-                    fontFamily: 'serif',
+                    fontFamily: 'sans-serif',
                     color: on ? Colors.white : const Color(0xFF334155),
-                    fontWeight: FontWeight.bold))
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900))
           ])));
 
   Widget dashboard() {
@@ -1916,7 +1950,7 @@ class _PlanScreenState extends State<PlanScreen> {
     // Slice the list for the current page
     final paginatedList = list.skip(dashboardPage * itemsPerPage).take(itemsPerPage).toList();
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 155), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 100), children: [
       banner(),
       const SizedBox(height: 20),
       tabs(),
@@ -1940,16 +1974,19 @@ class _PlanScreenState extends State<PlanScreen> {
       Row(children: [
         Text(history ? 'Expedition History' : 'Active Expeditions',
             style: const TextStyle(
-                fontFamily: 'serif', fontSize: 23, fontWeight: FontWeight.w900)),
+                fontFamily: 'sans-serif', // <--- CHANGED
+                fontSize: 25,
+                fontWeight: FontWeight.w900,
+                color: ink)),
         const Spacer(),
         Text('${list.length} PLANS',
             style: const TextStyle(
-                fontSize: 10,
+                fontSize: 12,
                 color: blue,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1))
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: 4),
       if (loading)
         const Center(
             child: Padding(
@@ -1961,7 +1998,7 @@ class _PlanScreenState extends State<PlanScreen> {
 
           // THE NEW PAGINATION BAR
           if (totalPages > 1) ...[
-            const SizedBox(height: 20),
+            const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
@@ -1970,20 +2007,39 @@ class _PlanScreenState extends State<PlanScreen> {
                 border: Border.all(color: border),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextButton(
+                  // Prev Button (Bordered style)
+                  OutlinedButton(
                     onPressed: dashboardPage == 0 ? null : () => setState(() => dashboardPage--),
-                    child: const Text('< Prev', style: TextStyle(color: blue, fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: blue,
+                      side: const BorderSide(color: blue, width: 1.5),
+                      backgroundColor: const Color(0xFFF0F9FF), // Light blue background
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('< Prev', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
+
+                  // Page Number
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Text('Page ${dashboardPage + 1} of $totalPages',
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
-                  TextButton(
+
+                  // Next Button (Bordered style)
+                  OutlinedButton(
                     onPressed: dashboardPage >= totalPages - 1 ? null : () => setState(() => dashboardPage++),
-                    child: const Text('Next >', style: TextStyle(color: blue, fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: blue,
+                      side: const BorderSide(color: blue, width: 1.5),
+                      backgroundColor: const Color(0xFFF0F9FF), // Light blue background
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Next >', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -1997,7 +2053,7 @@ class _PlanScreenState extends State<PlanScreen> {
         banner(),
         const SizedBox(height: 18),
         tabs(active: false, enabled: true),
-        const SizedBox(height: 22),
+        const SizedBox(height: 18),
         surface(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           step('STEP 1 OF 2 • TRIP SETUP', 'Create New Expedition\nPlan'),
           const Divider(height: 28),
@@ -2273,7 +2329,7 @@ class _PlanScreenState extends State<PlanScreen> {
       ],
 
       if (route == null)
-        primary('PLAN ROUTE', generate)
+        secondary('PLAN ROUTE', generate)
       else if (!accepted)
         Row(children: [
           Expanded(
@@ -2331,12 +2387,12 @@ class _PlanScreenState extends State<PlanScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            primary('RE-PLAN ROUTE', generate)
+            const SizedBox(height: 8),
+            secondary('RE-PLAN ROUTE', generate)
           ],
         ),
       // Removed the duplicate SizedBox here
-      const SizedBox(height: 22),
+      const SizedBox(height: 8),
 
       if (isCreating) primary('◉  START YOUR ADVENTURE', loading ? null : save),
       const SizedBox(height: 12),
@@ -2614,33 +2670,21 @@ class _PlanScreenState extends State<PlanScreen> {
       color: Colors.transparent,
       child: InkWell(
           onTap: fresh,
-          borderRadius: BorderRadius.circular(32),
+          customBorder: const CircleBorder(),
           child: Container(
-              width: 210,
+              width: 60,
               height: 60,
               decoration: BoxDecoration(
                   color: blue,
-                  borderRadius: BorderRadius.circular(32),
+                  shape: BoxShape.circle, // Makes it a perfect circle
                   boxShadow: const [
                     BoxShadow(
                         color: Color(0x550284C7),
                         blurRadius: 14,
                         offset: Offset(0, 6))
                   ]),
-              child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircleAvatar(
-                        radius: 15,
-                        backgroundColor: Color(0x4438BDF8),
-                        child: Icon(Icons.add, color: Colors.white)),
-                    SizedBox(width: 9),
-                    Text('Create New Plan',
-                        style: TextStyle(
-                            fontFamily: 'serif',
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800))
-                  ]))));
+              child: const Icon(Icons.add, color: Colors.white, size: 28) // Just the plus icon
+          )));
 
   Widget mapPreview() => Container(
       height: 245,
@@ -2913,7 +2957,7 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   Widget routePreview(List<ItineraryStop> s) {
-    if (s.length < 2) {
+    if (s.isEmpty) { //
       return Container(
         height: 245,
         decoration: BoxDecoration(
@@ -2922,7 +2966,7 @@ class _PlanScreenState extends State<PlanScreen> {
           border: Border.all(color: const Color(0xFFBAE6FD)),
         ),
         child: const Center(
-          child: Text('Choose at least two destinations for this route day.'),
+          child: Text('Choose at least one destination for this route day.'),
         ),
       );
     }
@@ -3190,6 +3234,8 @@ class _PlanScreenState extends State<PlanScreen> {
                               '${date(p.startDate)} → ${date(p.endDate)}  (${p.totalDays} Days)',
                               style: const TextStyle(fontSize: 11, color: blue)),
                         ]),
+
+
                         const SizedBox(height: 12),
                         // Inner Grey Highlights Box
                         Container(
@@ -3232,7 +3278,7 @@ class _PlanScreenState extends State<PlanScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
 
                         // ✅ DYNAMIC FOOTER: Differentiates Solo vs Team
                         Row(children: [
@@ -3375,10 +3421,11 @@ class _PlanScreenState extends State<PlanScreen> {
         const SizedBox(height: 7),
         Text(t,
             style: const TextStyle(
-                fontFamily: 'serif',
-                fontSize: 27,
+                fontFamily: 'sans-serif', // <--- Changed to match Blind Box Hub
+                fontSize: 25,             // <--- Matches the exact size
                 height: 1.08,
-                fontWeight: FontWeight.w900))
+                fontWeight: FontWeight.w900,
+                color: ink))              // <--- Added color: ink
       ]);
   Widget label(String s) => Text(s,
       style: const TextStyle(
@@ -3407,8 +3454,22 @@ class _PlanScreenState extends State<PlanScreen> {
               style: const TextStyle(
                   fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.1))));
 
+  Widget secondary(String s, VoidCallback? f) => SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+          onPressed: f,
+          style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFF0F9FF), // Light blue background
+              foregroundColor: blue, // Dark blue text
+              side: const BorderSide(color: blue, width: 1.5), // Dark blue border
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16))),
+          child: Text(s,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.1))));
+
   Future<void> _generateTripPdf() async {
-    // Safety check
     if (_currentPlan == null) {
       note('Please save the trip first before printing.');
       return;
@@ -3417,7 +3478,6 @@ class _PlanScreenState extends State<PlanScreen> {
     final plan = _currentPlan!;
     final doc = pw.Document();
 
-    // Reusable style for the little grid boxes
     pw.Widget gridBox(String label, String value) => pw.Container(
       padding: const pw.EdgeInsets.all(12),
       decoration: pw.BoxDecoration(
@@ -3459,14 +3519,14 @@ class _PlanScreenState extends State<PlanScreen> {
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('✦ MYSTERYLANE DOSSIER', style: pw.TextStyle(color: PdfColors.white, fontSize: 12, letterSpacing: 1.5)),
+                    pw.Text('MYSTERYLANE DOSSIER', style: pw.TextStyle(color: PdfColors.white, fontSize: 12, letterSpacing: 1.5)),
                     pw.Container(
                       padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: pw.BoxDecoration(
                         border: pw.Border.all(color: PdfColors.white, width: 1),
                         borderRadius: pw.BorderRadius.circular(10),
                       ),
-                      child: pw.Text('VERIFIED', style: pw.TextStyle(color: PdfColors.white, fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                      child: pw.Text('Plan', style: pw.TextStyle(color: PdfColors.white, fontSize: 10, fontWeight: pw.FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -3488,6 +3548,7 @@ class _PlanScreenState extends State<PlanScreen> {
             ],
           ),
           pw.SizedBox(height: 10),
+          // SINGLE ROW FOR MODE & CODE (Duplicate removed)
           pw.Row(
             children: [
               pw.Expanded(child: gridBox('SQUAD MODE', plan.mode.toUpperCase())),
@@ -3504,7 +3565,7 @@ class _PlanScreenState extends State<PlanScreen> {
           ),
           pw.SizedBox(height: 20),
 
-          // 3. Registered Squad Members
+          // 3. Registered Squad Members (Dynamic)
           pw.Container(
             padding: const pw.EdgeInsets.all(16),
             decoration: pw.BoxDecoration(
@@ -3514,17 +3575,41 @@ class _PlanScreenState extends State<PlanScreen> {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('REGISTERED SQUAD MEMBERS (3)', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600, letterSpacing: 1)),
-                pw.SizedBox(height: 12),
-                pw.Row(
-                  children: [
-                    _avatarPdf('AV', PdfColor.fromHex('#0F172A'), 'Alex Vance (Host)', true),
-                    pw.SizedBox(width: 8),
-                    _avatarPdf('SL', PdfColor.fromHex('#FACC15'), 'Sophia L.', false),
-                    pw.SizedBox(width: 8),
-                    _avatarPdf('KT', PdfColor.fromHex('#0F172A'), 'Kenji T.', false),
-                  ],
+                pw.Text(
+                  mode == 'team'
+                      ? 'REGISTERED SQUAD MEMBERS (${_teamMembers.length})'
+                      : 'EXPEDITION LEADER (1)',
+                  style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600, letterSpacing: 1),
                 ),
+                pw.SizedBox(height: 12),
+                if (mode != 'team')
+                  _avatarPdf(
+                    'ME',
+                    PdfColor.fromHex('#0284C7'),
+                    'You (Host)',
+                    true,
+                  )
+                else
+                  pw.Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _teamMembers.map((m) {
+                      final profile = m['profiles'] as Map<String, dynamic>?;
+                      final role = m['member_role']?.toString() ?? 'MEMBER';
+                      final isHost = role == 'OWNER';
+                      final fullName = profile?['full_name'] ?? 'Traveler';
+                      final initials = fullName.length >= 2
+                          ? fullName.substring(0, 2).toUpperCase()
+                          : 'TR';
+
+                      return _avatarPdf(
+                        initials,
+                        isHost ? PdfColor.fromHex('#0284C7') : PdfColor.fromHex('#64748B'), // SWAPPED BACK TO COLOR
+                        isHost ? '$fullName (Host)' : fullName, // SWAPPED BACK TO NAME
+                        isHost,
+                      );
+                    }).toList(),
+                  ),
               ],
             ),
           ),
@@ -3619,9 +3704,8 @@ class _PlanScreenState extends State<PlanScreen> {
           // REMOVED "const" from style:
           pw.Text(name, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
           if (isHost) ...[
-            pw.SizedBox(width: 4),
             // REMOVED "const" from style:
-            pw.Text('👑', style: pw.TextStyle(fontSize: 10)),
+            pw.Text('*', style: pw.TextStyle(fontSize: 10)),
           ],
         ],
       ),
@@ -3635,20 +3719,23 @@ class _PlanScreenState extends State<PlanScreen> {
       borderRadius: BorderRadius.circular(16),
       border: Border.all(color: border),
     ),
-    padding: const EdgeInsets.all(6),
-    child: Align(
-      alignment: Alignment.centerRight,
-      child: FilledButton.icon(
-          onPressed: f,
-          icon: const Icon(Icons.print_outlined, size: 18),
-          label: Text(s, style: const TextStyle(fontWeight: FontWeight.bold)),
-          style: FilledButton.styleFrom(
-              backgroundColor: c,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))
-          )
-      ),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+    child: Row(
+      children: [
+        const Expanded(
+          child: Text('Expedition Dossier', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
+        ),
+        FilledButton.icon(
+            onPressed: f,
+            icon: const Icon(Icons.print_outlined, size: 18),
+            label: Text(s, style: const TextStyle(fontWeight: FontWeight.bold)),
+            style: FilledButton.styleFrom(
+                backgroundColor: c,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+            )
+        ),
+      ],
     ),
   );
 

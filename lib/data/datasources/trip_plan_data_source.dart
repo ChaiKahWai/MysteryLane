@@ -187,8 +187,8 @@ class TripPlanDataSource {
         visibility: visibility,
         inviteCode: inviteCode,
         groupId: groupId,
-        routeAccepted: planRow['route_status'] == 'ACCEPTED' ||
-            planRow['route_status'] == 'GENERATED',
+        routeAccepted: planRow['route_status'] == 'ACCEPTED',
+        estimatedTravelMinutes: planRow['estimated_travel_minutes'],
         stops: stops,
       ));
     }
@@ -203,9 +203,7 @@ class TripPlanDataSource {
     final user = _client.auth.currentUser;
     if (user == null) throw const TripPlanDataException('Please log in first.');
 
-    final planRow = await _client
-        .from('trip_plans')
-        .insert({
+    Map<String, dynamic> planData = {
       'user_id': user.id,
       'trip_name': plan.name,
       'start_date': _date(plan.startDate),
@@ -213,12 +211,23 @@ class TripPlanDataSource {
       'route_status': plan.routeAccepted ? 'ACCEPTED' : 'NOT_PLANNED',
       'status': 'ACTIVE',
       'ai_travel_story': null,
-      'group_id': plan.groupId,
-    })
-        .select()
-        .single();
+      'group_id': plan.groupId, // Keep teammate's group_id logic
+      'estimated_travel_minutes': plan.estimatedTravelMinutes, // <--- Re-add this
+    };
+
+    dynamic planRow;
+
+    if (plan.id.isEmpty) {
+    planRow = await _client.from('trip_plans').insert(planData).select().single();
+    }
+    // 2. If the plan EXISTS, use upsert
+    else {
+    planData['trip_id'] = plan.id;
+    planRow = await _client.from('trip_plans').upsert(planData, onConflict: 'trip_id').select().single();
+    }
 
     final planId = planRow['trip_id'] as String;
+
     if (plan.stops.isNotEmpty) {
       final rows = <Map<String, dynamic>>[];
       for (final stop in plan.stops) {
@@ -249,8 +258,12 @@ class TripPlanDataSource {
           'source': 'SEARCH',
         });
       }
-      await _client.from('trip_plan_destinations').insert(rows);
-      print('✅ Inserted ${rows.length} destinations for plan $planId');
+
+      await _client.from('trip_plan_destinations').upsert(
+          rows,
+          onConflict: 'trip_id,destination_id'
+      );
+      print('Upserted ${rows.length} destinations for plan $planId');
     }
 
     return TripPlan(
@@ -263,6 +276,7 @@ class TripPlanDataSource {
       inviteCode: plan.inviteCode,
       groupId: plan.groupId,
       routeAccepted: plan.routeAccepted,
+      estimatedTravelMinutes: plan.estimatedTravelMinutes,
       stops: plan.stops,
     );
   }
