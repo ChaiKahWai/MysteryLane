@@ -13,6 +13,9 @@ import '../../../core/services/image_picker_service.dart';
 import '../auth/welcome_screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import 'achievement_screen.dart';
+import '../Blindbox/BlindBox_Screen.dart';
+import '../plan/plan_screen.dart';
+import '../group/group_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});

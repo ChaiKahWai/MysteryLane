@@ -1,14 +1,16 @@
-// lib/presentation/screens/group/group_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../application/services/group_service.dart';
 import '../../../data/models/travel_group_model.dart';
 import 'team_detail_screen.dart';
 import 'join_team_screen.dart';
-import 'chat_list_screen.dart';      // ✅ added import
+import 'chat_list_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/leaderboard_screen.dart';
+import '../Blindbox/BlindBox_Screen.dart';
+import '../checkpoint/checkpoint_screen.dart';
+import '../plan/plan_screen.dart';
+import '../home/home_screen.dart';
 
 class GroupScreen extends StatefulWidget {
   const GroupScreen({super.key});
@@ -18,23 +20,49 @@ class GroupScreen extends StatefulWidget {
 }
 
 class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStateMixin {
+  // ---- COLORS ----
+  static const Color skyBlue = Color(0xFF0284C7);
+  static const Color teal = Color(0xFF0D9488);
+  static const Color darkText = Color(0xFF0F172A);
+  static const Color greyText = Color(0xFF64748B);
+  static const Color pageBackground = Color(0xFFF8FAFC);
+  static const Color borderColor = Color(0xFFE2E8F0);
+
   final GroupService _groupService = GroupService();
   late TabController _tabController;
+  int _currentTabIndex = 0;
 
   List<Map<String, dynamic>> _myTeams = [];
-  List<TravelGroup> _publicTeams = [];
+  List<Map<String, dynamic>> _publicTeams = [];
   bool _isLoading = false;
   String _searchQuery = '';
 
-  // Header state
+  // Date filter
+  DateTime? _selectedDate;
+
+  // Pagination
+  int _currentPage = 0;
+  static const int _itemsPerPage = 10;
+
   String? _headerProfilePictureUrl;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      setState(() {
+        _currentTabIndex = _tabController.index;
+      });
+    });
     _loadHeaderProfile();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   // ---------- Header helpers ----------
@@ -81,15 +109,33 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  void _showPressedMessage(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 92),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        content: Text('$feature pressed - UI only for now.'),
-        duration: const Duration(milliseconds: 1200),
-      ),
+  // ---------- Navigation helpers ----------
+  void _openBlindBox() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const BlindBoxPage()),
+    );
+  }
+
+  void _openMissions() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const CheckpointScreen()),
+    );
+  }
+
+  void _openPlan() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const PlanScreen()),
+    );
+  }
+
+  void _openHome() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+          (route) => false,
     );
   }
 
@@ -104,6 +150,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
         setState(() {
           _myTeams = myTeams;
           _publicTeams = publicTeams;
+          _currentPage = 0;
         });
       }
     } catch (e) {
@@ -133,36 +180,163 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     }).toList();
   }
 
-  List<TravelGroup> _filterPublicTeams() {
-    if (_searchQuery.isEmpty) return _publicTeams;
-    return _publicTeams.where((team) {
-      return team.teamName.toLowerCase().contains(_searchQuery.toLowerCase());
-    }).toList();
+  List<Map<String, dynamic>> get _filteredPublicTeams {
+    List<Map<String, dynamic>> filtered = _publicTeams;
+
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((item) {
+        final team = item['team'] as TravelGroup;
+        return team.teamName.toLowerCase().contains(_searchQuery.toLowerCase());
+      }).toList();
+    }
+
+    if (_selectedDate != null) {
+      filtered = filtered.where((item) {
+        final team = item['team'] as TravelGroup;
+        if (team.tripStartDate == null || team.tripEndDate == null) return false;
+        return (_selectedDate!.isAfter(team.tripStartDate!) || _selectedDate!.isAtSameMomentAs(team.tripStartDate!)) &&
+            (_selectedDate!.isBefore(team.tripEndDate!) || _selectedDate!.isAtSameMomentAs(team.tripEndDate!));
+      }).toList();
+    }
+
+    return filtered;
+  }
+
+  int get _totalPages => (_filteredPublicTeams.length / _itemsPerPage).ceil();
+
+  List<Map<String, dynamic>> get _paginatedTeams {
+    if (_filteredPublicTeams.isEmpty) return [];
+    final start = _currentPage * _itemsPerPage;
+    final end = (start + _itemsPerPage).clamp(0, _filteredPublicTeams.length);
+    return _filteredPublicTeams.sublist(start, end);
+  }
+
+  void _goToPage(int page) {
+    if (page < 0 || page >= _totalPages) return;
+    setState(() {
+      _currentPage = page;
+    });
+  }
+
+  void _onFilterChanged() {
+    setState(() {
+      _currentPage = 0;
+    });
+  }
+
+  // ---- Date picker methods ----
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+      helpText: 'Select a date within trip range',
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+        _currentPage = 0;
+      });
+    }
+  }
+
+  void _clearDateFilter() {
+    setState(() {
+      _selectedDate = null;
+      _currentPage = 0;
+    });
   }
 
   // ---------- Build ----------
   @override
   Widget build(BuildContext context) {
+    final filteredPublic = _filteredPublicTeams;
+    final totalPages = _totalPages;
+    final paginated = _paginatedTeams;
+
     return Scaffold(
-      appBar: _buildCustomAppBar(),
+      backgroundColor: pageBackground,
+      extendBody: false,
+      appBar: _buildTopAppBar(),
       body: Column(
         children: [
+          _buildBodyHeader(),
+          // ---- SEARCH BAR + DATE FILTER BUTTON ----
           Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search teams...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search teams...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey[200],
+                    ),
+                    onChanged: (value) {
+                      _searchQuery = value;
+                      _onFilterChanged();
+                    },
+                  ),
                 ),
-                filled: true,
-                fillColor: Colors.grey[200],
-              ),
-              onChanged: (value) => setState(() => _searchQuery = value),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(
+                    _selectedDate == null ? Icons.calendar_today : Icons.calendar_today,
+                    color: _selectedDate != null ? skyBlue : greyText,
+                  ),
+                  onPressed: _pickDate,
+                  tooltip: 'Filter by trip date',
+                ),
+                if (_selectedDate != null)
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    onPressed: _clearDateFilter,
+                    tooltip: 'Clear date filter',
+                  ),
+              ],
             ),
           ),
+          // ---- PUBLIC TEAMS HEADER ----
+          if (_currentTabIndex == 1)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Available Public Teams',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: darkText,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: skyBlue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      '${filteredPublic.length} squad${filteredPublic.length != 1 ? 's' : ''}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: skyBlue,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // ---- TABS + CONTENT ----
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -172,21 +346,22 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
                     : _buildMyTeamsList(),
                 _isLoading
                     ? const Center(child: CircularProgressIndicator())
-                    : _buildPublicTeamsList(),
+                    : _buildPublicTeamsList(paginated, totalPages),
               ],
             ),
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: _buildHomeButton(),
+      bottomNavigationBar: _buildBottomBar(),
     );
   }
 
-  // ---------- Custom App Bar (with TabBar) ----------
-  PreferredSizeWidget _buildCustomAppBar() {
-    const Color skyBlue = Color(0xFF0284C7);
-    const Color darkText = Color(0xFF0F172A);
-
+  // ---- TOP APP BAR ----
+  PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
+      automaticallyImplyLeading: false,
       toolbarHeight: 68,
       elevation: 0,
       scrolledUnderElevation: 2,
@@ -195,7 +370,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
       titleSpacing: 16,
       title: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => _showPressedMessage('Teams'),
+        onTap: _openHome,
         child: const Padding(
           padding: EdgeInsets.symmetric(vertical: 6),
           child: Row(
@@ -217,7 +392,6 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
         ),
       ),
       actions: [
-        // Leaderboard
         _TopActionButton(
           tooltip: 'Leaderboard',
           icon: Icons.emoji_events_rounded,
@@ -226,105 +400,344 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
           onTap: _openLeaderboard,
         ),
         const SizedBox(width: 6),
-        // Chat – now opens ChatListScreen
         _TopActionButton(
           tooltip: 'Chat',
           icon: Icons.chat_bubble_outline_rounded,
           background: const Color(0xFFF0F9FF),
           foreground: skyBlue,
-          onTap: _openChat,                         // ✅ fixed
+          onTap: _openChat,
         ),
         const SizedBox(width: 6),
-        // Join with code (custom action for this screen)
-        _TopActionButton(
-          tooltip: 'Join with code',
-          icon: Icons.person_add_alt_1,
-          background: const Color(0xFFE0F2FE),
-          foreground: skyBlue,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const JoinTeamScreen()),
-            ).then((_) => _loadData());
-          },
-        ),
-        const SizedBox(width: 6),
-        // Profile picture
         _ProfileButton(
           onTap: _openProfile,
           imageUrl: _headerProfilePictureUrl,
         ),
         const SizedBox(width: 12),
       ],
-      // TabBar below the header
-      bottom: TabBar(
-        controller: _tabController,
-        tabs: const [
-          Tab(text: 'My Teams'),
-          Tab(text: 'Discover'),
+    );
+  }
+
+  // ---- IN‑BODY HEADER ----
+  Widget _buildBodyHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Teams',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: darkText,
+              fontFamily: 'serif',
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F9FF),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: const Color(0xFFBAE6FD),
+                width: 1.5,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0A0284C7),
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicator: BoxDecoration(
+                color: skyBlue,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: const Color(0xFF475569),
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+              tabs: const [
+                Tab(text: 'My Teams'),
+                Tab(text: 'Public Teams'),
+              ],
+            ),
+          ),
         ],
-        labelColor: skyBlue,
-        unselectedLabelColor: Colors.grey,
-        indicatorColor: skyBlue,
-        indicatorWeight: 3,
-        labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
     );
   }
 
-  // ---------- List builders ----------
-  Widget _buildMyTeamsList() {
-    final filtered = _filterMyTeams();
-    if (filtered.isEmpty) {
-      return const Center(child: Text('You are not in any teams yet.'));
-    }
-    return ListView.builder(
-      itemCount: filtered.length,
-      itemBuilder: (ctx, index) {
-        final team = filtered[index];
-        final groupData = team['travel_groups'] as Map<String, dynamic>;
-        final role = team['member_role'] ?? 'MEMBER';
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: ListTile(
-            title: Text(groupData['team_name'] ?? 'Unnamed'),
-            subtitle: Text('${groupData['team_type']} · ${team['membership_status']}'),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: role == 'OWNER' ? Colors.amber[100] : Colors.grey[200],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                role,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: role == 'OWNER' ? Colors.brown[700] : Colors.grey[700],
-                ),
+  // ---- BOTTOM BAR ----
+  Widget _buildBottomBar() {
+    return BottomAppBar(
+      height: 78,
+      padding: EdgeInsets.zero,
+      color: Colors.white.withValues(alpha: 0.98),
+      elevation: 18,
+      shadowColor: const Color(0x330284C7),
+      shape: const CircularNotchedRectangle(),
+      notchMargin: 8,
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: _BottomItem(
+                icon: Icons.inventory_2_outlined,
+                label: 'BLIND BOX',
+                active: false,
+                onTap: _openBlindBox,
               ),
             ),
-            onTap: () => _navigateToDetail(team),
-          ),
-        );
-      },
+            Expanded(
+              child: _BottomItem(
+                icon: Icons.assignment_outlined,
+                label: 'MISSIONS',
+                active: false,
+                onTap: _openMissions,
+              ),
+            ),
+            const SizedBox(width: 74),
+            Expanded(
+              child: _BottomItem(
+                icon: Icons.map_outlined,
+                label: 'PLAN',
+                active: false,
+                onTap: _openPlan,
+              ),
+            ),
+            Expanded(
+              child: _BottomItem(
+                icon: Icons.groups_2_outlined,
+                label: 'TEAMS',
+                active: true,
+                onTap: () {},
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildPublicTeamsList() {
-    final filtered = _filterPublicTeams();
-    if (filtered.isEmpty) {
-      return const Center(child: Text('No public teams available.'));
+  // ---- HOME FLOATING BUTTON ----
+  Widget _buildHomeButton() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: _openHome,
+        child: Container(
+          width: 62,
+          height: 62,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [skyBlue, teal],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: Colors.white, width: 4),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x3D0284C7),
+                blurRadius: 16,
+                offset: Offset(0, 7),
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.home_rounded,
+                color: Color(0xFFFDE68A),
+                size: 27,
+              ),
+              Text(
+                'HOME',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---- BODY: My Teams list (updated: "Join a team" is now a blue button, not a card) ----
+  Widget _buildMyTeamsList() {
+    final filtered = _filterMyTeams();
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        // ---- "Join a team" as a prominent button (different UI) ----
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const JoinTeamScreen()),
+              ).then((_) => _loadData());
+            },
+            icon: const Icon(Icons.add_link, color: Colors.white, size: 20),
+            label: const Text(
+              'Join a team with invitation code',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+                color: Colors.white,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: skyBlue,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 2,
+              shadowColor: skyBlue.withOpacity(0.3),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+        // ---- Team cards (white + light blue border) ----
+        if (filtered.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(32.0),
+            child: Center(
+              child: Text('You are not in any teams yet.'),
+            ),
+          )
+        else
+          ...filtered.map((team) {
+            final groupData = team['travel_groups'] as Map<String, dynamic>;
+            final role = team['member_role'] ?? 'MEMBER';
+            return Card(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.blue.shade100, width: 1.5),
+              ),
+              elevation: 2,
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: ListTile(
+                title: Text(groupData['team_name'] ?? 'Unnamed'),
+                subtitle: Text('${groupData['team_type']} · ${team['membership_status']}'),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: role == 'OWNER' ? Colors.amber[100] : Colors.grey[200],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    role,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: role == 'OWNER' ? Colors.brown[700] : Colors.grey[700],
+                    ),
+                  ),
+                ),
+                onTap: () => _navigateToDetail(team),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  // ---- BODY: Public Teams list (unchanged) ----
+  Widget _buildPublicTeamsList(List<Map<String, dynamic>> paginated, int totalPages) {
+    if (_filteredPublicTeams.isEmpty) {
+      return Center(
+        child: Text(
+          _selectedDate == null
+              ? 'No public teams available.'
+              : 'No teams with trips covering ${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}.',
+        ),
+      );
     }
+
     return ListView.builder(
-      itemCount: filtered.length,
+      padding: const EdgeInsets.only(bottom: 80),
+      itemCount: paginated.length + 1,
       itemBuilder: (ctx, index) {
-        final team = filtered[index];
+        if (index == paginated.length) {
+          // Pagination footer
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  onPressed: _currentPage > 0 ? () => _goToPage(_currentPage - 1) : null,
+                  icon: const Icon(Icons.chevron_left),
+                ),
+                Text(
+                  'Page ${_currentPage + 1} of $totalPages',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                IconButton(
+                  onPressed: _currentPage < totalPages - 1 ? () => _goToPage(_currentPage + 1) : null,
+                  icon: const Icon(Icons.chevron_right),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final item = paginated[index];
+        final team = item['team'] as TravelGroup;
+        final ownerName = item['ownerName'] as String;
+        final tripStart = item['tripStart'] as DateTime?;
+        final tripEnd = item['tripEnd'] as DateTime?;
+        final firstStopName = item['firstStopName'] as String?;
+
         return Card(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.blue.shade100, width: 1.5),
+          ),
+          elevation: 2,
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: ListTile(
             title: Text(team.teamName),
-            subtitle: Text('${team.teamType} · ${team.maxCapacity ?? '?'} members'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${team.teamType} · ${team.maxCapacity ?? '?'} members · Host: $ownerName'),
+                if (tripStart != null && tripEnd != null)
+                  Text(
+                    'Trip: ${tripStart.day}/${tripStart.month}/${tripStart.year} → ${tripEnd.day}/${tripEnd.month}/${tripEnd.year}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                if (firstStopName != null && firstStopName.isNotEmpty)
+                  Text(
+                    '📍 $firstStopName',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: skyBlue),
+                  ),
+              ],
+            ),
             trailing: ElevatedButton(
               onPressed: () async {
                 try {
@@ -361,29 +774,21 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
       },
     );
   }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
 }
 
-// ---------- Reusable widgets (copied from HomeScreen) ----------
+// ---------- Helper widgets (unchanged) ----------
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 
   @override
   Widget build(BuildContext context) {
-    const Color skyBlue = Color(0xFF0284C7);
-    const Color teal = Color(0xFF0D9488);
     return Container(
       width: 38,
       height: 38,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
-          colors: [skyBlue, teal],
+          colors: [_GroupScreenState.skyBlue, _GroupScreenState.teal],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -487,10 +892,65 @@ class _ProfileButton extends StatelessWidget {
                 ? const Icon(
               Icons.person_rounded,
               size: 20,
-              color: Color(0xFF0284C7),
+              color: _GroupScreenState.skyBlue,
             )
                 : null,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _BottomItem({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 4),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 42,
+              height: 29,
+              decoration: BoxDecoration(
+                color: active ? _GroupScreenState.skyBlue : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                size: 21,
+                color: active ? Colors.white : const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: TextStyle(
+                color: active ? _GroupScreenState.skyBlue : const Color(0xFF64748B),
+                fontSize: 8,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.45,
+              ),
+            ),
+          ],
         ),
       ),
     );

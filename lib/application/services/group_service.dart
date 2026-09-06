@@ -1,11 +1,12 @@
-// lib/application/services/group_service.dart
-
 import 'dart:math';
 import '../../data/repositories/group_repository.dart';
 import '../../data/models/travel_group_model.dart';
+import '../../data/models/trip_plan.dart';
+import '../../data/datasources/trip_plan_data_source.dart';
 
 class GroupService {
   final GroupRepository _repository = GroupRepository();
+  final TripPlanDataSource _tripPlanDataSource = TripPlanDataSource();
 
   String generateInvitationCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -48,6 +49,7 @@ class GroupService {
     return newGroup;
   }
 
+  // ---- UPDATED: requestToJoinByCode now prevents duplicates ----
   Future<void> requestToJoinByCode({
     required String code,
     required String userId,
@@ -56,6 +58,19 @@ class GroupService {
     if (group == null) {
       throw Exception('Invalid or inactive invitation code');
     }
+
+    // Check if already a member
+    final isMember = await _repository.hasActiveMembership(group.groupId, userId);
+    if (isMember) {
+      throw Exception('You are already a member of this team.');
+    }
+
+    // Check if there's a pending request
+    final hasPending = await _repository.hasPendingRequest(group.groupId, userId);
+    if (hasPending) {
+      throw Exception('You already have a pending join request for this team.');
+    }
+
     await _repository.insertJoinRequest(
       groupId: group.groupId,
       userId: userId,
@@ -66,39 +81,19 @@ class GroupService {
     return await _repository.fetchUserTeams(userId);
   }
 
-  Future<List<TravelGroup>> getPublicTeams() async {
+  Future<List<Map<String, dynamic>>> getPublicTeams() async {
     return await _repository.fetchPublicTeams();
   }
 
-  // Get team details with members enriched with profiles
   Future<Map<String, dynamic>> getTeamDetails(String groupId) async {
-    // Fetch team info
     final team = await _repository.fetchTeamInfo(groupId);
-
-    // Fetch members (raw)
     final members = await _repository.fetchTeamMembers(groupId);
-
-    // Collect all user IDs from members
-    final userIds = members.map((m) => m['user_id'] as String).toList();
-    // Fetch profiles for these users
-    final profiles = await _repository.getProfiles(userIds);
-    // Build a map for quick lookup
-    final profileMap = {for (var p in profiles) p['id']: p};
-
-    // Attach profile to each member
-    final enrichedMembers = members.map((m) {
-      final profile = profileMap[m['user_id']];
-      m['profiles'] = profile; // may be null
-      return m;
-    }).toList();
-
     return {
       'team': team,
-      'members': enrichedMembers,
+      'members': members,
     };
   }
 
-  // Get pending join requests with profile data
   Future<List<Map<String, dynamic>>> getPendingRequests(String groupId) async {
     final requests = await _repository.fetchPendingRequests(groupId);
     final userIds = requests.map((r) => r['user_id'] as String).toList();
@@ -118,5 +113,32 @@ class GroupService {
 
   Future<void> leaveTeam(String groupId, String userId) async {
     await _repository.leaveTeam(groupId: groupId, userId: userId);
+  }
+
+  Future<void> disbandTeam(String groupId, String ownerId) async {
+    await _repository.disbandTeam(groupId: groupId, ownerId: ownerId);
+  }
+
+  Future<void> transferOwnershipAndLeave({
+    required String groupId,
+    required String currentOwnerId,
+    required String newOwnerId,
+  }) async {
+    await _repository.transferOwnershipAndLeave(
+      groupId: groupId,
+      currentOwnerId: currentOwnerId,
+      newOwnerId: newOwnerId,
+    );
+  }
+
+  Future<void> removeMember({
+    required String groupId,
+    required String userId,
+  }) async {
+    await _repository.removeTeamMember(groupId: groupId, userId: userId);
+  }
+
+  Future<TripPlan?> getTripPlanForGroup(String groupId) async {
+    return await _tripPlanDataSource.getPlanForGroup(groupId);
   }
 }
