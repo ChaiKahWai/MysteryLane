@@ -49,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_heroImages.length > 1) {
       _heroImageTimer = Timer.periodic(
-        const Duration(seconds: 5),
+        const Duration(seconds: 2),
             (_) {
           if (!mounted) return;
 
