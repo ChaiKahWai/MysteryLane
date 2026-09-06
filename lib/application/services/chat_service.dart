@@ -21,7 +21,6 @@ class ChatService {
     );
   }
 
-  // Expose the last-message method
   Future<Map<String, dynamic>?> getLastMessageForTeam(String groupId) async {
     return await _repository.getLastMessageForTeam(groupId);
   }

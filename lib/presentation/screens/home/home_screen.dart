@@ -119,7 +119,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openBlindBoxScreen() {
-    _showPressedMessage('Blind Box');
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const BlindBoxPage()),
+    );
   }
 
   void _openCheckpointScreen() {
@@ -182,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
       titleSpacing: 16,
       title: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => _showPressedMessage('Home'),
+        onTap: () {},
         child: const Padding(
           padding: EdgeInsets.symmetric(vertical: 6),
           child: Row(

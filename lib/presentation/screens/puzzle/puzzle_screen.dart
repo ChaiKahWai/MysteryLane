@@ -14,6 +14,9 @@ import '../../../application/services/puzzle_challenge_service.dart';
 import '../../../data/models/puzzle_model.dart';
 import '../../../data/models/puzzle_question_quality.dart';
 import '../../../data/models/puzzle_selection.dart';
+import '../group/chat_list_screen.dart';
+import '../plan/plan_screen.dart';
+import '../group/group_screen.dart';
 
 enum PuzzleCategory { image, scrambled, word, mcq, trueFalse }
 
@@ -811,10 +814,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         }
         break;
       case MysteryLaneTab.plan:
-        _showMessage('Plan page will be connected later.');
+        _replaceWith(const PlanScreen());
         break;
       case MysteryLaneTab.teams:
-        _showMessage('Teams page will be connected later.');
+        _replaceWith(const GroupScreen());
         break;
     }
   }
@@ -1397,7 +1400,12 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
             foreground: skyBlue,
             background: const Color(0xFFF0F9FF),
             border: const Color(0xFFBAE6FD),
-            onTap: () => _showMessage('Chat page will be connected later.'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChatListScreen()),
+              );
+            },
           ),
           const SizedBox(width: 7),
           _PuzzleProfileButton(
