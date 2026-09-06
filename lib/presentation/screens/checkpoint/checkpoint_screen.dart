@@ -113,26 +113,27 @@ class _CheckpointScreenState
       return;
     }
 
-    WidgetsBinding.instance.addPostFrameCallback(
-          (_) async {
-        if (!mounted) {
-          return;
-        }
+    // Only auto-focus when the screen was opened
+    // from Blind Box History with a specific destination.
+    if (widget.initialDestinationId != null &&
+        !_initialDestinationFocused) {
+      WidgetsBinding.instance.addPostFrameCallback(
+            (_) async {
+          if (!mounted) {
+            return;
+          }
 
-        // If this screen was opened from Blind Box History,
-        // focus that specific destination.
-        if (widget.initialDestinationId != null &&
-            !_initialDestinationFocused) {
           await _focusInitialDestination();
-          return;
-        }
+        },
+      );
+    }
 
-        // Normal Checkpoint page opening.
-        if (widget.initialDestinationId == null) {
-          await _moveToUser();
-        }
-      },
-    );
+    // IMPORTANT:
+    // Do NOT call _moveToUser() here.
+    //
+    // selectDestination() also triggers notifyListeners(),
+    // so calling _moveToUser() here makes the map jump back
+    // to the user's GPS every time a pin is tapped.
   }
 
   @override
@@ -1151,9 +1152,13 @@ class _CheckpointScreenState
               (GoogleMapController controller) {
             _mapController = controller;
 
+            // Opened from Blind Box History.
             if (widget.initialDestinationId != null) {
               _focusInitialDestination();
-            } else {
+            }
+
+            // Normal Missions page.
+            else {
               _moveToUser();
             }
           },
