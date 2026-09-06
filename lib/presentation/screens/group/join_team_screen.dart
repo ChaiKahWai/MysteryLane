@@ -80,11 +80,12 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
       );
       Navigator.pop(context);
     } catch (e) {
+      String message = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+        SnackBar(content: Text(message)),
       );
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
@@ -140,45 +141,128 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
       extendBody: true,
       appBar: _buildTopAppBar(),
       body: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(
-              Icons.qr_code,
-              size: 80,
-              color: skyBlue,
+            // ---- Icon / Logo (changed to key) ----
+            Container(
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.vpn_key_rounded, // <- replaced lock with key
+                size: 72,
+                color: skyBlue.withOpacity(0.7),
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
+
+            // ---- MAIN TITLE: ENTER PRIVATE TEAM CODE ----
             const Text(
-              'Enter the invitation code you received from the team owner.',
+              'ENTER PRIVATE TEAM CODE',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16),
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: darkText,
+                letterSpacing: 0.5,
+              ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 8),
+
+            // ---- SUBTITLE: PRIVATE PASSCODE VERIFICATION ----
+            const Text(
+              'PRIVATE PASSCODE VERIFICATION',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                color: greyText,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            // ---- Input Label ----
+            const Text(
+              'PRIVATE TEAM PASSCODE',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: darkText,
+                letterSpacing: 0.8,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // ---- Input Field ----
             TextField(
               controller: _codeController,
               decoration: InputDecoration(
-                labelText: 'Invitation Code',
+                hintText: 'ENTER PRIVATE CODE (E.G. 123456 OR 849201)',
+                hintStyle: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w400,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: borderColor),
                 ),
-                prefixIcon: const Icon(Icons.vpn_key),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: borderColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: skyBlue, width: 2),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
               ),
               textAlign: TextAlign.center,
               textCapitalization: TextCapitalization.characters,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 1.0,
+              ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
+
+            // ---- Join Button ----
             ElevatedButton(
               onPressed: _submitting ? null : _submitRequest,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: skyBlue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 54),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+                shadowColor: skyBlue.withOpacity(0.3),
+              ),
               child: _submitting
                   ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                height: 24,
+                width: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               )
-                  : const Text('Send Request'),
+                  : const Text(
+                'JOIN PRIVATE TEAM',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
             ),
           ],
         ),
@@ -238,7 +322,7 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => ChatListScreen()),
+              MaterialPageRoute(builder: (_) => const ChatListScreen()),
             );
           },
         ),
@@ -369,7 +453,7 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
   }
 }
 
-// ---- Helper widgets (same as above) ----
+// ---- Helper widgets (unchanged) ----
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <- added for clipboard
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../application/services/group_service.dart';
 import '../../../data/models/travel_group_model.dart';
+import '../../../data/models/trip_plan.dart';
 import '../Blindbox/BlindBox_Screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import '../plan/plan_screen.dart';
@@ -20,7 +22,6 @@ class TeamDetailScreen extends StatefulWidget {
 }
 
 class _TeamDetailScreenState extends State<TeamDetailScreen> {
-  // ---- COLORS ----
   static const Color skyBlue = Color(0xFF0284C7);
   static const Color teal = Color(0xFF0D9488);
   static const Color darkText = Color(0xFF0F172A);
@@ -34,7 +35,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _pendingRequests = [];
   String? _myRole;
-
+  TripPlan? _tripPlan;
   String? _headerProfilePictureUrl;
 
   @override
@@ -81,15 +82,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         });
       }
 
+      final plan = await _service.getTripPlanForGroup(widget.groupId);
+      setState(() {
+        _tripPlan = plan;
+      });
+
+      _myRole = null;
       if (user != null) {
-        Map<String, dynamic>? myMember;
         for (var m in _members) {
           if (m['user_id'] == user.id) {
-            myMember = m;
+            _myRole = m['member_role']?.toString();
             break;
           }
         }
-        _myRole = myMember?['member_role']?.toString();
       }
 
       if (_myRole == 'OWNER') {
@@ -154,7 +159,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
   }
 
-  // ---- Team methods ----
+  // ---- Team actions ----
   Future<void> _removeMember(String userId, String userName) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -205,11 +210,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     }
   }
 
+  // ---- FIXED: copy code now actually copies to clipboard ----
   void _copyInviteCode() {
-    if (_team?.invitationCode != null) {
+    final code = _team?.invitationCode;
+    if (code != null && code.isNotEmpty) {
+      Clipboard.setData(ClipboardData(text: code));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Invitation code: ${_team!.invitationCode} (copied)'),
+          content: Text('Invitation code "$code" copied to clipboard!'),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -229,6 +238,43 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     }
   }
 
+  Future<void> _joinPublicTeam() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to join.')),
+      );
+      return;
+    }
+
+    if (_team?.invitationCode == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This team does not have an invitation code.')),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      await _service.requestToJoinByCode(
+        code: _team!.invitationCode!,
+        userId: user.id,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Join request sent!')),
+      );
+      await _loadData();
+    } catch (e) {
+      String message = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ---- Leave/Disband logic with redirection ----
   Future<void> _handleLeaveTeam() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
@@ -321,7 +367,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Squad disbanded and you have left.')),
           );
-          Navigator.pop(context, true);
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const GroupScreen()),
+                (route) => false,
+          );
         }
       } catch (e) {
         if (mounted) {
@@ -511,7 +561,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Squad has been disbanded.')),
           );
-          Navigator.pop(context, true);
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const GroupScreen()),
+                (route) => false,
+          );
         }
       } catch (e) {
         if (mounted) {
@@ -528,6 +582,17 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
     final isOwner = _myRole == 'OWNER';
+    final isMember = _myRole != null;
+
+    String hostName = 'Host';
+    if (_members.isNotEmpty) {
+      final ownerMember = _members.firstWhere(
+            (m) => m['member_role'] == 'OWNER',
+        orElse: () => _members.first,
+      );
+      final ownerProfile = ownerMember['profiles'] as Map<dynamic, dynamic>?;
+      hostName = ownerProfile?['full_name']?.toString() ?? 'Host';
+    }
 
     return Scaffold(
       backgroundColor: pageBackground,
@@ -540,7 +605,29 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ---- PUBLIC TEAM PLAN DETAILS TITLE ----
+            if (_team?.teamType == 'PUBLIC')
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Text(
+                  'PUBLIC TEAM PLAN DETAILS',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: skyBlue,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+
+            // ---- TEAM INFO CARD ----
             Card(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.blue.shade100, width: 1.5),
+              ),
+              elevation: 2,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -550,10 +637,42 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       _team?.teamName ?? '',
                       style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _team?.teamType == 'PUBLIC'
+                                ? Colors.green[100]
+                                : Colors.grey[200],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _team?.teamType ?? 'PRIVATE',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: _team?.teamType == 'PUBLIC'
+                                  ? Colors.green[800]
+                                  : Colors.grey[700],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_tripPlan != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${_tripPlan!.startDate.day}/${_tripPlan!.startDate.month}/${_tripPlan!.startDate.year} → ${_tripPlan!.endDate.day}/${_tripPlan!.endDate.month}/${_tripPlan!.endDate.year} (${_tripPlan!.totalDays} Days)',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: darkText,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
-                    Text('Type: ${_team?.teamType ?? 'N/A'}'),
-                    Text('Members: ${_members.length}'),
-                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
@@ -565,6 +684,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         IconButton(
                           icon: const Icon(Icons.copy),
                           onPressed: _copyInviteCode,
+                          tooltip: 'Copy invite code',
                         ),
                       ],
                     ),
@@ -573,13 +693,108 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
+            // ---- ITINERARY CARD ----
+            if (_tripPlan != null && _tripPlan!.stops.isNotEmpty) ...[
+              Card(
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.blue.shade100, width: 1.5),
+                ),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'ITINERARY HIGHLIGHTS:',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: darkText,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._tripPlan!.stops.map((stop) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: skyBlue.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${stop.dayNumber}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: skyBlue,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  stop.name,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.people_outline,
+                            size: 16,
+                            color: greyText,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Squad: ${_members.length} Member${_members.length > 1 ? 's' : ''}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: greyText,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_members.isNotEmpty)
+                            Text(
+                              'Host: $hostName',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: darkText,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // ---- MEMBERS LIST ----
             const Text(
               'Members',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             ..._members.map((member) {
               final profile = member['profiles'] as Map<dynamic, dynamic>?;
-              final fullName = profile?['full_name']?.toString() ?? 'Unknown';
+              final fullName = profile?['full_name']?.toString() ?? 'Member';
               final initial = fullName.isNotEmpty ? fullName[0].toUpperCase() : '?';
               final role = member['member_role']?.toString() ?? 'MEMBER';
               final userId = member['user_id'] as String;
@@ -621,6 +836,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ),
               );
             }).toList(),
+
+            // ---- PENDING REQUESTS ----
             if (_pendingRequests.isNotEmpty) ...[
               const SizedBox(height: 16),
               const Text(
@@ -664,18 +881,48 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               }).toList(),
             ],
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loading ? null : _handleLeaveTeam,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+
+            // ---- ACTION BUTTON ----
+            if (isMember) ...[
+              ElevatedButton(
+                onPressed: _loading ? null : _handleLeaveTeam,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                child: const Text('Leave Team', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
-              child: const Text('Leave Team', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
+            ] else if (_team?.teamType == 'PUBLIC') ...[
+              ElevatedButton(
+                onPressed: _loading ? null : _joinPublicTeam,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: skyBlue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Join Public Squad', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ] else ...[
+              ElevatedButton(
+                onPressed: null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.grey[300],
+                  foregroundColor: Colors.grey[600],
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Private Team – Not Joinable', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
           ],
         ),
       ),
@@ -865,7 +1112,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
 }
 
-// ---- Helper widgets (same as before) ----
+// ---- Helper widgets ----
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 
