@@ -245,7 +245,7 @@ async function handleRequest(req: Request): Promise<Response> {
   if (prepareAll) {
     // Keep the authenticated request context; child work repeats ownership
     // checks. No public worker endpoint or service-key bypass is introduced.
-    const work = Promise.all(['Multiple Choice Question', 'Missing Word Challenge', 'True or False', 'Scrambled Word', 'Guess the Word'].map(async type => {
+    const work = Promise.all(['Multiple Choice Question', 'True or False', 'Guess the Word'].map(async type => {
       try {
         const result = await handleRequest(new Request(req.url, {
           method: 'POST', headers: { Authorization: authorization, 'Content-Type': 'application/json' },

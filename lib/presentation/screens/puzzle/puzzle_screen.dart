@@ -20,11 +20,10 @@ import '../group/group_screen.dart';
 
 enum PuzzleCategory { image, scrambled, word, mcq, trueFalse }
 
-// Image Recognition is retained only so older attempts can still be displayed
-// in Puzzle History. New challenges intentionally offer the four text formats.
+// Removed categories remain in the enum and metadata so older attempts can
+// still be displayed correctly in Puzzle History.
 const List<PuzzleCategory> playablePuzzleCategories = [
   PuzzleCategory.scrambled,
-  PuzzleCategory.word,
   PuzzleCategory.mcq,
   PuzzleCategory.trueFalse,
 ];
@@ -186,8 +185,7 @@ const List<CategoryQuestion> puzzleQuestionDatabase = [
     question: 'Which mountain is called "the roof of the Alps"?',
     subtitle: 'Missing Word Challenge · Choose the correct answer.',
     answer: 'Mont Blanc',
-    hint:
-        'Located in the western Alps on the French-Italian border.',
+    hint: 'Located in the western Alps on the French-Italian border.',
     options: ['Mont Blanc', 'Mount Fuji', 'Mount Kinabalu', 'Ben Nevis'],
   ),
   CategoryQuestion(
@@ -308,7 +306,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   String viewMode = 'categories';
   String hubTab = 'selection';
 
-  PuzzleCategory selectedCategory = PuzzleCategory.word;
+  PuzzleCategory selectedCategory = PuzzleCategory.scrambled;
 
   final PuzzleChallengeService _challengeService = PuzzleChallengeService();
 
@@ -410,8 +408,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
 
   bool get _hasBlindBoxLocations => _blindBoxLocations.isNotEmpty;
 
-  bool get _hasCheckpointLocation =>
-      _activeCheckpointMission != null;
+  bool get _hasCheckpointLocation => _activeCheckpointMission != null;
 
   bool get _hasCurrentCheckpoint =>
       widget.mission != null && widget.mission!.title.trim().isNotEmpty;
@@ -576,8 +573,6 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
             epReward: 200,
           ),
         );
-
-        if (built.length >= 10) break;
       }
 
       if (!mounted) return;
@@ -778,11 +773,11 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
 
       final picture = profile?['profile_picture_url']?.toString().trim();
       setState(() {
-        _headerProfilePictureUrl =
-            picture != null && picture.isNotEmpty ? picture : null;
-        _userEp = int.tryParse(
-              profile?['exploration_points']?.toString() ?? '',
-            ) ??
+        _headerProfilePictureUrl = picture != null && picture.isNotEmpty
+            ? picture
+            : null;
+        _userEp =
+            int.tryParse(profile?['exploration_points']?.toString() ?? '') ??
             _userEp;
       });
     } catch (error) {
@@ -870,8 +865,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
 
       final questions = await _challengeService.loadChallengeQuestions(
         userId: user.id,
-        destinationId: !_isRandomPuzzleMode
-            ? location?.id : null,
+        destinationId: !_isRandomPuzzleMode ? location?.id : null,
         puzzleType: category.key,
         historyCategory: category.historyKey,
       );
@@ -1020,23 +1014,70 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     });
   }
 
+  String _progressiveAnswerPattern(String answer, {required int stage}) {
+    final letters = answer
+        .toUpperCase()
+        .split('')
+        .where((character) => RegExp(r'[A-Z0-9]').hasMatch(character))
+        .toList();
+    if (letters.isEmpty) return '_';
+
+    final middleIndex = (letters.length - 1) ~/ 2;
+    final strongerPrefixLength = (letters.length / 2).ceil();
+    final displayed = List<String>.generate(letters.length, (index) {
+      final reveal = stage == 1
+          ? index == 0 || index == middleIndex
+          : index < strongerPrefixLength || index == letters.length - 1;
+      return reveal ? letters[index] : '_';
+    });
+    return displayed.join(' ');
+  }
+
   String _currentHintText() {
     if (_challengeQuestions.isEmpty) {
       return currentQuestion.hint;
     }
 
     final question = _challengeQuestions[_challengeQuestionIndex];
-    switch (hintsUsedCount) {
+    final answer = question.correctAnswer.trim();
+    final answerWords = answer
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    final answerLetters = answer.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+    final firstLetter = answerLetters.isEmpty
+        ? '?'
+        : answerLetters[0].toUpperCase();
+    final lastLetter = answerLetters.isEmpty
+        ? '?'
+        : answerLetters[answerLetters.length - 1].toUpperCase();
+    final wordLabel = answerWords.length == 1 ? 'word' : 'words';
+
+    switch (hintsUsedCount.clamp(1, 3)) {
       case 1:
-        return question.hint1 ?? 'No hint is available for this question.';
+        switch (selectedCategory) {
+          case PuzzleCategory.scrambled:
+            return _progressiveAnswerPattern(answer, stage: 1);
+          case PuzzleCategory.mcq:
+            return 'The correct option begins with “$firstLetter” and contains ${answerWords.length} $wordLabel.';
+          case PuzzleCategory.trueFalse:
+            return 'The correct option begins with “$firstLetter” and contains ${answerWords.length} $wordLabel.';
+          default:
+            return 'The answer begins with “$firstLetter”.';
+        }
       case 2:
-        return question.hint2 ??
-            question.hint1 ??
-            'No further hint is available.';
-      case 3:
-        return question.hint3 ?? 'Answer revealed: ${question.correctAnswer}';
+        switch (selectedCategory) {
+          case PuzzleCategory.scrambled:
+            return _progressiveAnswerPattern(answer, stage: 2);
+          case PuzzleCategory.mcq:
+            return 'Choose the option that starts with “$firstLetter”, ends with “$lastLetter”, and has ${answerLetters.length} letters or numbers.';
+          case PuzzleCategory.trueFalse:
+            return 'Choose the option that starts with “$firstLetter”, ends with “$lastLetter”, and has ${answerLetters.length} letters.';
+          default:
+            return 'The answer starts with “$firstLetter” and ends with “$lastLetter”.';
+        }
       default:
-        return 'No hint is available for this question.';
+        return 'The correct answer is ${question.correctAnswer}.';
     }
   }
 
@@ -1773,6 +1814,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         _blindBoxLocations.isEmpty) {
       return;
     }
+    var locationFilter = 'all';
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1780,89 +1822,158 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (sheetContext) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(sheetContext).height * .72,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, 14),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Change puzzle location',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * .72,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, 14),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Change puzzle location',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
-                  children: [
-                    if (_hasCurrentCheckpoint)
-                      _locationPickerTile(
-                        title: widget.mission!.title,
-                        subtitle: 'Current Checkpoint - Recommended',
-                        icon: Icons.flag_rounded,
-                        selected:
-                            _locationSource == PuzzleLocationSource.checkpoint,
-                        onTap: () {
-                          setState(() {
-                            _locationSource = PuzzleLocationSource.checkpoint;
-                            _selectedSavedCheckpointIndex = null;
-                            _currentResolvedQuestion = null;
-                          });
-                          Navigator.pop(sheetContext);
-                        },
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: Row(
+                    children: [
+                      _locationPickerFilterChip(
+                        label: 'All',
+                        selected: locationFilter == 'all',
+                        onTap: () =>
+                            setSheetState(() => locationFilter = 'all'),
                       ),
-                    ...List.generate(_savedCheckpointLocations.length, (index) {
-                      final location = _savedCheckpointLocations[index];
-                      return _locationPickerTile(
-                        title: location.title,
-                        subtitle: 'Checkpoint location',
-                        icon: Icons.flag_outlined,
-                        selected:
-                            _locationSource == PuzzleLocationSource.checkpoint &&
-                            _selectedSavedCheckpointIndex == index,
-                        onTap: () {
-                          setState(() {
-                            _locationSource = PuzzleLocationSource.checkpoint;
-                            _selectedSavedCheckpointIndex = index;
-                            _currentResolvedQuestion = null;
-                          });
-                          Navigator.pop(sheetContext);
-                        },
-                      );
-                    }),
-                    ...List.generate(_blindBoxLocations.length, (index) {
-                      final location = _blindBoxLocations[index];
-                      return _locationPickerTile(
-                        title: location.title,
-                        subtitle: 'Blind Box location',
-                        icon: Icons.casino_rounded,
-                        selected:
-                            _locationSource == PuzzleLocationSource.blindBox &&
-                            _selectedBlindBoxIndex == index,
-                        onTap: () {
-                          setState(() {
-                            _locationSource = PuzzleLocationSource.blindBox;
-                            _selectedBlindBoxIndex = index;
-                            _currentResolvedQuestion = null;
-                          });
-                          Navigator.pop(sheetContext);
-                        },
-                      );
-                    }),
-                  ],
+                      const SizedBox(width: 8),
+                      _locationPickerFilterChip(
+                        label: 'Blind Box',
+                        selected: locationFilter == 'blind_box',
+                        onTap: () =>
+                            setSheetState(() => locationFilter = 'blind_box'),
+                      ),
+                      const SizedBox(width: 8),
+                      _locationPickerFilterChip(
+                        label: 'Checkpoint',
+                        selected: locationFilter == 'checkpoint',
+                        onTap: () =>
+                            setSheetState(() => locationFilter = 'checkpoint'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                    children: [
+                      if (locationFilter != 'blind_box' &&
+                          _hasCurrentCheckpoint)
+                        _locationPickerTile(
+                          title: widget.mission!.title,
+                          subtitle: 'Current Checkpoint - Recommended',
+                          icon: Icons.flag_rounded,
+                          selected:
+                              _locationSource ==
+                              PuzzleLocationSource.checkpoint,
+                          onTap: () {
+                            setState(() {
+                              _locationSource = PuzzleLocationSource.checkpoint;
+                              _selectedSavedCheckpointIndex = null;
+                              _currentResolvedQuestion = null;
+                            });
+                            Navigator.pop(sheetContext);
+                          },
+                        ),
+                      if (locationFilter != 'blind_box')
+                        ...List.generate(_savedCheckpointLocations.length, (
+                          index,
+                        ) {
+                          final location = _savedCheckpointLocations[index];
+                          return _locationPickerTile(
+                            title: location.title,
+                            subtitle: 'Checkpoint location',
+                            icon: Icons.flag_outlined,
+                            selected:
+                                _locationSource ==
+                                    PuzzleLocationSource.checkpoint &&
+                                _selectedSavedCheckpointIndex == index,
+                            onTap: () {
+                              setState(() {
+                                _locationSource =
+                                    PuzzleLocationSource.checkpoint;
+                                _selectedSavedCheckpointIndex = index;
+                                _currentResolvedQuestion = null;
+                              });
+                              Navigator.pop(sheetContext);
+                            },
+                          );
+                        }),
+                      if (locationFilter != 'checkpoint')
+                        ...List.generate(_blindBoxLocations.length, (index) {
+                          final location = _blindBoxLocations[index];
+                          return _locationPickerTile(
+                            title: location.title,
+                            subtitle: 'Blind Box location',
+                            icon: Icons.casino_rounded,
+                            selected:
+                                _locationSource ==
+                                    PuzzleLocationSource.blindBox &&
+                                _selectedBlindBoxIndex == index,
+                            onTap: () {
+                              setState(() {
+                                _locationSource = PuzzleLocationSource.blindBox;
+                                _selectedBlindBoxIndex = index;
+                                _currentResolvedQuestion = null;
+                              });
+                              Navigator.pop(sheetContext);
+                            },
+                          );
+                        }),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _locationPickerFilterChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: ChoiceChip(
+        label: SizedBox(
+          width: double.infinity,
+          child: Text(label, textAlign: TextAlign.center),
+        ),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        selectedColor: const Color(0xFF0284C7),
+        backgroundColor: const Color(0xFFF1F5F9),
+        side: BorderSide(
+          color: selected ? const Color(0xFF0284C7) : const Color(0xFFE2E8F0),
+        ),
+        labelStyle: TextStyle(
+          color: selected ? Colors.white : const Color(0xFF475569),
+          fontWeight: FontWeight.w800,
+          fontSize: 11,
+        ),
+        showCheckmark: false,
       ),
     );
   }
@@ -2289,7 +2400,8 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                   Text(_preparationNotice!),
                   TextButton.icon(
                     onPressed: _isLoadingChallenge
-                        ? null : () => _selectCategory(selectedCategory),
+                        ? null
+                        : () => _selectCategory(selectedCategory),
                     icon: const Icon(Icons.refresh),
                     label: const Text('Retry preparation'),
                   ),
@@ -2443,9 +2555,11 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     final filteredHistory = _historyCategoryFilter == null
         ? _puzzleHistory
         : _puzzleHistory
-              .where((item) =>
-                  _categoryFromStoredType(item.puzzleCategory) ==
-                  _historyCategoryFilter)
+              .where(
+                (item) =>
+                    _categoryFromStoredType(item.puzzleCategory) ==
+                    _historyCategoryFilter,
+              )
               .toList();
 
     return Column(
@@ -2465,8 +2579,8 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                 _historyCategoryFilter = value == 'all'
                     ? null
                     : playablePuzzleCategories
-                        .where((category) => category.name == value)
-                        .firstOrNull;
+                          .where((category) => category.name == value)
+                          .firstOrNull;
               }),
               itemBuilder: (context) => [
                 const PopupMenuItem<String>(
@@ -2648,10 +2762,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         '${two(malaysia.hour)}:${two(malaysia.minute)} MYT';
   }
 
-  String _historyQuestionText(
-    String storedQuestion,
-    PuzzleCategory? category,
-  ) {
+  String _historyQuestionText(String storedQuestion, PuzzleCategory? category) {
     if (category != PuzzleCategory.trueFalse) return storedQuestion;
 
     final match = RegExp(
@@ -2671,7 +2782,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     }
 
     final separateBox = question.displayBoxContent?.trim();
-    if (separateBox != null && separateBox.isNotEmpty) {
+    if (separateBox != null &&
+        separateBox.isNotEmpty &&
+        separateBox.toLowerCase() != 'true' &&
+        separateBox.toLowerCase() != 'false') {
       return (question: question.question, answerToCheck: separateBox);
     }
 
@@ -2686,10 +2800,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       );
     }
 
-    return (
-      question: match.group(2)!,
-      answerToCheck: match.group(1)!,
-    );
+    return (question: match.group(2)!, answerToCheck: match.group(1)!);
   }
 
   Widget _buildQuestionView() {
@@ -2830,9 +2941,14 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                       color: const Color(0xFFEFF6FF),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(malaysiaFallbackNotice(_challengeQuestions)!,
+                    child: Text(
+                      malaysiaFallbackNotice(_challengeQuestions)!,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF1E40AF))),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF1E40AF),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -2949,8 +3065,14 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFECFDF5),
-        border: Border.all(color: const Color(0xFFA7F3D0)),
+        color: _lastAnswerWasCorrect
+            ? const Color(0xFFECFDF5)
+            : const Color(0xFFFEF2F2),
+        border: Border.all(
+          color: _lastAnswerWasCorrect
+              ? const Color(0xFFA7F3D0)
+              : const Color(0xFFFCA5A5),
+        ),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -2959,7 +3081,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
             radius: 24,
             backgroundColor: _lastAnswerWasCorrect
                 ? const Color(0xFF10B981)
-                : const Color(0xFFF59E0B),
+                : const Color(0xFFEF4444),
             child: Icon(
               _lastAnswerWasCorrect ? Icons.check : Icons.arrow_forward,
               color: Colors.white,
@@ -2978,7 +3100,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
               fontWeight: FontWeight.bold,
               color: _lastAnswerWasCorrect
                   ? const Color(0xFF064E3B)
-                  : const Color(0xFF92400E),
+                  : const Color(0xFF991B1B),
             ),
           ),
           const SizedBox(height: 3),
@@ -3645,7 +3767,6 @@ class _PuzzleProfileButton extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _PuzzleBottomItem extends StatelessWidget {

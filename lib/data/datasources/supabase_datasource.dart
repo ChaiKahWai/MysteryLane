@@ -153,9 +153,12 @@ class SupabaseDataSource {
     try {
       final user = _requireUser();
 
-      final response = await _client
-          .from('blind_box_history')
-          .select('''
+      const pageSize = 500;
+      final history = <Map<String, dynamic>>[];
+      for (var from = 0; ; from += pageSize) {
+        final response = await _client
+            .from('blind_box_history')
+            .select('''
             history_id,
             user_id,
             destination_id,
@@ -177,13 +180,15 @@ class SupabaseDataSource {
               popularity_classification
             )
           ''')
-          .eq('user_id', user.id)
-          .order('drawn_at', ascending: false)
-          .limit(50);
-
-      return (response as List)
-          .map((row) => Map<String, dynamic>.from(row as Map))
-          .toList(growable: false);
+            .eq('user_id', user.id)
+            .order('drawn_at', ascending: false)
+            .range(from, from + pageSize - 1);
+        final page = (response as List)
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList(growable: false);
+        history.addAll(page);
+        if (page.length < pageSize) return history;
+      }
     } on SupabaseDataException {
       rethrow;
     } catch (error) {

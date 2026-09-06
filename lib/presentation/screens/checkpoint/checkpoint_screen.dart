@@ -24,8 +24,7 @@ class CheckpointScreen extends StatefulWidget {
   });
 
   @override
-  State<CheckpointScreen> createState() =>
-      _CheckpointScreenState();
+  State<CheckpointScreen> createState() => _CheckpointScreenState();
 }
 
 class _CheckpointScreenState
@@ -1377,16 +1376,12 @@ class _CheckpointScreenState
         ],
       ),
 
-      child:
-      const Wrap(
-        alignment:
-        WrapAlignment.center,
+      child: const Wrap(
+        alignment: WrapAlignment.center,
 
-        spacing:
-        14,
+        spacing: 14,
 
-        runSpacing:
-        5,
+        runSpacing: 5,
 
         children: [
           _LegendItem(
@@ -1477,10 +1472,8 @@ class _CheckpointScreenState
         15,
       ),
 
-      decoration:
-      BoxDecoration(
-        color:
-        Colors.white,
+      decoration: BoxDecoration(
+        color: Colors.white,
 
         borderRadius:
         BorderRadius.circular(
@@ -1495,22 +1488,14 @@ class _CheckpointScreenState
           ),
         ),
 
-        boxShadow:
-        const [
+        boxShadow: const [
           BoxShadow(
-            color:
-            Color(
-              0x260F172A,
-            ),
+            color: Color(0x260F172A),
 
             blurRadius:
             22,
 
-            offset:
-            Offset(
-              0,
-              8,
-            ),
+            offset: Offset(0, 8),
           ),
         ],
       ),
@@ -1519,8 +1504,7 @@ class _CheckpointScreenState
         mainAxisSize:
         MainAxisSize.min,
 
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
 
         children: [
           // -----------------------------------------------------------------
@@ -1528,8 +1512,7 @@ class _CheckpointScreenState
           // -----------------------------------------------------------------
 
           Row(
-            crossAxisAlignment:
-            CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
 
             children: [
               Container(
@@ -1586,8 +1569,7 @@ class _CheckpointScreenState
                         fontSize:
                         17,
 
-                        fontWeight:
-                        FontWeight.w900,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
 
@@ -1714,8 +1696,7 @@ class _CheckpointScreenState
 
             maxLines: 3,
 
-            overflow:
-            TextOverflow.ellipsis,
+            overflow: TextOverflow.ellipsis,
 
             style:
             const TextStyle(
@@ -1725,8 +1706,7 @@ class _CheckpointScreenState
               fontSize:
               12.5,
 
-              height:
-              1.45,
+              height: 1.45,
             ),
           ),
 
@@ -1760,8 +1740,7 @@ class _CheckpointScreenState
                       backgroundColor:
                       skyBlue,
 
-                      foregroundColor:
-                      Colors.white,
+                      disabledBackgroundColor: const Color(0xFFCBD5E1),
 
                       shape:
                       RoundedRectangleBorder(
@@ -2025,21 +2004,16 @@ class _CheckpointScreenState
               Alignment.bottomRight,
             ),
 
-            border:
-            Border.all(
-              color:
-              Colors.white,
+          height: 64,
 
               width: 4,
             ),
 
-            boxShadow:
-            const [
+            border: Border.all(color: Colors.white, width: 4),
+
+            boxShadow: const [
               BoxShadow(
-                color:
-                Color(
-                  0x3D0284C7,
-                ),
+                color: Color(0x3D0284C7),
 
                 blurRadius:
                 16,
@@ -2053,10 +2027,8 @@ class _CheckpointScreenState
             ],
           ),
 
-          child:
-          const Column(
-            mainAxisAlignment:
-            MainAxisAlignment.center,
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
 
             children: [
               Icon(
@@ -2073,10 +2045,8 @@ class _CheckpointScreenState
               Text(
                 'HOME',
 
-                style:
-                TextStyle(
-                  color:
-                  Colors.white,
+                style: TextStyle(
+                  color: Colors.white,
 
                   fontSize: 8,
 
@@ -2351,9 +2321,7 @@ class _LegendItem
   });
 
   @override
-  Widget build(
-      BuildContext context,
-      ) {
+  Widget build(BuildContext context) {
     return Row(
       mainAxisSize:
       MainAxisSize.min,
@@ -2424,8 +2392,7 @@ class _BottomItem
     );
 
     return InkWell(
-      onTap:
-      onTap,
+      onTap: onTap,
 
       child: Padding(
         padding:
