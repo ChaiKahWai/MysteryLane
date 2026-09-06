@@ -108,129 +108,113 @@ class CheckpointRepository {
     required String missionId,
   }) async {
     final user =
-        SupabaseConfig.client.auth.currentUser;
+        Supabase.instance.client.auth.currentUser;
 
     if (user == null) {
       throw Exception(
-        'Traveller is not logged in.',
+        'Traveller must be logged in.',
       );
     }
 
-    try {
-      final Map<String, dynamic>? existing =
-      await SupabaseConfig.client
-          .from(
-        'user_checkpoint_missions',
-      )
-          .select()
-          .eq(
-        'user_id',
-        user.id,
-      )
-          .eq(
-        'mission_id',
-        missionId,
-      )
-          .maybeSingle();
+    // Check existing attempt first.
+    final existing =
+    await Supabase.instance.client
+        .from(
+      'user_checkpoint_missions',
+    )
+        .select(
+      'user_mission_id, mission_status',
+    )
+        .eq(
+      'user_id',
+      user.id,
+    )
+        .eq(
+      'mission_id',
+      missionId,
+    )
+        .maybeSingle();
 
-      // ========================================================
-      // EXISTING MISSION
-      // ========================================================
+    if (existing != null) {
+      final String status =
+          existing['mission_status']
+              ?.toString()
+              .toUpperCase() ??
+              'NOT_STARTED';
 
-      if (existing != null) {
-        final String status =
-            existing['mission_status']
-                ?.toString() ??
-                'NOT_STARTED';
+      final String userMissionId =
+      existing['user_mission_id']
+          .toString();
 
-        if (status == 'COMPLETED') {
-          throw Exception(
-            'You have already completed this mission.',
-          );
-        }
-
-        final String userMissionId =
-        existing['user_mission_id']
-            .toString();
-
-        await SupabaseConfig.client
-            .from(
-          'user_checkpoint_missions',
-        )
-            .update({
-          'mission_status':
-          'IN_PROGRESS',
-
-          'verification_result':
-          'PENDING',
-
-          'started_at':
-          DateTime.now()
-              .toUtc()
-              .toIso8601String(),
-        }).eq(
-          'user_mission_id',
-          userMissionId,
+      // Never restart a completed mission.
+      if (status == 'COMPLETED') {
+        throw Exception(
+          'This mission has already been completed.',
         );
+      }
 
-        debugPrint(
-          'EXISTING MISSION STARTED: '
-              '$userMissionId',
-        );
-
+      // Existing mission is already IN_PROGRESS.
+      // Just continue it.
+      if (status == 'IN_PROGRESS') {
         return userMissionId;
       }
 
-      // ========================================================
-      // CREATE NEW USER MISSION
-      // ========================================================
-
-      final Map<String, dynamic> created =
-      await SupabaseConfig.client
+      // Existing NOT_STARTED / FAILED attempt.
+      await Supabase.instance.client
           .from(
         'user_checkpoint_missions',
       )
-          .insert({
-        'user_id':
-        user.id,
-
-        'mission_id':
-        missionId,
-
+          .update({
         'mission_status':
         'IN_PROGRESS',
-
-        'verification_result':
-        'PENDING',
-
-        'reward_claimed':
-        false,
 
         'started_at':
         DateTime.now()
             .toUtc()
             .toIso8601String(),
       })
-          .select()
-          .single();
-
-      final String userMissionId =
-      created['user_mission_id']
-          .toString();
-
-      debugPrint(
-        'NEW USER MISSION CREATED: '
-            '$userMissionId',
+          .eq(
+        'user_mission_id',
+        userMissionId,
       );
 
       return userMissionId;
-    } catch (error) {
-      debugPrint(
-        'START MISSION ERROR: $error',
-      );
-
-      rethrow;
     }
+
+    // First time starting this mission.
+    final row =
+    await Supabase.instance.client
+        .from(
+      'user_checkpoint_missions',
+    )
+        .insert({
+      'user_id':
+      user.id,
+
+      'mission_id':
+      missionId,
+
+      'mission_status':
+      'IN_PROGRESS',
+
+      'verification_result':
+      'PENDING',
+
+      'reward_claimed':
+      false,
+
+      'started_at':
+      DateTime.now()
+          .toUtc()
+          .toIso8601String(),
+    })
+        .select(
+      'user_mission_id',
+    )
+        .single();
+
+    return row['user_mission_id']
+        .toString();
   }
 
   // ============================================================
@@ -980,6 +964,50 @@ class CheckpointRepository {
 
     return picture;
   }
+
+  Future<UserCheckpointMissionState?>
+  getCurrentUserMissionState({
+    required String missionId,
+  }) async {
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user == null) {
+      return null;
+    }
+
+    final row = await Supabase.instance.client
+        .from('user_checkpoint_missions')
+        .select(
+      'user_mission_id, mission_status, reward_claimed',
+    )
+        .eq(
+      'user_id',
+      user.id,
+    )
+        .eq(
+      'mission_id',
+      missionId,
+    )
+        .maybeSingle();
+
+    if (row == null) {
+      return null;
+    }
+
+    return UserCheckpointMissionState(
+      userMissionId:
+      row['user_mission_id'].toString(),
+
+      missionStatus:
+      row['mission_status']
+          ?.toString()
+          .toUpperCase() ??
+          'NOT_STARTED',
+
+      rewardClaimed:
+      row['reward_claimed'] == true,
+    );
+  }
 }
 
 class ActiveCheckpointData {
@@ -993,4 +1021,25 @@ class ActiveCheckpointData {
     required this.destinations,
     required this.rewardPoints,
   });
+}
+
+class UserCheckpointMissionState {
+  final String userMissionId;
+  final String missionStatus;
+  final bool rewardClaimed;
+
+  const UserCheckpointMissionState({
+    required this.userMissionId,
+    required this.missionStatus,
+    required this.rewardClaimed,
+  });
+
+  bool get isNotStarted =>
+      missionStatus == 'NOT_STARTED';
+
+  bool get isInProgress =>
+      missionStatus == 'IN_PROGRESS';
+
+  bool get isCompleted =>
+      missionStatus == 'COMPLETED';
 }
