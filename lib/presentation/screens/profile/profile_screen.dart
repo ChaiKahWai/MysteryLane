@@ -73,7 +73,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   int _explorationPoints = 0;
 
-// Connect actual tables later.
+// Real account statistics loaded from the current authenticated traveller.
   int _missionsCompleted = 0;
   int _leaderboardRank = 0;
 
@@ -132,6 +132,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       }
 
+      // ========================================================
+      // 1. LOAD CURRENT TRAVELLER PROFILE
+      // ========================================================
+
       final Map<String, dynamic>? profile =
       await SupabaseConfig.client
           .from('profiles')
@@ -145,6 +149,96 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       }
 
+      // ========================================================
+      // 2. LOAD REAL COMPLETED ACTIVITY COUNT FOR THIS ACCOUNT
+      //
+      // Profile "MISSIONS COMPLETED" represents completed playable
+      // activities. It includes:
+      //   1) completed checkpoint missions, and
+      //   2) completed puzzle attempts.
+      //
+      // Nothing is hard coded: both values come from Supabase for the
+      // currently authenticated traveller.
+      // ========================================================
+
+      int completedCheckpointMissions = 0;
+      int completedPuzzleAttempts = 0;
+
+      try {
+        final List<dynamic> completedMissions =
+        await SupabaseConfig.client
+            .from('user_checkpoint_missions')
+            .select('user_mission_id')
+            .eq('user_id', user.id)
+            .eq('mission_status', 'COMPLETED');
+
+        completedCheckpointMissions = completedMissions.length;
+      } catch (error) {
+        debugPrint(
+          'PROFILE CHECKPOINT MISSION COUNT LOAD ERROR: $error',
+        );
+      }
+
+      try {
+        final List<dynamic> completedPuzzles =
+        await SupabaseConfig.client
+            .from('puzzle_attempts')
+            .select('attempt_id')
+            .eq('user_id', user.id)
+            .not('completed_at', 'is', null);
+
+        completedPuzzleAttempts = completedPuzzles.length;
+      } catch (error) {
+        debugPrint(
+          'PROFILE PUZZLE COUNT LOAD ERROR: $error',
+        );
+      }
+
+      final int missionsCompleted =
+          completedCheckpointMissions + completedPuzzleAttempts;
+
+      // ========================================================
+      // 3. LOAD TODAY'S REAL PUZZLE LEADERBOARD RANK
+      //
+      // IMPORTANT: use exactly the same RPC as LeaderboardScreen so
+      // Profile rank and Leaderboard page cannot use different ranking
+      // rules. The RPC returns user_id + leaderboard_rank for today's
+      // daily puzzle leaderboard.
+      // ========================================================
+
+      int leaderboardRank = 0;
+
+      try {
+        final List<dynamic> leaderboardRows =
+        await SupabaseConfig.client.rpc(
+          'get_daily_puzzle_leaderboard',
+        );
+
+        for (final dynamic rawRow in leaderboardRows) {
+          if (rawRow is! Map) {
+            continue;
+          }
+
+          final Map<String, dynamic> row =
+          Map<String, dynamic>.from(rawRow);
+
+          final String rowUserId =
+              row['user_id']?.toString() ?? '';
+
+          if (rowUserId == user.id) {
+            leaderboardRank =
+                _convertToInt(row['leaderboard_rank']);
+            break;
+          }
+        }
+      } catch (error) {
+        // Rank remains 0 and the UI displays '-' when the traveller has
+        // no rank or the statistic cannot be refreshed temporarily.
+        debugPrint(
+          'PROFILE LEADERBOARD RANK LOAD ERROR: $error',
+        );
+      }
+
       if (!mounted) return;
 
       final String? picture =
@@ -155,8 +249,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             profile['full_name']?.toString() ??
                 '';
 
-// Login email comes ONLY from Supabase Authentication.
-// Do not read or duplicate it in public.profiles.
+        // Login email comes ONLY from Supabase Authentication.
+        // Do not read or duplicate it in public.profiles.
         _email = user.email ?? '';
 
         _phoneNumber =
@@ -174,6 +268,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _convertToInt(
               profile['exploration_points'],
             );
+
+        // Real current-account statistics.
+        _missionsCompleted = missionsCompleted;
+        _leaderboardRank = leaderboardRank;
 
         _nameController.text =
             _fullName;
@@ -591,6 +689,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool phoneIsValid = false;
     String normalizedPhone = _phoneNumber.trim();
 
+    String? nameError;
+    String? phoneError;
+
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -714,10 +815,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
 
                     const SizedBox(height: 22),
-                    const Text(
+                    Text(
                       'FULL NAME *',
                       style: TextStyle(
-                        color: greyText,
+                        color: nameError == null
+                            ? greyText
+                            : const Color(0xFFDC2626),
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                       ),
@@ -725,15 +828,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 7),
                     TextField(
                       controller: _nameController,
-                      decoration:
-                      _inputDecoration(hint: 'Full Name'),
+                      onChanged: (_) {
+                        if (nameError != null) {
+                          setDialogState(() {
+                            nameError = null;
+                          });
+                        }
+                      },
+                      decoration: _inputDecoration(
+                        hint: 'Full Name',
+                        errorText: nameError,
+                      ),
                     ),
 
                     const SizedBox(height: 20),
-                    const Text(
+                    Text(
                       'PHONE NUMBER *',
                       style: TextStyle(
-                        color: greyText,
+                        color: phoneError == null
+                            ? greyText
+                            : const Color(0xFFDC2626),
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                       ),
@@ -769,12 +883,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         value.startsWith('+')
                             ? value
                             : '';
+
+                        if (phoneError != null) {
+                          setDialogState(() {
+                            phoneError = null;
+                          });
+                        }
                       },
                       onInputValidated: (bool valid) {
                         phoneIsValid = valid;
                       },
                       inputDecoration: _inputDecoration(
                         hint: 'Phone Number',
+                        errorText: phoneError,
                       ),
                     ),
 
@@ -785,6 +906,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onPressed: _isSaving
                             ? null
                             : () async {
+                          final String newName =
+                          _nameController.text.trim();
+                          final String rawPhone =
+                          _phoneController.text.trim();
+
+                          String? nextNameError;
+                          String? nextPhoneError;
+
+                          if (newName.isEmpty) {
+                            nextNameError =
+                            'Full Name is required.';
+                          } else if (newName.length < 2 ||
+                              newName.length > 50) {
+                            nextNameError =
+                            'Full Name must contain 2–50 characters.';
+                          }
+
+                          if (rawPhone.isEmpty) {
+                            nextPhoneError =
+                            'Phone Number is required.';
+                          } else if (!phoneIsValid ||
+                              normalizedPhone.isEmpty ||
+                              !normalizedPhone.startsWith('+')) {
+                            nextPhoneError =
+                            'Please enter a valid phone number for the selected country.';
+                          }
+
+                          if (nextNameError != null ||
+                              nextPhoneError != null) {
+                            setDialogState(() {
+                              nameError = nextNameError;
+                              phoneError = nextPhoneError;
+                            });
+                            return;
+                          }
+
                           final bool saved =
                           await _saveProfile(
                             normalizedPhone:
@@ -2308,29 +2465,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Row(
       children: [
         Expanded(
-          child:
-          _statCard(
-            value:
-            _missionsCompleted.toString(),
-            text:
-            'MISSIONS COMPLETED',
+          child: _statCard(
+            value: _missionsCompleted.toString(),
+            text: 'MISSIONS COMPLETED',
           ),
         ),
-
-        const SizedBox(
-          width:
-          12,
-        ),
-
+        const SizedBox(width: 12),
         Expanded(
-          child:
-          _statCard(
-            value:
-            _leaderboardRank == 0
+          child: _statCard(
+            value: _leaderboardRank == 0
                 ? '-'
                 : '#$_leaderboardRank',
-            text:
-            'LEADERBOARD RANK',
+            text: 'LEADERBOARD RANK',
           ),
         ),
       ],
@@ -2342,42 +2488,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String text,
   }) {
     return Container(
-      padding:
-      const EdgeInsets.all(
-        18,
-      ),
-
-      decoration:
-      _whiteCardDecoration(),
-
-      child:
-      Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
+      padding: const EdgeInsets.all(18),
+      decoration: _whiteCardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             value,
-            style:
-            const TextStyle(
-              color:
-              darkText,
-              fontSize:
-              23,
-              fontWeight:
-              FontWeight.w900,
+            style: const TextStyle(
+              color: darkText,
+              fontSize: 23,
+              fontWeight: FontWeight.w900,
             ),
           ),
-
+          const SizedBox(height: 2),
           Text(
             text,
-            style:
-            const TextStyle(
-              color:
-              greyText,
-              fontSize:
-              8,
-              fontWeight:
-              FontWeight.w800,
+            style: const TextStyle(
+              color: greyText,
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -2395,13 +2525,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const AchievementScreen(),
             ),
           );
+
+          if (mounted) {
+            await _loadProfile();
+          }
         },
         child: Container(
           padding: const EdgeInsets.all(20),
@@ -3227,16 +3361,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   InputDecoration _inputDecoration({
     required String hint,
+    String? errorText,
   }) {
     return InputDecoration(
       hintText:
       hint,
 
+      errorText: errorText,
+      errorMaxLines: 2,
+      errorStyle: const TextStyle(
+        color: Color(0xFFDC2626),
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        height: 1.35,
+      ),
+
       filled:
       true,
 
-      fillColor:
-      Colors.white,
+      fillColor: errorText == null
+          ? Colors.white
+          : const Color(0xFFFFF7F7),
 
       border:
       OutlineInputBorder(
@@ -3279,6 +3424,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
           primaryBlue,
           width:
           2,
+        ),
+      ),
+
+      errorBorder:
+      OutlineInputBorder(
+        borderRadius:
+        BorderRadius.circular(
+          12,
+        ),
+        borderSide:
+        const BorderSide(
+          color: Color(0xFFEF4444),
+          width: 1.5,
+        ),
+      ),
+
+      focusedErrorBorder:
+      OutlineInputBorder(
+        borderRadius:
+        BorderRadius.circular(
+          12,
+        ),
+        borderSide:
+        const BorderSide(
+          color: Color(0xFFDC2626),
+          width: 2,
         ),
       ),
     );
