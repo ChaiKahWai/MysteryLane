@@ -27,9 +27,27 @@ class _CheckpointMissionScreenState
 
   CheckpointMission? _mission;
 
+  UserCheckpointMissionState?
+  _userMissionState;
+
   bool _isLoading = true;
 
   String? _errorMessage;
+
+  String get _missionStatus {
+    if (_userMissionState == null) {
+      return 'NOT_STARTED';
+    }
+
+    return _userMissionState!
+        .missionStatus;
+  }
+
+  bool get _missionInProgress =>
+      _missionStatus == 'IN_PROGRESS';
+
+  bool get _missionCompleted =>
+      _missionStatus == 'COMPLETED';
 
   @override
   void initState() {
@@ -45,15 +63,29 @@ class _CheckpointMissionScreenState
     });
 
     try {
-      debugPrint(
-        'Loading mission for destination: '
-            '${widget.destination.destinationId}',
-      );
-
       final CheckpointMission? result =
       await _repository
           .getMissionByDestinationId(
         widget.destination.destinationId,
+      );
+
+      if (result == null) {
+        if (!mounted) return;
+
+        setState(() {
+          _mission = null;
+          _userMissionState = null;
+          _isLoading = false;
+        });
+
+        return;
+      }
+
+      final UserCheckpointMissionState?
+      state =
+      await _repository
+          .getCurrentUserMissionState(
+        missionId: result.missionId,
       );
 
       if (!mounted) {
@@ -62,25 +94,10 @@ class _CheckpointMissionScreenState
 
       setState(() {
         _mission = result;
+        _userMissionState = state;
         _isLoading = false;
       });
-
-      if (result == null) {
-        debugPrint(
-          'No mission found for '
-              '${widget.destination.name}',
-        );
-      } else {
-        debugPrint(
-          'Mission loaded: '
-              '${result.missionName}',
-        );
-      }
     } catch (error) {
-      debugPrint(
-        'MISSION LOAD ERROR: $error',
-      );
-
       if (!mounted) {
         return;
       }
@@ -278,54 +295,75 @@ class _CheckpointMissionScreenState
 
           SizedBox(
             width: double.infinity,
+            height: 58,
 
-            child:
-            ElevatedButton.icon(
-              onPressed: () {
+            child: ElevatedButton.icon(
+              onPressed:
+              _missionCompleted
+                  ? null
+                  : () {
                 _startMission(
                   mission,
                 );
               },
 
-              icon: const Icon(
-                Icons
-                    .play_arrow_rounded,
+              icon: Icon(
+                _missionCompleted
+                    ? Icons.check_circle_rounded
+                    : _missionInProgress
+                    ? Icons.play_circle_fill_rounded
+                    : Icons.play_arrow_rounded,
               ),
 
-              label: const Text(
-                'Start Mission',
+              label: Text(
+                _missionCompleted
+                    ? 'MISSION COMPLETED'
+                    : _missionInProgress
+                    ? 'CONTINUE MISSION'
+                    : 'START MISSION',
               ),
 
               style:
               ElevatedButton.styleFrom(
                 backgroundColor:
-                const Color(
+                _missionCompleted
+                    ? const Color(
+                  0xFF10B981,
+                )
+                    : _missionInProgress
+                    ? const Color(
+                  0xFFF59E0B,
+                )
+                    : const Color(
                   0xFF2563EB,
                 ),
 
                 foregroundColor:
                 Colors.white,
 
-                padding:
-                const EdgeInsets
-                    .symmetric(
-                  vertical: 16,
+                disabledBackgroundColor:
+                const Color(
+                  0xFF10B981,
                 ),
+
+                disabledForegroundColor:
+                Colors.white,
 
                 shape:
                 RoundedRectangleBorder(
                   borderRadius:
-                  BorderRadius
-                      .circular(
+                  BorderRadius.circular(
                     14,
                   ),
                 ),
 
                 textStyle:
                 const TextStyle(
-                  fontSize: 16,
+                  fontSize:
+                  15,
+
                   fontWeight:
-                  FontWeight.w700,
+                  FontWeight.w800,
                 ),
               ),
             ),
@@ -621,7 +659,52 @@ class _CheckpointMissionScreenState
           ),
 
           const SizedBox(
-            height: 14,
+            height: 12,
+          ),
+
+// ==========================================================
+// MISSION STATUS
+// ==========================================================
+
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 11,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                color: _missionCompleted
+                    ? const Color(0xFFECFDF5)
+                    : _missionInProgress
+                    ? const Color(0xFFFFF7ED)
+                    : const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(
+                  30,
+                ),
+              ),
+              child: Text(
+                _missionCompleted
+                    ? 'COMPLETED'
+                    : _missionInProgress
+                    ? 'IN PROGRESS'
+                    : 'NOT STARTED',
+                style: TextStyle(
+                  color: _missionCompleted
+                      ? const Color(0xFF059669)
+                      : _missionInProgress
+                      ? const Color(0xFFD97706)
+                      : const Color(0xFF2563EB),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(
+            height: 12,
           ),
 
           Text(
@@ -1000,41 +1083,59 @@ class _CheckpointMissionScreenState
       ) async {
     try {
       final String userMissionId =
-      await _repository.startUserMission(
-        missionId: mission.missionId,
+      await _repository
+          .startUserMission(
+        missionId:
+        mission.missionId,
       );
 
       if (!mounted) {
         return;
       }
 
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => MissionExecutionScreen(
-            destination: widget.destination,
-            mission: mission,
-            userMissionId: userMissionId,
-          ),
+          builder: (_) =>
+              MissionExecutionScreen(
+                destination:
+                widget.destination,
+
+                mission:
+                mission,
+
+                userMissionId:
+                userMissionId,
+              ),
         ),
       );
+
+      // User returned from execution.
+      // Reload Supabase status.
+      if (!mounted) {
+        return;
+      }
+
+      await _loadMission();
     } catch (error) {
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error
-                .toString()
-                .replaceFirst(
-              'Exception: ',
-              '',
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              error
+                  .toString()
+                  .replaceFirst(
+                'Exception: ',
+                '',
+              ),
             ),
           ),
-        ),
-      );
+        );
     }
   }
 
