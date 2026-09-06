@@ -1,9 +1,12 @@
 import 'dart:math';
 import '../../data/repositories/group_repository.dart';
 import '../../data/models/travel_group_model.dart';
+import '../../data/models/trip_plan.dart';
+import '../../data/datasources/trip_plan_data_source.dart';
 
 class GroupService {
   final GroupRepository _repository = GroupRepository();
+  final TripPlanDataSource _tripPlanDataSource = TripPlanDataSource();
 
   String generateInvitationCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -64,39 +67,20 @@ class GroupService {
     return await _repository.fetchUserTeams(userId);
   }
 
-  Future<List<TravelGroup>> getPublicTeams() async {
+  Future<List<Map<String, dynamic>>> getPublicTeams() async {
     return await _repository.fetchPublicTeams();
   }
 
-  // Get team details with members enriched with profiles
+  // ---- getTeamDetails – members already contain profiles ----
   Future<Map<String, dynamic>> getTeamDetails(String groupId) async {
-    // Fetch team info
     final team = await _repository.fetchTeamInfo(groupId);
-
-    // Fetch members (raw)
     final members = await _repository.fetchTeamMembers(groupId);
-
-    // Collect all user IDs from members
-    final userIds = members.map((m) => m['user_id'] as String).toList();
-    // Fetch profiles for these users
-    final profiles = await _repository.getProfiles(userIds);
-    // Build a map for quick lookup
-    final profileMap = {for (var p in profiles) p['id']: p};
-
-    // Attach profile to each member
-    final enrichedMembers = members.map((m) {
-      final profile = profileMap[m['user_id']];
-      m['profiles'] = profile; // may be null
-      return m;
-    }).toList();
-
     return {
       'team': team,
-      'members': enrichedMembers,
+      'members': members,
     };
   }
 
-  // Get pending join requests with profile data
   Future<List<Map<String, dynamic>>> getPendingRequests(String groupId) async {
     final requests = await _repository.fetchPendingRequests(groupId);
     final userIds = requests.map((r) => r['user_id'] as String).toList();
@@ -134,13 +118,14 @@ class GroupService {
     );
   }
 
-  // -------------------------------------------------------------------------
-  // NEW: Remove a member (for owner)
-  // -------------------------------------------------------------------------
   Future<void> removeMember({
     required String groupId,
     required String userId,
   }) async {
     await _repository.removeTeamMember(groupId: groupId, userId: userId);
+  }
+
+  Future<TripPlan?> getTripPlanForGroup(String groupId) async {
+    return await _tripPlanDataSource.getPlanForGroup(groupId);
   }
 }

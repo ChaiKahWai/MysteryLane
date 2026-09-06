@@ -20,7 +20,7 @@ class GroupScreen extends StatefulWidget {
 }
 
 class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStateMixin {
-  // ---- COLORS (matching HomeScreen) ----
+  // ---- COLORS ----
   static const Color skyBlue = Color(0xFF0284C7);
   static const Color teal = Color(0xFF0D9488);
   static const Color darkText = Color(0xFF0F172A);
@@ -30,19 +30,31 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
 
   final GroupService _groupService = GroupService();
   late TabController _tabController;
+  int _currentTabIndex = 0;
 
   List<Map<String, dynamic>> _myTeams = [];
-  List<TravelGroup> _publicTeams = [];
+  List<Map<String, dynamic>> _publicTeams = [];
   bool _isLoading = false;
   String _searchQuery = '';
 
-  // Header state
+  // Date filter
+  DateTime? _selectedDate;
+
+  // Pagination
+  int _currentPage = 0;
+  static const int _itemsPerPage = 10;
+
   String? _headerProfilePictureUrl;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      setState(() {
+        _currentTabIndex = _tabController.index;
+      });
+    });
     _loadHeaderProfile();
     _loadData();
   }
@@ -138,6 +150,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
         setState(() {
           _myTeams = myTeams;
           _publicTeams = publicTeams;
+          _currentPage = 0;
         });
       }
     } catch (e) {
@@ -167,41 +180,162 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     }).toList();
   }
 
-  List<TravelGroup> _filterPublicTeams() {
-    if (_searchQuery.isEmpty) return _publicTeams;
-    return _publicTeams.where((team) {
-      return team.teamName.toLowerCase().contains(_searchQuery.toLowerCase());
-    }).toList();
+  List<Map<String, dynamic>> get _filteredPublicTeams {
+    List<Map<String, dynamic>> filtered = _publicTeams;
+
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((item) {
+        final team = item['team'] as TravelGroup;
+        return team.teamName.toLowerCase().contains(_searchQuery.toLowerCase());
+      }).toList();
+    }
+
+    if (_selectedDate != null) {
+      filtered = filtered.where((item) {
+        final team = item['team'] as TravelGroup;
+        if (team.tripStartDate == null || team.tripEndDate == null) return false;
+        return (_selectedDate!.isAfter(team.tripStartDate!) || _selectedDate!.isAtSameMomentAs(team.tripStartDate!)) &&
+            (_selectedDate!.isBefore(team.tripEndDate!) || _selectedDate!.isAtSameMomentAs(team.tripEndDate!));
+      }).toList();
+    }
+
+    return filtered;
+  }
+
+  int get _totalPages => (_filteredPublicTeams.length / _itemsPerPage).ceil();
+
+  List<Map<String, dynamic>> get _paginatedTeams {
+    if (_filteredPublicTeams.isEmpty) return [];
+    final start = _currentPage * _itemsPerPage;
+    final end = (start + _itemsPerPage).clamp(0, _filteredPublicTeams.length);
+    return _filteredPublicTeams.sublist(start, end);
+  }
+
+  void _goToPage(int page) {
+    if (page < 0 || page >= _totalPages) return;
+    setState(() {
+      _currentPage = page;
+    });
+  }
+
+  void _onFilterChanged() {
+    setState(() {
+      _currentPage = 0;
+    });
+  }
+
+  // ---- Date picker methods ----
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+      helpText: 'Select a date within trip range',
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+        _currentPage = 0;
+      });
+    }
+  }
+
+  void _clearDateFilter() {
+    setState(() {
+      _selectedDate = null;
+      _currentPage = 0;
+    });
   }
 
   // ---------- Build ----------
   @override
   Widget build(BuildContext context) {
+    final filteredPublic = _filteredPublicTeams;
+    final totalPages = _totalPages;
+    final paginated = _paginatedTeams;
+
     return Scaffold(
       backgroundColor: pageBackground,
-      extendBody: true,
+      extendBody: false,
       appBar: _buildTopAppBar(),
       body: Column(
         children: [
-          // ---- IN‑BODY HEADER ----
           _buildBodyHeader(),
-          // ---- SEARCH BAR ----
+          // ---- SEARCH BAR + DATE FILTER BUTTON ----
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search teams...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search teams...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey[200],
+                    ),
+                    onChanged: (value) {
+                      _searchQuery = value;
+                      _onFilterChanged();
+                    },
+                  ),
                 ),
-                filled: true,
-                fillColor: Colors.grey[200],
-              ),
-              onChanged: (value) => setState(() => _searchQuery = value),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(
+                    _selectedDate == null ? Icons.calendar_today : Icons.calendar_today,
+                    color: _selectedDate != null ? skyBlue : greyText,
+                  ),
+                  onPressed: _pickDate,
+                  tooltip: 'Filter by trip date',
+                ),
+                if (_selectedDate != null)
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    onPressed: _clearDateFilter,
+                    tooltip: 'Clear date filter',
+                  ),
+              ],
             ),
           ),
+          // ---- PUBLIC TEAMS HEADER ----
+          if (_currentTabIndex == 1)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Available Public Teams',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: darkText,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: skyBlue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      '${filteredPublic.length} squad${filteredPublic.length != 1 ? 's' : ''}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: skyBlue,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           // ---- TABS + CONTENT ----
           Expanded(
             child: TabBarView(
@@ -212,7 +346,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
                     : _buildMyTeamsList(),
                 _isLoading
                     ? const Center(child: CircularProgressIndicator())
-                    : _buildPublicTeamsList(),
+                    : _buildPublicTeamsList(paginated, totalPages),
               ],
             ),
           ),
@@ -224,7 +358,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- TOP APP BAR (same as HomeScreen) ----
+  // ---- TOP APP BAR ----
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
       automaticallyImplyLeading: false,
@@ -283,7 +417,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- IN‑BODY HEADER: title + segmented tabs ----
+  // ---- IN‑BODY HEADER ----
   Widget _buildBodyHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -302,7 +436,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
           ),
           const SizedBox(height: 10),
           Container(
-            height: 44, // slightly taller for better touch targets
+            height: 44,
             decoration: BoxDecoration(
               color: const Color(0xFFF0F9FF),
               borderRadius: BorderRadius.circular(22),
@@ -336,7 +470,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
               ),
               tabs: const [
                 Tab(text: 'My Teams'),
-                Tab(text: 'Explore'),
+                Tab(text: 'Public Teams'),
               ],
             ),
           ),
@@ -345,7 +479,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- BOTTOM BAR (TEAMS selected) ----
+  // ---- BOTTOM BAR ----
   Widget _buildBottomBar() {
     return BottomAppBar(
       height: 78,
@@ -389,7 +523,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
                 icon: Icons.groups_2_outlined,
                 label: 'TEAMS',
                 active: true,
-                onTap: () {}, // already here
+                onTap: () {},
               ),
             ),
           ],
@@ -398,7 +532,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- HOME FLOATING BUTTON (navigates to home) ----
+  // ---- HOME FLOATING BUTTON ----
   Widget _buildHomeButton() {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -510,21 +644,82 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- BODY: Public Teams list ----
-  Widget _buildPublicTeamsList() {
-    final filtered = _filterPublicTeams();
-    if (filtered.isEmpty) {
-      return const Center(child: Text('No public teams available.'));
+  // ---- BODY: Public Teams list (enhanced with first stop & light blue card) ----
+  Widget _buildPublicTeamsList(List<Map<String, dynamic>> paginated, int totalPages) {
+    if (_filteredPublicTeams.isEmpty) {
+      return Center(
+        child: Text(
+          _selectedDate == null
+              ? 'No public teams available.'
+              : 'No teams with trips covering ${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}.',
+        ),
+      );
     }
+
     return ListView.builder(
-      itemCount: filtered.length,
+      padding: const EdgeInsets.only(bottom: 80),
+      itemCount: paginated.length + 1,
       itemBuilder: (ctx, index) {
-        final team = filtered[index];
+        if (index == paginated.length) {
+          // Pagination footer
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  onPressed: _currentPage > 0 ? () => _goToPage(_currentPage - 1) : null,
+                  icon: const Icon(Icons.chevron_left),
+                ),
+                Text(
+                  'Page ${_currentPage + 1} of $totalPages',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                IconButton(
+                  onPressed: _currentPage < totalPages - 1 ? () => _goToPage(_currentPage + 1) : null,
+                  icon: const Icon(Icons.chevron_right),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final item = paginated[index];
+        final team = item['team'] as TravelGroup;
+        final ownerName = item['ownerName'] as String;
+        final tripStart = item['tripStart'] as DateTime?;
+        final tripEnd = item['tripEnd'] as DateTime?;
+        final firstStopName = item['firstStopName'] as String?;
+
         return Card(
+          color: Colors.white, // white background
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.blue.shade100, width: 1.5), // light blue border
+          ),
+          elevation: 2,
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: ListTile(
-            title: Text(team.teamName),
-            subtitle: Text('${team.teamType} · ${team.maxCapacity ?? '?'} members'),
+            title: Text(
+              team.teamName,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${team.teamType} · ${team.maxCapacity ?? '?'} members · Host: $ownerName'),
+                if (tripStart != null && tripEnd != null)
+                  Text(
+                    'Trip: ${tripStart.day}/${tripStart.month}/${tripStart.year} → ${tripEnd.day}/${tripEnd.month}/${tripEnd.year}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                if (firstStopName != null && firstStopName.isNotEmpty)
+                  Text(
+                    '📍 $firstStopName',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: skyBlue),
+                  ),
+              ],
+            ),
             trailing: ElevatedButton(
               onPressed: () async {
                 try {
@@ -563,7 +758,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
   }
 }
 
-// ---------- Helper widgets (copy from HomeScreen) ----------
+// ---------- Helper widgets (unchanged) ----------
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 

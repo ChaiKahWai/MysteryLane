@@ -1,5 +1,3 @@
-// lib/data/models/travel_group_model.dart
-
 class TravelGroup {
   final String groupId;
   final String ownerId;
@@ -11,9 +9,9 @@ class TravelGroup {
   final String? groupStatus;
   final DateTime? createdAt;
   final DateTime? updatedAt;
-
-  // For nested members or requests, you can add them as lists.
-  // For now we keep it simple.
+  // Trip plan date range
+  final DateTime? tripStartDate;
+  final DateTime? tripEndDate;
 
   TravelGroup({
     required this.groupId,
@@ -26,6 +24,8 @@ class TravelGroup {
     this.groupStatus,
     this.createdAt,
     this.updatedAt,
+    this.tripStartDate,
+    this.tripEndDate,
   });
 
   factory TravelGroup.fromJson(Map<String, dynamic> json) {
@@ -40,6 +40,8 @@ class TravelGroup {
       groupStatus: json['group_status'],
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : null,
       updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : null,
+      tripStartDate: json['trip_start_date'] != null ? DateTime.parse(json['trip_start_date']) : null,
+      tripEndDate: json['trip_end_date'] != null ? DateTime.parse(json['trip_end_date']) : null,
     );
   }
 
@@ -54,5 +56,7 @@ class TravelGroup {
     'group_status': groupStatus,
     'created_at': createdAt?.toIso8601String(),
     'updated_at': updatedAt?.toIso8601String(),
+    'trip_start_date': tripStartDate?.toIso8601String(),
+    'trip_end_date': tripEndDate?.toIso8601String(),
   };
 }
