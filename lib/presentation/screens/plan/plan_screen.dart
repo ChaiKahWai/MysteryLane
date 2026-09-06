@@ -85,10 +85,13 @@ class _PlanScreenState extends State<PlanScreen> {
     super.initState();
     try {
       _initController();
+      blindBoxController = BlindBoxController.production();
+      _loadBlindBoxPlaces();
       if (widget.initialGroupId != null) {
         _loadGroupPlan(widget.initialGroupId!);
       } else {
-        load();   // original load all plans
+        load();
+        nearby();
       }
     } catch (e) {
       error = '$e';
