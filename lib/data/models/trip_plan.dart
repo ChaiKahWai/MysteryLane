@@ -45,6 +45,7 @@ class TripPlan {
   final String? inviteCode;
   final String? groupId;
   final bool routeAccepted;
+  final int? estimatedTravelMinutes;
   final List<ItineraryStop> stops;
 
   const TripPlan({
@@ -57,6 +58,7 @@ class TripPlan {
     required this.inviteCode,
     this.groupId,
     required this.routeAccepted,
+    this.estimatedTravelMinutes,
     required this.stops,
   });
 
