@@ -1969,57 +1969,40 @@ class _CheckpointScreenState
 
   Widget _buildHomeButton() {
     return Padding(
-      padding:
-      const EdgeInsets.only(
+      padding: const EdgeInsets.only(
         top: 10,
       ),
-
       child: InkWell(
-        customBorder:
-        const CircleBorder(),
+        customBorder: const CircleBorder(),
 
-        onTap:
-        _openHome,
+        onTap: _openHome,
 
         child: Container(
           width: 62,
           height: 62,
 
-          decoration:
-          BoxDecoration(
-            shape:
-            BoxShape.circle,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
 
-            gradient:
-            const LinearGradient(
+            gradient: const LinearGradient(
               colors: [
                 skyBlue,
                 teal,
               ],
-
-              begin:
-              Alignment.topLeft,
-
-              end:
-              Alignment.bottomRight,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
 
-          height: 64,
-
+            border: Border.all(
+              color: Colors.white,
               width: 4,
             ),
-
-            border: Border.all(color: Colors.white, width: 4),
 
             boxShadow: const [
               BoxShadow(
                 color: Color(0x3D0284C7),
-
-                blurRadius:
-                16,
-
-                offset:
-                Offset(
+                blurRadius: 16,
+                offset: Offset(
                   0,
                   7,
                 ),
@@ -2028,33 +2011,26 @@ class _CheckpointScreenState
           ),
 
           child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment:
+            MainAxisAlignment.center,
 
             children: [
               Icon(
                 Icons.home_rounded,
-
-                color:
-                Color(
+                color: Color(
                   0xFFFDE68A,
                 ),
-
                 size: 27,
               ),
 
               Text(
                 'HOME',
-
                 style: TextStyle(
                   color: Colors.white,
-
                   fontSize: 8,
-
                   fontWeight:
                   FontWeight.w900,
-
-                  letterSpacing:
-                  0.8,
+                  letterSpacing: 0.8,
                 ),
               ),
             ],
