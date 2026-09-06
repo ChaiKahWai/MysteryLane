@@ -24,15 +24,15 @@ class ItineraryStop {
     int? dayNumber,
     int? sortOrder,
   }) => ItineraryStop(
-        placeId: placeId,
-        name: name ?? this.name,
-        address: address,
-        latitude: latitude,
-        longitude: longitude,
-        dayNumber: dayNumber ?? this.dayNumber,
-        sortOrder: sortOrder ?? this.sortOrder,
-        source: source ?? this.source,
-      );
+    placeId: placeId,
+    name: name ?? this.name,
+    address: address,
+    latitude: latitude,
+    longitude: longitude,
+    dayNumber: dayNumber ?? this.dayNumber,
+    sortOrder: sortOrder ?? this.sortOrder,
+    source: source ?? this.source,
+  );
 }
 
 class TripPlan {
@@ -43,8 +43,8 @@ class TripPlan {
   final String mode;
   final String visibility;
   final String? inviteCode;
-  final String? groupId;
   final bool routeAccepted;
+  final int? estimatedTravelMinutes;
   final List<ItineraryStop> stops;
 
   const TripPlan({
@@ -55,8 +55,8 @@ class TripPlan {
     required this.mode,
     required this.visibility,
     required this.inviteCode,
-    this.groupId,
     required this.routeAccepted,
+    this.estimatedTravelMinutes,
     required this.stops,
   });
 
