@@ -2,49 +2,525 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../application/controller/complete_mission_controller.dart';
+import '../../../data/models/checkpoint_destination.dart';
+
+import '../puzzle/puzzle_screen.dart';
+
 class CompleteMissionScreen extends StatelessWidget {
-  final String title;
-
-  final int reward;
-
-  final int totalPoints;
-
-  // ============================================================
-  // NEW
-  // ============================================================
-
-  final String? photoPath;
-
-  final String? verificationReason;
-
-  final double? verificationConfidence;
-
-  const CompleteMissionScreen({
+  CompleteMissionScreen({
     super.key,
-    required this.title,
-    required this.reward,
-    required this.totalPoints,
-    this.photoPath,
-    this.verificationReason,
-    this.verificationConfidence,
-  });
+    required CheckpointDestination destination,
+    required String title,
+    required int reward,
+    required int totalPoints,
+    String? photoPath,
+    String? verificationReason,
+    double? verificationConfidence,
+  }) : _controller = CompleteMissionController(
+    destination: destination,
+    title: title,
+    reward: reward,
+    totalPoints: totalPoints,
+    photoPath: photoPath,
+    verificationReason: verificationReason,
+    verificationConfidence:
+    verificationConfidence,
+  );
 
-  // ============================================================
+  // ===========================================================================
+  // CONTROLLER
+  // ===========================================================================
+
+  final CompleteMissionController _controller;
+
+  // ===========================================================================
+  // COLORS
+  // ===========================================================================
+
+  static const Color skyBlue =
+  Color(0xFF0284C7);
+
+  static const Color darkBlue =
+  Color(0xFF0369A1);
+
+  static const Color pageBackground =
+  Color(0xFFF8FAFC);
+
+  static const Color darkText =
+  Color(0xFF0F172A);
+
+  static const Color bodyText =
+  Color(0xFF64748B);
+
+  static const Color successGreen =
+  Color(0xFF059669);
+
+  static const Color lightGreen =
+  Color(0xFFECFDF5);
+
+  static const Color greenBorder =
+  Color(0xFFA7F3D0);
+
+  // ===========================================================================
   // RETURN TO CHECKPOINT
-  // ============================================================
+  // ===========================================================================
 
   void _returnToCheckpoint(
       BuildContext context,
       ) {
     Navigator.pop(
       context,
-      reward,
+      _controller.reward,
     );
   }
 
-  // ============================================================
+  // ===========================================================================
+  // OPEN PUZZLE
+  //
+  // SAME CONNECTION AS:
+  // Checkpoint Screen -> VIEW PUZZLE
+  //
+  // Controller prepares destination data.
+  // Presentation handles Navigator.
+  // ===========================================================================
+
+  void _openPuzzle(
+      BuildContext context,
+      ) {
+    final CompleteMissionPuzzleData data =
+        _controller.puzzleData;
+
+    final MissionCheckpoint checkpoint =
+    MissionCheckpoint(
+      id:
+      data.destinationId,
+
+      title:
+      data.title,
+
+      imageUrl:
+      data.imageUrl,
+
+      locationName:
+      data.locationName,
+
+      category:
+      data.category,
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            PuzzleScreen(
+              mission:
+              checkpoint,
+
+              initialLocationSource:
+              PuzzleLocationSource
+                  .checkpoint,
+            ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // VERIFICATION DETAILS
+  // ===========================================================================
+
+  void _showVerificationDetails(
+      BuildContext context,
+      ) {
+    showModalBottomSheet<void>(
+      context:
+      context,
+
+      backgroundColor:
+      Colors.transparent,
+
+      isScrollControlled:
+      true,
+
+      builder:
+          (BuildContext sheetContext) {
+        return SafeArea(
+          child: Container(
+            margin:
+            const EdgeInsets.all(
+              12,
+            ),
+
+            padding:
+            const EdgeInsets.fromLTRB(
+              20,
+              12,
+              20,
+              24,
+            ),
+
+            decoration:
+            BoxDecoration(
+              color:
+              Colors.white,
+
+              borderRadius:
+              BorderRadius.circular(
+                26,
+              ),
+            ),
+
+            child:
+            Column(
+              mainAxisSize:
+              MainAxisSize.min,
+
+              crossAxisAlignment:
+              CrossAxisAlignment.start,
+
+              children: [
+                // -------------------------------------------------------------
+                // DRAG HANDLE
+                // -------------------------------------------------------------
+
+                Center(
+                  child:
+                  Container(
+                    width:
+                    42,
+
+                    height:
+                    4,
+
+                    decoration:
+                    BoxDecoration(
+                      color:
+                      const Color(
+                        0xFFCBD5E1,
+                      ),
+
+                      borderRadius:
+                      BorderRadius.circular(
+                        99,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  18,
+                ),
+
+                // -------------------------------------------------------------
+                // TITLE
+                // -------------------------------------------------------------
+
+                const Row(
+                  children: [
+                    Icon(
+                      Icons
+                          .auto_awesome_rounded,
+
+                      color:
+                      successGreen,
+
+                      size:
+                      23,
+                    ),
+
+                    SizedBox(
+                      width:
+                      9,
+                    ),
+
+                    Expanded(
+                      child:
+                      Text(
+                        'AI Verification Details',
+
+                        style:
+                        TextStyle(
+                          color:
+                          darkText,
+
+                          fontSize:
+                          17,
+
+                          fontWeight:
+                          FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(
+                  height:
+                  22,
+                ),
+
+                // -------------------------------------------------------------
+                // RESULT
+                // -------------------------------------------------------------
+
+                const Text(
+                  'Verification Result',
+
+                  style:
+                  TextStyle(
+                    color:
+                    bodyText,
+
+                    fontSize:
+                    10.5,
+
+                    fontWeight:
+                    FontWeight.w800,
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  7,
+                ),
+
+                const Row(
+                  children: [
+                    Icon(
+                      Icons
+                          .check_circle_rounded,
+
+                      color:
+                      successGreen,
+
+                      size:
+                      19,
+                    ),
+
+                    SizedBox(
+                      width:
+                      7,
+                    ),
+
+                    Text(
+                      'Verified',
+
+                      style:
+                      TextStyle(
+                        color:
+                        Color(
+                          0xFF047857,
+                        ),
+
+                        fontSize:
+                        13,
+
+                        fontWeight:
+                        FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(
+                  height:
+                  20,
+                ),
+
+                // -------------------------------------------------------------
+                // REASON
+                // -------------------------------------------------------------
+
+                const Text(
+                  'Reason',
+
+                  style:
+                  TextStyle(
+                    color:
+                    bodyText,
+
+                    fontSize:
+                    10.5,
+
+                    fontWeight:
+                    FontWeight.w800,
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  7,
+                ),
+
+                Text(
+                  _controller
+                      .verificationReasonText,
+
+                  style:
+                  const TextStyle(
+                    color:
+                    Color(
+                      0xFF334155,
+                    ),
+
+                    fontSize:
+                    12,
+
+                    height:
+                    1.5,
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  20,
+                ),
+
+                // -------------------------------------------------------------
+                // CONFIDENCE
+                // -------------------------------------------------------------
+
+                const Text(
+                  'AI Confidence',
+
+                  style:
+                  TextStyle(
+                    color:
+                    bodyText,
+
+                    fontSize:
+                    10.5,
+
+                    fontWeight:
+                    FontWeight.w800,
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  9,
+                ),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child:
+                      ClipRRect(
+                        borderRadius:
+                        BorderRadius.circular(
+                          99,
+                        ),
+
+                        child:
+                        LinearProgressIndicator(
+                          value:
+                          _controller
+                              .confidencePercent /
+                              100,
+
+                          minHeight:
+                          8,
+
+                          backgroundColor:
+                          const Color(
+                            0xFFD1FAE5,
+                          ),
+
+                          color:
+                          successGreen,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(
+                      width:
+                      12,
+                    ),
+
+                    Text(
+                      '${_controller.confidencePercent}%',
+
+                      style:
+                      const TextStyle(
+                        color:
+                        successGreen,
+
+                        fontSize:
+                        13,
+
+                        fontWeight:
+                        FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(
+                  height:
+                  25,
+                ),
+
+                // -------------------------------------------------------------
+                // DONE
+                // -------------------------------------------------------------
+
+                SizedBox(
+                  width:
+                  double.infinity,
+
+                  height:
+                  48,
+
+                  child:
+                  FilledButton(
+                    onPressed:
+                        () {
+                      Navigator.pop(
+                        sheetContext,
+                      );
+                    },
+
+                    style:
+                    FilledButton.styleFrom(
+                      backgroundColor:
+                      skyBlue,
+
+                      foregroundColor:
+                      Colors.white,
+
+                      shape:
+                      RoundedRectangleBorder(
+                        borderRadius:
+                        BorderRadius.circular(
+                          24,
+                        ),
+                      ),
+                    ),
+
+                    child:
+                    const Text(
+                      'DONE',
+
+                      style:
+                      TextStyle(
+                        fontWeight:
+                        FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ===========================================================================
   // BUILD
-  // ============================================================
+  // ===========================================================================
 
   @override
   Widget build(
@@ -52,87 +528,70 @@ class CompleteMissionScreen extends StatelessWidget {
       ) {
     return Scaffold(
       backgroundColor:
-      const Color(
-        0xFFF8FAFC,
-      ),
+      pageBackground,
 
-      body: SafeArea(
-        child: SingleChildScrollView(
+      body:
+      SafeArea(
+        child:
+        SingleChildScrollView(
           padding:
           const EdgeInsets.fromLTRB(
             18,
-            12,
+            14,
             18,
-            30,
+            28,
           ),
 
-          child: Column(
-            children: [
-              // =================================================
-              // HEADER
-              // =================================================
+          child:
+          Column(
+            crossAxisAlignment:
+            CrossAxisAlignment.stretch,
 
+            children: [
               _buildHeader(
                 context,
               ),
 
               const SizedBox(
-                height: 18,
+                height:
+                18,
               ),
 
-              // =================================================
-              // COMPLETION HERO
-              // =================================================
-
-              _buildCompletionHero(),
+              _buildSuccessCard(),
 
               const SizedBox(
-                height: 18,
+                height:
+                18,
               ),
 
-              // =================================================
-              // MISSION VERIFICATION
-              // =================================================
-
-              _buildVerificationCard(),
+              _buildVerificationCard(
+                context,
+              ),
 
               const SizedBox(
-                height: 20,
+                height:
+                20,
               ),
 
-              // =================================================
-              // RETURN BUTTON
-              // =================================================
+              // ===============================================================
+              // RETURN TO CHECKPOINTS
+              // ===============================================================
 
               SizedBox(
-                width:
-                double.infinity,
+                height:
+                52,
 
                 child:
-                ElevatedButton.icon(
-                  onPressed: () {
+                FilledButton.icon(
+                  onPressed:
+                      () {
                     _returnToCheckpoint(
                       context,
                     );
                   },
 
-                  icon:
-                  const Icon(
-                    Icons
-                        .explore_rounded,
-
-                    size:
-                    18,
-                  ),
-
-                  label:
-                  const Text(
-                    'RETURN TO CHECKPOINTS',
-                  ),
-
                   style:
-                  ElevatedButton
-                      .styleFrom(
+                  FilledButton.styleFrom(
                     backgroundColor:
                     const Color(
                       0xFF1E293B,
@@ -141,120 +600,114 @@ class CompleteMissionScreen extends StatelessWidget {
                     foregroundColor:
                     Colors.white,
 
-                    elevation: 0,
-
-                    padding:
-                    const EdgeInsets
-                        .symmetric(
-                      vertical: 16,
-                    ),
-
-                    textStyle:
-                    const TextStyle(
-                      fontSize: 12,
-
-                      fontWeight:
-                      FontWeight.w800,
-
-                      letterSpacing:
-                      0.4,
-                    ),
-
                     shape:
                     RoundedRectangleBorder(
                       borderRadius:
                       BorderRadius.circular(
-                        30,
+                        28,
                       ),
+                    ),
+                  ),
+
+                  icon:
+                  const Icon(
+                    Icons
+                        .explore_rounded,
+
+                    size:
+                    19,
+                  ),
+
+                  label:
+                  const Text(
+                    'RETURN TO CHECKPOINTS',
+
+                    style:
+                    TextStyle(
+                      fontSize:
+                      11,
+
+                      fontWeight:
+                      FontWeight.w900,
+
+                      letterSpacing:
+                      0.3,
                     ),
                   ),
                 ),
               ),
 
               const SizedBox(
-                height: 10,
+                height:
+                10,
               ),
 
-              // =================================================
+              // ===============================================================
               // PUZZLE
-              // =================================================
+              // ===============================================================
 
               SizedBox(
-                width:
-                double.infinity,
+                height:
+                52,
 
                 child:
                 OutlinedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(
+                  onPressed:
+                      () {
+                    _openPuzzle(
                       context,
-                    ).showSnackBar(
-                      const SnackBar(
-                        behavior:
-                        SnackBarBehavior
-                            .floating,
-
-                        content:
-                        Text(
-                          'Puzzle Challenge will be connected later.',
-                        ),
-                      ),
                     );
                   },
 
-                  icon:
-                  const Icon(
-                    Icons
-                        .auto_awesome_rounded,
-
-                    size:
-                    18,
-                  ),
-
-                  label:
-                  const Text(
-                    'PUZZLE CHALLENGE',
-                  ),
-
                   style:
-                  OutlinedButton
-                      .styleFrom(
+                  OutlinedButton.styleFrom(
                     foregroundColor:
-                    const Color(
-                      0xFF0284C7,
-                    ),
+                    skyBlue,
+
+                    backgroundColor:
+                    Colors.white,
 
                     side:
                     const BorderSide(
                       color:
-                      Color(
-                        0xFF0284C7,
-                      ),
-                    ),
+                      skyBlue,
 
-                    padding:
-                    const EdgeInsets
-                        .symmetric(
-                      vertical: 16,
-                    ),
-
-                    textStyle:
-                    const TextStyle(
-                      fontSize: 12,
-
-                      fontWeight:
-                      FontWeight.w800,
-
-                      letterSpacing:
-                      0.4,
+                      width:
+                      1.4,
                     ),
 
                     shape:
                     RoundedRectangleBorder(
                       borderRadius:
                       BorderRadius.circular(
-                        30,
+                        28,
                       ),
+                    ),
+                  ),
+
+                  icon:
+                  const Icon(
+                    Icons
+                        .extension_rounded,
+
+                    size:
+                    19,
+                  ),
+
+                  label:
+                  const Text(
+                    'PUZZLE CHALLENGE',
+
+                    style:
+                    TextStyle(
+                      fontSize:
+                      11,
+
+                      fontWeight:
+                      FontWeight.w900,
+
+                      letterSpacing:
+                      0.3,
                     ),
                   ),
                 ),
@@ -266,38 +719,65 @@ class CompleteMissionScreen extends StatelessWidget {
     );
   }
 
-  // ============================================================
+  // ===========================================================================
   // HEADER
-  // ============================================================
+  // ===========================================================================
 
   Widget _buildHeader(
       BuildContext context,
       ) {
     return Row(
       children: [
-        IconButton(
-          onPressed: () {
-            _returnToCheckpoint(
-              context,
-            );
-          },
+        Material(
+          color:
+          Colors.white,
 
-          icon:
-          const Icon(
-            Icons
-                .arrow_back_ios_new_rounded,
+          shape:
+          const CircleBorder(),
 
-            color:
-            Color(
-              0xFF0F172A,
+          elevation:
+          1,
+
+          child:
+          InkWell(
+            customBorder:
+            const CircleBorder(),
+
+            onTap:
+                () {
+              _returnToCheckpoint(
+                context,
+              );
+            },
+
+            child:
+            const SizedBox(
+              width:
+              42,
+
+              height:
+              42,
+
+              child:
+              Icon(
+                Icons
+                    .arrow_back_rounded,
+
+                size:
+                21,
+
+                color:
+                Color(
+                  0xFF334155,
+                ),
+              ),
             ),
-
-            size: 20,
           ),
         ),
 
         const Expanded(
-          child: Text(
+          child:
+          Text(
             'Mission Completed!',
 
             textAlign:
@@ -306,11 +786,10 @@ class CompleteMissionScreen extends StatelessWidget {
             style:
             TextStyle(
               color:
-              Color(
-                0xFF0F172A,
-              ),
+              darkText,
 
-              fontSize: 20,
+              fontSize:
+              20,
 
               fontWeight:
               FontWeight.w900,
@@ -321,8 +800,11 @@ class CompleteMissionScreen extends StatelessWidget {
         Container(
           padding:
           const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 7,
+            horizontal:
+            10,
+
+            vertical:
+            8,
           ),
 
           decoration:
@@ -337,7 +819,8 @@ class CompleteMissionScreen extends StatelessWidget {
               20,
             ),
 
-            border: Border.all(
+            border:
+            Border.all(
               color:
               const Color(
                 0xFFBAE6FD,
@@ -345,38 +828,38 @@ class CompleteMissionScreen extends StatelessWidget {
             ),
           ),
 
-          child: Row(
+          child:
+          Row(
             children: [
               const Icon(
                 Icons
                     .toll_rounded,
 
-                size: 15,
+                size:
+                17,
 
                 color:
-                Color(
-                  0xFF0284C7,
-                ),
+                skyBlue,
               ),
 
               const SizedBox(
-                width: 4,
+                width:
+                4,
               ),
 
               Text(
-                '$totalPoints',
+                '${_controller.totalPoints}',
 
                 style:
                 const TextStyle(
                   color:
-                  Color(
-                    0xFF0284C7,
-                  ),
+                  skyBlue,
 
-                  fontSize: 11,
+                  fontSize:
+                  13,
 
                   fontWeight:
-                  FontWeight.w800,
+                  FontWeight.w900,
                 ),
               ),
             ],
@@ -386,20 +869,17 @@ class CompleteMissionScreen extends StatelessWidget {
     );
   }
 
-  // ============================================================
-  // COMPLETION HERO
-  // ============================================================
+  // ===========================================================================
+  // SUCCESS CARD
+  // ===========================================================================
 
-  Widget _buildCompletionHero() {
+  Widget _buildSuccessCard() {
     return Container(
-      width:
-      double.infinity,
-
       padding:
       const EdgeInsets.fromLTRB(
-        20,
-        27,
-        20,
+        22,
+        25,
+        22,
         24,
       ),
 
@@ -408,12 +888,8 @@ class CompleteMissionScreen extends StatelessWidget {
         gradient:
         const LinearGradient(
           colors: [
-            Color(
-              0xFF0284C7,
-            ),
-            Color(
-              0xFF0369A1,
-            ),
+            skyBlue,
+            darkBlue,
           ],
 
           begin:
@@ -425,7 +901,7 @@ class CompleteMissionScreen extends StatelessWidget {
 
         borderRadius:
         BorderRadius.circular(
-          28,
+          30,
         ),
 
         boxShadow:
@@ -433,26 +909,30 @@ class CompleteMissionScreen extends StatelessWidget {
           BoxShadow(
             color:
             Color(
-              0x260284C7,
+              0x330284C7,
             ),
 
-            blurRadius: 18,
+            blurRadius:
+            22,
 
             offset:
             Offset(
               0,
-              8,
+              10,
             ),
           ),
         ],
       ),
 
-      child: Column(
+      child:
+      Column(
         children: [
-          // Trophy
           Container(
-            width: 82,
-            height: 82,
+            width:
+            72,
+
+            height:
+            72,
 
             decoration:
             BoxDecoration(
@@ -461,39 +941,95 @@ class CompleteMissionScreen extends StatelessWidget {
 
               color:
               const Color(
-                0x1AFFFFFF,
+                0x33FBBF24,
               ),
 
               border:
               Border.all(
                 color:
                 const Color(
-                  0xFFFACC15,
+                  0xFFFCD34D,
                 ),
 
-                width: 2,
+                width:
+                2,
               ),
             ),
 
             child:
             const Icon(
-              Icons.emoji_events_rounded,
-
-              size: 37,
+              Icons
+                  .emoji_events_rounded,
 
               color:
               Color(
-                0xFFFACC15,
+                0xFFFCD34D,
+              ),
+
+              size:
+              38,
+            ),
+          ),
+
+          const SizedBox(
+            height:
+            13,
+          ),
+
+          Container(
+            padding:
+            const EdgeInsets.symmetric(
+              horizontal:
+              12,
+
+              vertical:
+              5,
+            ),
+
+            decoration:
+            BoxDecoration(
+              color:
+              Colors.white.withValues(
+                alpha:
+                0.16,
+              ),
+
+              borderRadius:
+              BorderRadius.circular(
+                20,
+              ),
+            ),
+
+            child:
+            const Text(
+              '✦ CHECKPOINT MASTERED ✦',
+
+              style:
+              TextStyle(
+                color:
+                Color(
+                  0xFFE0F2FE,
+                ),
+
+                fontSize:
+                9.5,
+
+                fontWeight:
+                FontWeight.w900,
+
+                letterSpacing:
+                0.8,
               ),
             ),
           ),
 
           const SizedBox(
-            height: 18,
+            height:
+            10,
           ),
 
           Text(
-            title,
+            _controller.title,
 
             textAlign:
             TextAlign.center,
@@ -503,7 +1039,8 @@ class CompleteMissionScreen extends StatelessWidget {
               color:
               Colors.white,
 
-              fontSize: 20,
+              fontSize:
+              22,
 
               fontWeight:
               FontWeight.w900,
@@ -511,7 +1048,8 @@ class CompleteMissionScreen extends StatelessWidget {
           ),
 
           const SizedBox(
-            height: 7,
+            height:
+            6,
           ),
 
           const Text(
@@ -524,22 +1062,27 @@ class CompleteMissionScreen extends StatelessWidget {
             TextStyle(
               color:
               Color(
-                0xFFBAE6FD,
+                0xFFDBEAFE,
               ),
 
-              fontSize: 11,
+              fontSize:
+              11.5,
             ),
           ),
 
           const SizedBox(
-            height: 17,
+            height:
+            16,
           ),
 
           Container(
             padding:
             const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 10,
+              horizontal:
+              16,
+
+              vertical:
+              10,
             ),
 
             decoration:
@@ -551,41 +1094,42 @@ class CompleteMissionScreen extends StatelessWidget {
 
               borderRadius:
               BorderRadius.circular(
-                30,
+                24,
               ),
             ),
 
-            child: Row(
+            child:
+            Row(
               mainAxisSize:
               MainAxisSize.min,
 
               children: [
                 const Icon(
-                  Icons.star_rounded,
+                  Icons
+                      .star_rounded,
 
                   color:
-                  Color(
-                    0xFF0F172A,
-                  ),
+                  darkText,
 
-                  size: 21,
+                  size:
+                  19,
                 ),
 
                 const SizedBox(
-                  width: 6,
+                  width:
+                  6,
                 ),
 
                 Text(
-                  '+$reward Exploration Points',
+                  '+${_controller.reward} Exploration Points',
 
                   style:
                   const TextStyle(
                     color:
-                    Color(
-                      0xFF0F172A,
-                    ),
+                    darkText,
 
-                    fontSize: 12,
+                    fontSize:
+                    11.5,
 
                     fontWeight:
                     FontWeight.w900,
@@ -599,15 +1143,14 @@ class CompleteMissionScreen extends StatelessWidget {
     );
   }
 
-  // ============================================================
+  // ===========================================================================
   // VERIFICATION CARD
-  // ============================================================
+  // ===========================================================================
 
-  Widget _buildVerificationCard() {
+  Widget _buildVerificationCard(
+      BuildContext context,
+      ) {
     return Container(
-      width:
-      double.infinity,
-
       padding:
       const EdgeInsets.all(
         18,
@@ -632,431 +1175,406 @@ class CompleteMissionScreen extends StatelessWidget {
         ),
       ),
 
-      child: Column(
+      child:
+      Column(
         crossAxisAlignment:
-        CrossAxisAlignment.start,
+        CrossAxisAlignment.stretch,
 
         children: [
-          // ====================================================
-          // TITLE + VERIFIED BADGE
-          // ====================================================
-
-          Row(
+          const Row(
             children: [
-              const Icon(
-                Icons.verified_rounded,
+              Icon(
+                Icons
+                    .verified_rounded,
 
                 color:
-                Color(
-                  0xFF059669,
-                ),
+                successGreen,
 
-                size: 21,
+                size:
+                21,
               ),
 
-              const SizedBox(
-                width: 8,
+              SizedBox(
+                width:
+                8,
               ),
 
-              const Expanded(
-                child: Text(
+              Expanded(
+                child:
+                Text(
                   'Mission Verification',
 
                   style:
                   TextStyle(
                     color:
-                    Color(
-                      0xFF0F172A,
-                    ),
+                    darkText,
 
-                    fontSize: 14,
+                    fontSize:
+                    13.5,
 
                     fontWeight:
-                    FontWeight.w800,
+                    FontWeight.w900,
                   ),
                 ),
               ),
 
-              const _VerifiedPill(),
+              _VerifiedPill(),
             ],
           ),
 
           const SizedBox(
-            height: 16,
+            height:
+            16,
           ),
 
-          // ====================================================
-          // ACTUAL SUBMITTED PHOTO
-          // ====================================================
+          // ===============================================================
+          // PHOTO
+          // ===============================================================
 
-          if (photoPath != null &&
-              photoPath!.isNotEmpty &&
-              File(photoPath!).existsSync())
-            ClipRRect(
-              borderRadius:
-              BorderRadius.circular(
-                18,
-              ),
-
-              child: Image.file(
-                File(
-                  photoPath!,
-                ),
-
-                width:
-                double.infinity,
-
-                height: 230,
-
-                fit:
-                BoxFit.cover,
-              ),
-            )
-          else
-            Container(
-              width:
-              double.infinity,
-
-              height: 150,
-
-              decoration:
-              BoxDecoration(
-                color:
-                const Color(
-                  0xFFEFF6FF,
-                ),
-
-                borderRadius:
-                BorderRadius.circular(
-                  18,
-                ),
-              ),
-
-              child:
-              const Column(
-                mainAxisAlignment:
-                MainAxisAlignment.center,
-
-                children: [
-                  Icon(
-                    Icons
-                        .camera_alt_rounded,
-
-                    color:
-                    Color(
-                      0xFF2563EB,
-                    ),
-
-                    size: 40,
-                  ),
-
-                  SizedBox(
-                    height: 10,
-                  ),
-
-                  Text(
-                    'Mission Photo Submitted',
-
-                    style:
-                    TextStyle(
-                      color:
-                      Color(
-                        0xFF334155,
-                      ),
-
-                      fontWeight:
-                      FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          _buildEvidenceImage(),
 
           const SizedBox(
-            height: 15,
+            height:
+            15,
           ),
 
-          // ====================================================
-          // GPS STATUS
-          // ====================================================
+          // ===============================================================
+          // GPS
+          // ===============================================================
 
-          _buildVerificationRow(
+          const _VerificationRow(
             icon:
-            Icons.my_location_rounded,
+            Icons
+                .my_location_rounded,
 
             label:
             'GPS Confirmed',
-
-            value:
-            'VERIFIED',
           ),
 
           const SizedBox(
-            height: 10,
+            height:
+            9,
           ),
 
-          // ====================================================
-          // GEMINI STATUS
-          // ====================================================
+          // ===============================================================
+          // AI
+          // ===============================================================
 
-          _buildVerificationRow(
+          const _VerificationRow(
             icon:
             Icons
-                .psychology_alt_rounded,
+                .auto_awesome_rounded,
 
             label:
-            'Gemini Photo Verification',
-
-            value:
-            'VERIFIED',
+            'AI Photo Verification',
           ),
 
-          // ====================================================
-          // GEMINI REASON
-          // ====================================================
+          const SizedBox(
+            height:
+            14,
+          ),
 
-          if (verificationReason !=
-              null &&
-              verificationReason!
-                  .isNotEmpty) ...[
-            const SizedBox(
-              height: 16,
+          // ===============================================================
+          // SIMPLE USER RESULT
+          // ===============================================================
+
+          Container(
+            padding:
+            const EdgeInsets.all(
+              14,
             ),
 
-            Container(
-              width:
-              double.infinity,
+            decoration:
+            BoxDecoration(
+              color:
+              lightGreen,
 
-              padding:
-              const EdgeInsets.all(
-                14,
+              borderRadius:
+              BorderRadius.circular(
+                15,
               ),
 
-              decoration:
-              BoxDecoration(
+              border:
+              Border.all(
                 color:
-                const Color(
-                  0xFFF0FDF4,
-                ),
-
-                borderRadius:
-                BorderRadius.circular(
-                  15,
-                ),
-
-                border:
-                Border.all(
-                  color:
-                  const Color(
-                    0xFFBBF7D0,
-                  ),
-                ),
+                greenBorder,
               ),
+            ),
 
-              child: Column(
-                crossAxisAlignment:
-                CrossAxisAlignment.start,
+            child:
+            Row(
+              crossAxisAlignment:
+              CrossAxisAlignment.start,
 
-                children: [
-                  const Text(
-                    'Gemini Verification Result',
+              children: [
+                Container(
+                  width:
+                  34,
 
-                    style:
-                    TextStyle(
-                      color:
-                      Color(
-                        0xFF047857,
-                      ),
+                  height:
+                  34,
 
-                      fontSize: 11,
+                  decoration:
+                  BoxDecoration(
+                    color:
+                    Colors.white,
 
-                      fontWeight:
-                      FontWeight.w800,
+                    borderRadius:
+                    BorderRadius.circular(
+                      10,
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 7,
+                  child:
+                  const Icon(
+                    Icons
+                        .check_circle_rounded,
+
+                    color:
+                    successGreen,
+
+                    size:
+                    20,
                   ),
+                ),
 
-                  Text(
-                    verificationReason!,
+                const SizedBox(
+                  width:
+                  10,
+                ),
 
-                    style:
-                    const TextStyle(
-                      color:
-                      Color(
-                        0xFF475569,
-                      ),
+                const Expanded(
+                  child:
+                  Column(
+                    crossAxisAlignment:
+                    CrossAxisAlignment.start,
 
-                      fontSize: 12,
+                    children: [
+                      Text(
+                        'Photo Verified',
 
-                      height: 1.45,
-                    ),
-                  ),
-
-                  if (verificationConfidence !=
-                      null) ...[
-                    const SizedBox(
-                      height: 10,
-                    ),
-
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons
-                              .analytics_outlined,
-
-                          size: 15,
-
+                        style:
+                        TextStyle(
                           color:
                           Color(
-                            0xFF059669,
+                            0xFF047857,
                           ),
+
+                          fontSize:
+                          11.5,
+
+                          fontWeight:
+                          FontWeight.w900,
                         ),
+                      ),
 
-                        const SizedBox(
-                          width: 5,
-                        ),
+                      SizedBox(
+                        height:
+                        4,
+                      ),
 
-                        Text(
-                          'Confidence: '
-                              '${(verificationConfidence! * 100).toStringAsFixed(0)}%',
+                      Text(
+                        'Your photo matches the mission requirement.',
 
-                          style:
-                          const TextStyle(
-                            color:
-                            Color(
-                              0xFF047857,
-                            ),
-
-                            fontSize:
-                            11,
-
-                            fontWeight:
-                            FontWeight.w700,
+                        style:
+                        TextStyle(
+                          color:
+                          Color(
+                            0xFF475569,
                           ),
+
+                          fontSize:
+                          11.5,
+
+                          height:
+                          1.4,
                         ),
-                      ],
-                    ),
-                  ],
-                ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ===============================================================
+          // DETAILS
+          // ===============================================================
+
+          Align(
+            alignment:
+            Alignment.centerRight,
+
+            child:
+            TextButton.icon(
+              onPressed:
+                  () {
+                _showVerificationDetails(
+                  context,
+                );
+              },
+
+              icon:
+              const Icon(
+                Icons
+                    .info_outline_rounded,
+
+                size:
+                16,
+              ),
+
+              label:
+              const Text(
+                'View verification details',
+
+                style:
+                TextStyle(
+                  fontSize:
+                  10.5,
+
+                  fontWeight:
+                  FontWeight.w800,
+                ),
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
   }
 
-  // ============================================================
-  // VERIFICATION ROW
-  // ============================================================
+  // ===========================================================================
+  // EVIDENCE IMAGE
+  // ===========================================================================
 
-  Widget _buildVerificationRow({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Row(
-      children: [
-        Container(
-          width: 35,
-          height: 35,
+  Widget _buildEvidenceImage() {
+    final String path =
+        _controller.photoPath
+            ?.trim() ??
+            '';
 
-          decoration:
-          BoxDecoration(
-            color:
-            const Color(
-              0xFFECFDF5,
-            ),
+    if (path.isNotEmpty) {
+      final File file =
+      File(path);
 
-            borderRadius:
-            BorderRadius.circular(
-              10,
-            ),
+      if (file.existsSync()) {
+        return ClipRRect(
+          borderRadius:
+          BorderRadius.circular(
+            18,
           ),
 
-          child: Icon(
-            icon,
+          child:
+          Image.file(
+            file,
 
-            size: 18,
+            height:
+            220,
 
-            color:
-            const Color(
-              0xFF059669,
-            ),
+            width:
+            double.infinity,
+
+            fit:
+            BoxFit.cover,
+
+            errorBuilder:
+                (
+                context,
+                error,
+                stackTrace,
+                ) {
+              return _buildDestinationImage();
+            },
           ),
+        );
+      }
+    }
+
+    return _buildDestinationImage();
+  }
+
+  Widget _buildDestinationImage() {
+    final String imageUrl =
+        _controller
+            .destination
+            .imageUrl
+            ?.trim() ??
+            '';
+
+    if (imageUrl.isNotEmpty) {
+      return ClipRRect(
+        borderRadius:
+        BorderRadius.circular(
+          18,
         ),
 
-        const SizedBox(
-          width: 10,
+        child:
+        Image.network(
+          imageUrl,
+
+          height:
+          220,
+
+          width:
+          double.infinity,
+
+          fit:
+          BoxFit.cover,
+
+          errorBuilder:
+              (
+              context,
+              error,
+              stackTrace,
+              ) {
+            return _buildEmptyImage();
+          },
+        ),
+      );
+    }
+
+    return _buildEmptyImage();
+  }
+
+  Widget _buildEmptyImage() {
+    return Container(
+      height:
+      220,
+
+      decoration:
+      BoxDecoration(
+        color:
+        const Color(
+          0xFFE0F2FE,
         ),
 
-        Expanded(
-          child: Text(
-            label,
-
-            style:
-            const TextStyle(
-              color:
-              Color(
-                0xFF475569,
-              ),
-
-              fontSize: 12,
-
-              fontWeight:
-              FontWeight.w600,
-            ),
-          ),
+        borderRadius:
+        BorderRadius.circular(
+          18,
         ),
+      ),
 
-        Container(
-          padding:
-          const EdgeInsets.symmetric(
-            horizontal: 9,
-            vertical: 5,
-          ),
+      child:
+      const Center(
+        child:
+        Icon(
+          Icons
+              .image_rounded,
 
-          decoration:
-          BoxDecoration(
-            color:
-            const Color(
-              0xFFECFDF5,
-            ),
+          color:
+          skyBlue,
 
-            borderRadius:
-            BorderRadius.circular(
-              20,
-            ),
-          ),
-
-          child: Text(
-            value,
-
-            style:
-            const TextStyle(
-              color:
-              Color(
-                0xFF059669,
-              ),
-
-              fontSize: 9,
-
-              fontWeight:
-              FontWeight.w900,
-            ),
-          ),
+          size:
+          58,
         ),
-      ],
+      ),
     );
   }
 }
 
-// ============================================================
+// =============================================================================
 // VERIFIED PILL
-// ============================================================
+// =============================================================================
 
 class _VerifiedPill extends StatelessWidget {
   const _VerifiedPill();
@@ -1068,8 +1586,11 @@ class _VerifiedPill extends StatelessWidget {
     return Container(
       padding:
       const EdgeInsets.symmetric(
-        horizontal: 9,
-        vertical: 5,
+        horizontal:
+        8,
+
+        vertical:
+        5,
       ),
 
       decoration:
@@ -1081,7 +1602,7 @@ class _VerifiedPill extends StatelessWidget {
 
         borderRadius:
         BorderRadius.circular(
-          20,
+          18,
         ),
       ),
 
@@ -1092,16 +1613,19 @@ class _VerifiedPill extends StatelessWidget {
 
         children: [
           Icon(
-            Icons.check_circle,
+            Icons
+                .check_circle_rounded,
 
             color:
             Colors.white,
 
-            size: 11,
+            size:
+            12,
           ),
 
           SizedBox(
-            width: 4,
+            width:
+            3,
           ),
 
           Text(
@@ -1121,6 +1645,133 @@ class _VerifiedPill extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================================
+// VERIFICATION ROW
+// =============================================================================
+
+class _VerificationRow
+    extends StatelessWidget {
+  const _VerificationRow({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(
+      BuildContext context,
+      ) {
+    return Row(
+      children: [
+        Container(
+          width:
+          34,
+
+          height:
+          34,
+
+          decoration:
+          BoxDecoration(
+            color:
+            const Color(
+              0xFFECFDF5,
+            ),
+
+            borderRadius:
+            BorderRadius.circular(
+              10,
+            ),
+          ),
+
+          child:
+          Icon(
+            icon,
+
+            color:
+            const Color(
+              0xFF059669,
+            ),
+
+            size:
+            18,
+          ),
+        ),
+
+        const SizedBox(
+          width:
+          10,
+        ),
+
+        Expanded(
+          child:
+          Text(
+            label,
+
+            style:
+            const TextStyle(
+              color:
+              Color(
+                0xFF475569,
+              ),
+
+              fontSize:
+              11.5,
+
+              fontWeight:
+              FontWeight.w700,
+            ),
+          ),
+        ),
+
+        Container(
+          padding:
+          const EdgeInsets.symmetric(
+            horizontal:
+            9,
+
+            vertical:
+            5,
+          ),
+
+          decoration:
+          BoxDecoration(
+            color:
+            const Color(
+              0xFFECFDF5,
+            ),
+
+            borderRadius:
+            BorderRadius.circular(
+              99,
+            ),
+          ),
+
+          child:
+          const Text(
+            'VERIFIED',
+
+            style:
+            TextStyle(
+              color:
+              Color(
+                0xFF059669,
+              ),
+
+              fontSize:
+              8,
+
+              fontWeight:
+              FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

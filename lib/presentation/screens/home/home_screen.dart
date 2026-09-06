@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 import '../../../core/config/supabase_config.dart';
 import '../Blindbox/BlindBox_Screen.dart';
@@ -22,6 +23,11 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color darkText = Color(0xFF0F172A);
   static const Color pageBackground = Color(0xFFF8FAFC);
 
+  late final List<String> _heroImages;
+
+  int _heroImageIndex = 0;
+  Timer? _heroImageTimer;
+
   String _selectedItem = 'Home';
 
   String? _headerProfilePictureUrl;
@@ -29,7 +35,37 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+
     _loadHeaderProfile();
+
+    final storage = SupabaseConfig.client.storage
+        .from('homepage-backgrounds');
+
+    _heroImages = [
+      storage.getPublicUrl('home-1.png'),
+      storage.getPublicUrl('home-2.png'),
+      storage.getPublicUrl('home-3.png'),
+    ];
+
+    if (_heroImages.length > 1) {
+      _heroImageTimer = Timer.periodic(
+        const Duration(seconds: 2),
+            (_) {
+          if (!mounted) return;
+
+          setState(() {
+            _heroImageIndex =
+                (_heroImageIndex + 1) % _heroImages.length;
+          });
+        },
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _heroImageTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadHeaderProfile() async {
@@ -177,6 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
+      automaticallyImplyLeading: false,
       toolbarHeight: 68,
       elevation: 0,
       scrolledUnderElevation: 2,
@@ -340,31 +377,41 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80',
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 900),
+            child: Image.network(
+              _heroImages[_heroImageIndex],
+              key: ValueKey<String>(
+                _heroImages[_heroImageIndex],
+              ),
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
 
-              return const ColoredBox(
-                color: Color(0xFF0C4A6E),
-                child: Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              return const ColoredBox(
-                color: Color(0xFF0C4A6E),
-                child: Center(
-                  child: Icon(
-                    Icons.landscape_rounded,
-                    size: 90,
-                    color: Color(0x66FFFFFF),
+                return const ColoredBox(
+                  color: Color(0xFF0C4A6E),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return const ColoredBox(
+                  color: Color(0xFF0C4A6E),
+                  child: Center(
+                    child: Icon(
+                      Icons.landscape_rounded,
+                      size: 90,
+                      color: Color(0x66FFFFFF),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
           const DecoratedBox(
             decoration: BoxDecoration(
@@ -399,7 +446,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     child: const Text(
-                      'FEATURED DISCOVERY  •  VOL. IV',
+                      'FEATURED MALAYSIA • KUALA LUMPUR',
                       style: TextStyle(
                         color: Color(0xFFE0F2FE),
                         fontSize: 9,
@@ -516,35 +563,38 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeButton() {
-    final bool active = _selectedItem == 'Home';
-
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.only(
+        top: 10,
+      ),
       child: InkWell(
         customBorder: const CircleBorder(),
-        onTap: () => _showPressedMessage('Home'),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: active ? 66 : 62,
-          height: active ? 66 : 62,
+
+        // Already on Home page.
+        // Do nothing when pressed.
+        onTap: () {},
+
+        child: Container(
+          width: 66,
+          height: 66,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: const LinearGradient(
-              colors: [skyBlue, teal],
+              colors: [
+                Color(0xFF0284C7),
+                Color(0xFF0D9488),
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            border: Border.all(color: Colors.white, width: 4),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x3D0284C7),
-                blurRadius: 16,
-                offset: Offset(0, 7),
-              ),
-            ],
+            border: Border.all(
+              color: Colors.white,
+              width: 4,
+            ),
           ),
           child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment:
+            MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.home_rounded,

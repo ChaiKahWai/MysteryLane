@@ -432,6 +432,7 @@ class _MissionExecutionScreenState
         MaterialPageRoute(
           builder: (_) =>
               CompleteMissionScreen(
+                destination: widget.destination,
                 title:
                 widget.mission.missionName,
 
