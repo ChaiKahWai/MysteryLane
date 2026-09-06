@@ -6,7 +6,7 @@ class SupabaseDataSource {
   final SupabaseClient _client;
 
   SupabaseDataSource({SupabaseClient? client})
-    : _client = client ?? Supabase.instance.client;
+      : _client = client ?? Supabase.instance.client;
 
   User _requireUser() {
     final user = _client.auth.currentUser;
@@ -41,29 +41,11 @@ class SupabaseDataSource {
     }
   }
 
-  Future<Map<String, int>> buyBlindBoxChance() async {
-    try {
-      _requireUser();
-
-      final response = await _client.rpc('buy_blind_box_chance');
-
-      if (response is! Map) {
-        throw const SupabaseDataException(
-          'Unexpected response while buying Blind Box chance.',
-        );
-      }
-
-      final data = Map<String, dynamic>.from(response);
-
-      return {
-        'exploration_points': _toInt(data['exploration_points']),
-        'blind_box_chances': _toInt(data['blind_box_chances']),
-      };
-    } on SupabaseDataException {
-      rethrow;
-    } catch (error) {
-      throw SupabaseDataException('Failed to buy Blind Box chance: $error');
-    }
+  Future<Map<String, int>>
+  buyBlindBoxChance() {
+    return buyBlindBoxChances(
+      quantity: 1,
+    );
   }
 
   Future<String> saveBlindBoxDestination({
@@ -77,18 +59,18 @@ class SupabaseDataSource {
       final response = await _client
           .from('blind_box_destinations')
           .upsert({
-            'google_place_id': place.placeId,
-            'name': place.name,
-            'description': description,
-            'category': place.primaryType,
-            'image_url': imageUrl,
-            'latitude': place.latitude,
-            'longitude': place.longitude,
-            'address': place.formattedAddress,
-            'rating': place.rating,
-            'user_rating_count': place.userRatingCount,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          }, onConflict: 'google_place_id')
+        'google_place_id': place.placeId,
+        'name': place.name,
+        'description': description,
+        'category': place.primaryType,
+        'image_url': imageUrl,
+        'latitude': place.latitude,
+        'longitude': place.longitude,
+        'address': place.formattedAddress,
+        'rating': place.rating,
+        'user_rating_count': place.userRatingCount,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'google_place_id')
           .select('destination_id')
           .single();
 
@@ -249,6 +231,124 @@ class SupabaseDataSource {
 
     return int.tryParse(value.toString()) ?? 0;
   }
+
+  Future<Map<String, int>>
+  getBlindBoxPurchaseStatus() async {
+    try {
+      _requireUser();
+
+      final response = await _client.rpc(
+        'get_blind_box_purchase_status',
+      );
+
+      if (response is! Map) {
+        throw const SupabaseDataException(
+          'Unexpected response while loading '
+              'Blind Box purchase status.',
+        );
+      }
+
+      final data =
+      Map<String, dynamic>.from(response);
+
+      return {
+        'exploration_points':
+        _toInt(data['exploration_points']),
+        'blind_box_chances':
+        _toInt(data['blind_box_chances']),
+        'purchased_today':
+        _toInt(data['purchased_today']),
+        'daily_remaining':
+        _toInt(data['daily_remaining']),
+        'holding_remaining':
+        _toInt(data['holding_remaining']),
+        'daily_limit':
+        _toInt(data['daily_limit']),
+        'max_chances':
+        _toInt(data['max_chances']),
+        'chance_cost_ep':
+        _toInt(data['chance_cost_ep']),
+      };
+    } on SupabaseDataException {
+      rethrow;
+    } catch (error) {
+      throw SupabaseDataException(
+        'Failed to load Blind Box '
+            'purchase status: $error',
+      );
+    }
+  }
+
+  Future<Map<String, int>>
+  buyBlindBoxChances({
+    required int quantity,
+  }) async {
+    try {
+      _requireUser();
+
+      if (quantity < 1) {
+        throw const SupabaseDataException(
+          'Please select at least '
+              '1 Blind Box Chance.',
+        );
+      }
+
+      if (quantity > 10) {
+        throw const SupabaseDataException(
+          'You can select a maximum of '
+              '10 Blind Box Chances.',
+        );
+      }
+
+      final response =
+      await _client.rpc(
+        'buy_blind_box_chances',
+        params: {
+          'p_quantity': quantity,
+        },
+      );
+
+      if (response is! Map) {
+        throw const SupabaseDataException(
+          'Unexpected response while buying '
+              'Blind Box Chances.',
+        );
+      }
+
+      final data =
+      Map<String, dynamic>.from(response);
+
+      return {
+        'exploration_points':
+        _toInt(data['exploration_points']),
+        'blind_box_chances':
+        _toInt(data['blind_box_chances']),
+        'quantity_purchased':
+        _toInt(data['quantity_purchased']),
+        'points_spent':
+        _toInt(data['points_spent']),
+        'purchased_today':
+        _toInt(data['purchased_today']),
+        'daily_remaining':
+        _toInt(data['daily_remaining']),
+        'holding_remaining':
+        _toInt(data['holding_remaining']),
+        'daily_limit':
+        _toInt(data['daily_limit']),
+        'max_chances':
+        _toInt(data['max_chances']),
+        'chance_cost_ep':
+        _toInt(data['chance_cost_ep']),
+      };
+    } on SupabaseDataException {
+      rethrow;
+    } catch (error) {
+      throw SupabaseDataException(
+        'Failed to buy Blind Box Chances: '
+            '$error',
+      );
+    }
+  }
 }
 
 class SupabaseDataException implements Exception {
@@ -258,4 +358,72 @@ class SupabaseDataException implements Exception {
 
   @override
   String toString() => message;
+}
+
+String _blindBoxPurchaseErrorMessage(
+    Object error, {
+      required String fallback,
+    }) {
+  final String message =
+  error.toString();
+
+  if (message.contains(
+    'AUTH_REQUIRED',
+  )) {
+    return 'Please log in before using Blind Box.';
+  }
+
+  if (message.contains(
+    'INVALID_QUANTITY',
+  )) {
+    return 'Please select a valid number '
+        'of Blind Box Chances.';
+  }
+
+  if (message.contains(
+    'MAX_CHANCES_REACHED',
+  )) {
+    return 'You already have the maximum '
+        'of 10 Blind Box Chances.';
+  }
+
+  if (message.contains(
+    'HOLDING_LIMIT_EXCEEDED',
+  )) {
+    return 'Your selected quantity would '
+        'exceed the maximum of '
+        '10 Blind Box Chances.';
+  }
+
+  if (message.contains(
+    'DAILY_LIMIT_REACHED',
+  )) {
+    return 'You have already purchased '
+        '10 Blind Box Chances today.';
+  }
+
+  if (message.contains(
+    'DAILY_LIMIT_EXCEEDED',
+  )) {
+    return 'Your selected quantity would '
+        'exceed today\'s limit of '
+        '10 Blind Box Chances.';
+  }
+
+  if (message.contains(
+    'INSUFFICIENT_EP',
+  )) {
+    return 'You do not have enough '
+        'Exploration Points for '
+        'this purchase.';
+  }
+
+  if (message.contains(
+    'PROFILE_NOT_FOUND',
+  )) {
+    return 'Your user profile could '
+        'not be found.';
+  }
+
+  return '$fallback $message';
 }

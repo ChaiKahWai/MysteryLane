@@ -1,87 +1,159 @@
-import '../../data/models/blind_box_history.dart';
 import '../services/blind_box_service.dart';
+import '../../data/models/blind_box_history.dart';
 export '../models/blind_box_history.dart';
 
-/// ============================================================================
-/// APPLICATION / LOGIC LAYER
-/// ============================================================================
-///
-/// Presentation (BlindBox_Screen.dart)
-///             ↓
-/// Application (this controller)
-///             ↓
-/// Data
-/// ├── LocationDataSource
-/// ├── GooglePlacesDataSource
-/// └── SupabaseDataSource
-///
-/// This controller owns the Blind Box application rules:
-/// - radius validation
-/// - random destination selection
-/// - no-repeat filtering
-/// - photo + description preparation
-/// - destination persistence
-/// - DRAW / REDRAW history persistence
-/// - history loading for the UI
+
 class BlindBoxController {
+  final BlindBoxService _service;
+
+  // ===========================================================================
+  // CONSTANTS EXPOSED TO UI
+  // ===========================================================================
+
+  static const double minRadiusKm =
+      BlindBoxService.minRadiusKm;
+
+  static const double maxRadiusKm =
+      BlindBoxService.maxRadiusKm;
+
   static const int maxBlindBoxChances =
       BlindBoxService.maxBlindBoxChances;
 
-  static const int blindBoxChanceCostEp =
-      BlindBoxService.blindBoxChanceCostEp;
+  static const int maxDailyBlindBoxPurchases =
+      BlindBoxService
+          .maxDailyBlindBoxPurchases;
 
-  final BlindBoxService _service;
+  static const int blindBoxChanceCostEp =
+      BlindBoxService
+          .blindBoxChanceCostEp;
 
   BlindBoxController({
     required BlindBoxService service,
   }) : _service = service;
 
-  // ADD THIS
-  /// Run with:
-  /// flutter run --dart-define=GOOGLE_PLACES_API_KEY=YOUR_KEY
+  /// Production constructor.
+  ///
+  /// BlindBoxService.production() creates:
+  /// - GooglePlacesDataSource
+  /// - LocationDataSource
+  /// - SupabaseDataSource
   factory BlindBoxController.production() {
     return BlindBoxController(
-      service: BlindBoxService.production(),
+      service:
+      BlindBoxService.production(),
     );
   }
 
-  Future<BlindBoxBalance> loadBlindBoxBalance() {
-    return _service.loadBlindBoxBalance();
+  // ===========================================================================
+  // BALANCE
+  // ===========================================================================
+
+  Future<BlindBoxBalance>
+  loadBlindBoxBalance() {
+    return _service
+        .loadBlindBoxBalance();
   }
 
-  Future<BlindBoxBalance> buyBlindBoxChance() {
-    return _service.buyBlindBoxChance();
+  // ===========================================================================
+  // PURCHASE STATUS
+  // ===========================================================================
+
+  /// Used before displaying the chance-purchase dialog.
+  ///
+  /// Returned Map contains:
+  ///
+  /// exploration_points
+  /// blind_box_chances
+  /// purchased_today
+  /// daily_remaining
+  /// holding_remaining
+  /// daily_limit
+  /// max_chances
+  /// chance_cost_ep
+  Future<Map<String, int>>
+  loadBlindBoxPurchaseStatus() {
+    return _service
+        .loadBlindBoxPurchaseStatus();
   }
 
-  Future<BlindBoxResult> drawBlindBox({
+  // ===========================================================================
+  // BUY MULTIPLE CHANCES
+  // ===========================================================================
+
+  Future<BlindBoxBalance>
+  buyBlindBoxChances({
+    required int quantity,
+  }) {
+    return _service
+        .buyBlindBoxChances(
+      quantity: quantity,
+    );
+  }
+
+  // ===========================================================================
+  // LEGACY SINGLE BUY
+  // ===========================================================================
+
+  /// Keeps older UI code working.
+  Future<BlindBoxBalance>
+  buyBlindBoxChance() {
+    return buyBlindBoxChances(
+      quantity: 1,
+    );
+  }
+
+  // ===========================================================================
+  // DRAW
+  // ===========================================================================
+
+  Future<BlindBoxResult>
+  drawBlindBox({
     required double radiusKm,
-    Set<String> recentPlaceIds = const <String>{},
+    Set<String> recentPlaceIds =
+    const <String>{},
   }) {
     return _service.drawBlindBox(
       radiusKm: radiusKm,
-      recentPlaceIds: recentPlaceIds,
+      recentPlaceIds:
+      recentPlaceIds,
     );
   }
 
-  Future<BlindBoxResult> redrawBlindBox({
+  // ===========================================================================
+  // REDRAW
+  // ===========================================================================
+
+  Future<BlindBoxResult>
+  redrawBlindBox({
     required double radiusKm,
     required String currentPlaceId,
-    Set<String> recentPlaceIds = const <String>{},
+    Set<String> recentPlaceIds =
+    const <String>{},
   }) {
     return _service.redrawBlindBox(
       radiusKm: radiusKm,
-      currentPlaceId: currentPlaceId,
-      recentPlaceIds: recentPlaceIds,
+      currentPlaceId:
+      currentPlaceId,
+      recentPlaceIds:
+      recentPlaceIds,
     );
   }
 
+  // ===========================================================================
+  // DRAW HISTORY
+  // ===========================================================================
+
   Future<List<BlindBoxHistoryResult>>
   loadBlindBoxHistory() {
-    return _service.loadBlindBoxHistory();
+    return _service
+        .loadBlindBoxHistory();
   }
+
+  // ===========================================================================
+  // DISPOSE
+  // ===========================================================================
 
   void dispose() {
     _service.dispose();
   }
-
 }
