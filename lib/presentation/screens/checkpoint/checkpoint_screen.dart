@@ -241,16 +241,33 @@ class _CheckpointScreenState
     final CheckpointDestination? destination =
         _controller.selectedDestination;
 
-    if (destination == null) {
-      _showMessage(
-        'Select a checkpoint first.',
+    // ============================================================
+    // IF USER ALREADY SELECTED A PIN
+    // → open Puzzle with that exact checkpoint
+    // ============================================================
+
+    if (destination != null) {
+      _openPuzzle(
+        destination,
       );
 
       return;
     }
 
-    _openPuzzle(
-      destination,
+    // ============================================================
+    // NO PIN SELECTED
+    // → still allow user to enter Puzzle module
+    // → PuzzleScreen will let user choose a checkpoint location
+    // ============================================================
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PuzzleScreen(
+          initialLocationSource:
+          PuzzleLocationSource.checkpoint,
+        ),
+      ),
     );
   }
 
