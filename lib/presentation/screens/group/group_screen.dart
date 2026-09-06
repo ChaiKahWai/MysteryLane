@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../application/services/group_service.dart';
 import '../../../data/models/travel_group_model.dart';
+import '../../../data/models/trip_plan.dart';
 import 'team_detail_screen.dart';
 import 'join_team_screen.dart';
 import 'chat_list_screen.dart';
@@ -46,6 +47,10 @@ class _GroupScreenState extends State<GroupScreen> {
   static const int _itemsPerPage = 10;
 
   String? _headerProfilePictureUrl;
+
+  // ---- New maps for team trip plans and owner names ----
+  Map<String, TripPlan> _teamTripPlans = {};
+  Map<String, String> _teamOwnerNames = {};
 
   @override
   void initState() {
@@ -141,9 +146,45 @@ class _GroupScreenState extends State<GroupScreen> {
       if (user != null) {
         final myTeams = await _groupService.getUserTeams(user.id);
         final publicTeams = await _groupService.getPublicTeams();
+
+        // Fetch trip plans and owner names for my teams in parallel
+        final Map<String, TripPlan> plans = {};
+        final Map<String, String> ownerNames = {};
+        await Future.wait(myTeams.map((team) async {
+          final groupData = team['travel_groups'] as Map<String, dynamic>;
+          final groupId = groupData['group_id'] as String;
+          final ownerId = groupData['owner_id'] as String?;
+
+          // Fetch trip plan
+          try {
+            final plan = await _groupService.getTripPlanForGroup(groupId);
+            if (plan != null) {
+              plans[groupId] = plan;
+            }
+          } catch (e) {
+            // ignore
+          }
+
+          // Fetch owner name
+          if (ownerId != null && ownerId.isNotEmpty) {
+            try {
+              final profile = await Supabase.instance.client
+                  .from('profiles')
+                  .select('full_name')
+                  .eq('id', ownerId)
+                  .maybeSingle();
+              if (profile != null && profile['full_name'] != null) {
+                ownerNames[groupId] = profile['full_name'].toString();
+              }
+            } catch (e) {}
+          }
+        }));
+
         setState(() {
           _myTeams = myTeams;
           _publicTeams = publicTeams;
+          _teamTripPlans = plans;
+          _teamOwnerNames = ownerNames;
           _currentPage = 0;
         });
       }
@@ -608,7 +649,7 @@ class _GroupScreenState extends State<GroupScreen> {
     );
   }
 
-  // ---- BODY: My Teams list ----
+  // ---- BODY: My Teams list (UPDATED with trip details) ----
   Widget _buildMyTeamsList() {
     final filtered = _filterMyTeams();
     return ListView(
@@ -655,7 +696,14 @@ class _GroupScreenState extends State<GroupScreen> {
         else
           ...filtered.map((team) {
             final groupData = team['travel_groups'] as Map<String, dynamic>;
+            final groupId = groupData['group_id'] as String;
+            final plan = _teamTripPlans[groupId];
+            final ownerName = _teamOwnerNames[groupId] ?? 'Host';
             final role = team['member_role'] ?? 'MEMBER';
+            final tripStart = plan?.startDate;
+            final tripEnd = plan?.endDate;
+            final firstStopName = (plan != null && plan.stops.isNotEmpty) ? plan.stops.first.name : null;
+
             return Card(
               color: Colors.white,
               shape: RoundedRectangleBorder(
@@ -666,7 +714,23 @@ class _GroupScreenState extends State<GroupScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: ListTile(
                 title: Text(groupData['team_name'] ?? 'Unnamed'),
-                subtitle: Text('${groupData['team_type']} · ${team['membership_status']}'),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${groupData['team_type']} · ${team['membership_status']}'),
+                    if (tripStart != null && tripEnd != null)
+                      Text(
+                        'Trip: ${tripStart.day}/${tripStart.month}/${tripStart.year} → ${tripEnd.day}/${tripEnd.month}/${tripEnd.year}',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    if (firstStopName != null && firstStopName.isNotEmpty)
+                      Text(
+                        '📍 $firstStopName',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: skyBlue),
+                      ),
+                    Text('Host: $ownerName'),
+                  ],
+                ),
                 trailing: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -689,7 +753,7 @@ class _GroupScreenState extends State<GroupScreen> {
     );
   }
 
-  // ---- BODY: Public Teams list ----
+  // ---- BODY: Public Teams list (unchanged) ----
   Widget _buildPublicTeamsList(List<Map<String, dynamic>> paginated, int totalPages) {
     if (_filteredPublicTeams.isEmpty) {
       return Center(
@@ -799,7 +863,7 @@ class _GroupScreenState extends State<GroupScreen> {
   }
 }
 
-// ---------- Helper widgets ----------
+// ---------- Helper widgets (unchanged) ----------
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 

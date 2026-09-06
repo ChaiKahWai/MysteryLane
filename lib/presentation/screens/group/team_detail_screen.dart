@@ -210,7 +210,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     }
   }
 
-  // ---- FIXED: copy code now actually copies to clipboard ----
   void _copyInviteCode() {
     final code = _team?.invitationCode;
     if (code != null && code.isNotEmpty) {
@@ -781,6 +780,36 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         ],
                       ),
                     ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // ---- VIEW FULL PLAN BUTTON ----
+            // Visible only if the user is a member of the team AND the team has a trip plan
+            if (_tripPlan != null && isMember) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PlanScreen(initialGroupId: widget.groupId),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text('VIEW FULL PLAN'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: const BorderSide(color: skyBlue),
+                    foregroundColor: skyBlue,
                   ),
                 ),
               ),
