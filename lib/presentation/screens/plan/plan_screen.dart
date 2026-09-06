@@ -2254,144 +2254,93 @@ class _PlanScreenState extends State<PlanScreen> {
       ),
       const SizedBox(height: 24),
       // --- DYNAMIC SQUAD MEMBERS SECTION (TEAM EXPEDITION ONLY) ---
+// --- DYNAMIC SQUAD MEMBERS SECTION (TEAM EXPEDITION ONLY) ---
       if (mode == 'team') ...[
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F9FF),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFBAE6FD)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Icon(Icons.groups_rounded, color: blue, size: 20),
-                const SizedBox(width: 8),
-                const Text(
-                  'CREATE SQUAD SETTINGS',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    letterSpacing: 1,
-                    color: blue,
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 14),
-
-              // Team Name input field
-              label('SQUAD NAME *'),
-              const SizedBox(height: 6),
-              field(
-                teamName,
-                name.text.isNotEmpty ? '${name.text.trim()} Squad' : 'Enter Squad Name',
-                    (_) {},
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              child: label('SQUAD MEMBERS (${_teamMembers.isNotEmpty ? _teamMembers.length : 1})'),
+            ),
+            TextButton.icon(
+              onPressed: _openManageSquadBottomSheet,
+              icon: const Icon(Icons.settings_outlined, size: 14, color: blue),
+              label: const Text(
+                'Manage Squad Members',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue),
               ),
-              const SizedBox(height: 14),
-
-              // Access Type (Public vs Private Code) - FIXED OVERFLOW
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Access Type',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
-                        ),
-                        Text(
-                          openPublic ? 'Public (Listed)' : 'Private (Code)',
-                          style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: border),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        small('PUBLIC', openPublic, () => setState(() => openPublic = true)),
-                        small('PRIVATE', !openPublic, () => setState(() => openPublic = false)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Member Capacity - DROPDOWN (mobile friendly)
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Max Capacity',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
-                    ),
-                  ),
-                  DropdownButton<int>(
-                    value: teamMaxCapacity,
-                    items: List.generate(9, (index) => index + 2) // 2 to 10
-                        .map((value) => DropdownMenuItem<int>(
-                      value: value,
-                      child: Text('$value Members'),
-                    ))
-                        .toList(),
-                    onChanged: (newValue) {
-                      if (newValue != null) {
-                        setState(() => teamMaxCapacity = newValue);
-                      }
-                    },
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: ink),
-                    underline: Container(), // remove default underline
-                    icon: const Icon(Icons.arrow_drop_down, color: blue),
-                    dropdownColor: Colors.white,
-                    elevation: 4,
-                  ),
-                ],
-              ),
-              const Divider(height: 20),
-
-              // Info explanation card
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      openPublic ? Icons.public : Icons.lock_outline,
-                      size: 16,
-                      color: openPublic ? const Color(0xFF00A774) : blue,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        openPublic
-                            ? 'Other travelers can browse and request to join this squad in the Teams UI.'
-                            : 'A unique 6-character invitation code will be generated upon creation.',
-                        style: const TextStyle(fontSize: 11, color: ink),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
+        const SizedBox(height: 8),
+
+        if (_loadingTeam)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(color: blue),
+          )
+        else if (_teamMembers.isEmpty)
+        // Fallback if members haven't loaded yet or just created
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                member(
+                  'ME',
+                  'You (Host)',
+                  blue,
+                  true,
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: _openManageSquadBottomSheet,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.person_add_alt_1_outlined, size: 14, color: blue),
+                        SizedBox(width: 6),
+                        Text(
+                          'Invite Squad',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _teamMembers.map((m) {
+                final profile = m['profiles'] as Map<String, dynamic>?;
+                final role = m['member_role']?.toString() ?? 'MEMBER';
+                final isHost = role == 'OWNER';
+                final fullName = profile?['full_name'] ?? 'Traveler';
+                final initials = fullName.length >= 2
+                    ? fullName.substring(0, 2).toUpperCase()
+                    : 'TR';
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: member(
+                    initials,
+                    isHost ? '$fullName (Host)' : fullName,
+                    isHost ? blue : const Color(0xFF64748B),
+                    isHost,
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
       ],
       const Divider(height: 40),
       Row(children: [
