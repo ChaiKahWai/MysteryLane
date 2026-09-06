@@ -159,7 +159,7 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
 
             // ---- MAIN TITLE: ENTER PRIVATE TEAM CODE ----
             const Text(
-              'ENTER PRIVATE TEAM CODE',
+              'ENTER TEAM CODE',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 22,
@@ -172,7 +172,7 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
 
             // ---- SUBTITLE: PRIVATE PASSCODE VERIFICATION ----
             const Text(
-              'PRIVATE PASSCODE VERIFICATION',
+              'PASSCODE VERIFICATION',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
@@ -184,7 +184,7 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
 
             // ---- Input Label ----
             const Text(
-              'PRIVATE TEAM PASSCODE',
+              'TEAM PASSCODE',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -198,7 +198,7 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
             TextField(
               controller: _codeController,
               decoration: InputDecoration(
-                hintText: 'ENTER PRIVATE CODE (E.G. 123456 OR 849201)',
+                hintText: 'ENTER CODE (E.G. ABC456)',
                 hintStyle: const TextStyle(
                   fontSize: 14,
                   color: Colors.grey,

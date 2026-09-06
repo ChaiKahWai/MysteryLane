@@ -86,8 +86,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
       setState(() {
         _myTeams = teams;
       });
+
+      // FIX: Extract group_id from the nested travel_groups map
       for (var team in teams) {
-        final groupId = team['group_id'];
+        final groupData = team['travel_groups'] as Map<String, dynamic>?;
+        if (groupData == null) continue;
+        final groupId = groupData['group_id'] as String?;
+        if (groupId == null || groupId.isEmpty) continue;
+
         final last = await _chatService.getLastMessageForTeam(groupId);
         if (last != null) {
           _lastMessages[groupId] = last;

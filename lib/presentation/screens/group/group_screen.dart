@@ -753,7 +753,7 @@ class _GroupScreenState extends State<GroupScreen> {
     );
   }
 
-  // ---- BODY: Public Teams list (unchanged) ----
+  // ---- BODY: Public Teams list with ALERTDIALOG for errors ----
   Widget _buildPublicTeamsList(List<Map<String, dynamic>> paginated, int totalPages) {
     if (_filteredPublicTeams.isEmpty) {
       return Center(
@@ -830,8 +830,18 @@ class _GroupScreenState extends State<GroupScreen> {
                 try {
                   final user = Supabase.instance.client.auth.currentUser;
                   if (user == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Please log in first.')),
+                    await showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Not Logged In'),
+                        content: const Text('Please log in to join a team.'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('OK'),
+                          ),
+                        ],
+                      ),
                     );
                     return;
                   }
@@ -844,8 +854,27 @@ class _GroupScreenState extends State<GroupScreen> {
                   );
                   _loadData();
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                  String message = e.toString().replaceFirst('Exception: ', '');
+                  final lowerMsg = message.toLowerCase();
+                  if (lowerMsg.contains('already') ||
+                      lowerMsg.contains('pending') ||
+                      lowerMsg.contains('exists') ||
+                      lowerMsg.contains('duplicate')) {
+                    message = 'You already have a pending request or are already a member of this team.';
+                  }
+                  // Show popup dialog
+                  await showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Cannot Join Team'),
+                      content: Text(message),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
                   );
                 }
               },
