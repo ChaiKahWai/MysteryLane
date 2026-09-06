@@ -149,7 +149,10 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
       _controller.clear();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send: $e')),
+        SnackBar(
+          content: Text('Failed to send: $e'),
+          behavior: SnackBarBehavior.floating, // floating to avoid layout shift
+        ),
       );
     }
   }
@@ -170,6 +173,7 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
     return Scaffold(
       backgroundColor: pageBackground,
       extendBody: true,
+      // Keep resizeToAvoidBottomInset true to let the input move above the keyboard
       appBar: _buildTopAppBar(),
       body: Padding(
         padding: EdgeInsets.only(bottom: bottomPadding),
@@ -187,14 +191,12 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
               ),
               child: Row(
                 children: [
-                  // Back button on the left
                   IconButton(
                     icon: const Icon(Icons.arrow_back, color: darkText),
                     onPressed: () => Navigator.pop(context),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
-                  // Centered team name
                   Expanded(
                     child: Text(
                       _teamName ?? 'Loading...',
@@ -206,7 +208,6 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
                       ),
                     ),
                   ),
-                  // Placeholder to balance the back button width (so text stays centered)
                   const SizedBox(width: 48),
                 ],
               ),

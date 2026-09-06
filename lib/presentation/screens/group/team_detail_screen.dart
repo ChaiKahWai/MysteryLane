@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // <- added for clipboard
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../application/services/group_service.dart';
 import '../../../data/models/travel_group_model.dart';
@@ -107,7 +107,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading team: $e')),
+        SnackBar(
+          content: Text('Error loading team: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     } finally {
       setState(() => _loading = false);
@@ -195,13 +198,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$userName has been removed.')),
+            SnackBar(
+              content: Text('$userName has been removed.'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error removing member: $e')),
+            SnackBar(
+              content: Text('Error removing member: $e'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       } finally {
@@ -218,6 +227,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         SnackBar(
           content: Text('Invitation code "$code" copied to clipboard!'),
           duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
@@ -241,14 +251,20 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please log in to join.')),
+        const SnackBar(
+          content: Text('Please log in to join.'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
       return;
     }
 
     if (_team?.invitationCode == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This team does not have an invitation code.')),
+        const SnackBar(
+          content: Text('This team does not have an invitation code.'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
       return;
     }
@@ -260,20 +276,26 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         userId: user.id,
       );
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Join request sent!')),
+        const SnackBar(
+          content: Text('Join request sent!'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
       await _loadData();
     } catch (e) {
       String message = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  // ---- Leave/Disband logic with redirection ----
+  // ---- Leave/Disband logic ----
   Future<void> _handleLeaveTeam() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
@@ -320,7 +342,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         await _service.leaveTeam(widget.groupId, userId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('You have left the team.')),
+            const SnackBar(
+              content: Text('You have left the team.'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
           Navigator.pop(context, true);
         }
@@ -328,7 +353,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         if (mounted) {
           setState(() => _loading = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error leaving team: $e')),
+            SnackBar(
+              content: Text('Error leaving team: $e'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       }
@@ -364,7 +392,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         await _service.disbandTeam(widget.groupId, userId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Squad disbanded and you have left.')),
+            const SnackBar(
+              content: Text('Squad disbanded and you have left.'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
           Navigator.pushAndRemoveUntil(
             context,
@@ -376,7 +407,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         if (mounted) {
           setState(() => _loading = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error disbanding team: $e')),
+            SnackBar(
+              content: Text('Error disbanding team: $e'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       }
@@ -508,7 +542,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Transferred host to $selectedHostName. You have left the squad.')),
+            SnackBar(
+              content: Text('Transferred host to $selectedHostName. You have left the squad.'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
           Navigator.pop(context, true);
         }
@@ -516,7 +553,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         if (mounted) {
           setState(() => _loading = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error transferring ownership: $e')),
+            SnackBar(
+              content: Text('Error transferring ownership: $e'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       }
@@ -558,7 +598,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         await _service.disbandTeam(widget.groupId, currentOwnerId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Squad has been disbanded.')),
+            const SnackBar(
+              content: Text('Squad has been disbanded.'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
           Navigator.pushAndRemoveUntil(
             context,
@@ -570,7 +613,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         if (mounted) {
           setState(() => _loading = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error disbanding team: $e')),
+            SnackBar(
+              content: Text('Error disbanding team: $e'),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       }
@@ -596,6 +642,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     return Scaffold(
       backgroundColor: pageBackground,
       extendBody: true,
+      resizeToAvoidBottomInset: false, // no bottom input, prevent body resize
       appBar: _buildTopAppBar(),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -787,7 +834,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             ],
 
             // ---- VIEW FULL PLAN BUTTON ----
-            // Visible only if the user is a member of the team AND the team has a trip plan
             if (_tripPlan != null && isMember) ...[
               const SizedBox(height: 16),
               SizedBox(
@@ -1141,7 +1187,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
 }
 
-// ---- Helper widgets ----
+// ---- Helper widgets (same as before) ----
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 
