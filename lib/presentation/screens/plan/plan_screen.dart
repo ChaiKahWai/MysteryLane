@@ -1606,9 +1606,9 @@ class _PlanScreenState extends State<PlanScreen> {
             label('SELECT EXPEDITION MODE'),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: modeButton('Solo Expedition', 'solo')),
+              Expanded(child: modeButton('Solo', 'solo')),
               const SizedBox(width: 10),
-              Expanded(child: modeButton('Team Expedition', 'team')),
+              Expanded(child: modeButton('Team', 'team')),
             ]),
 
             // --- TEAM EXPEDITION CONFIGURATION ---
