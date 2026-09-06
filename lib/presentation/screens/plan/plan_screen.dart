@@ -1689,44 +1689,53 @@ class _PlanScreenState extends State<PlanScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Member Capacity stepper - FIXED OVERFLOW
+                    // Member Capacity - DROPDOWN SELECTOR
                     Row(
                       children: [
-                        Expanded(
+                        const Expanded(
                           child: Text(
                             'Max Capacity',
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
                           ),
                         ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.remove_circle_outline, color: blue, size: 20),
-                              onPressed: teamMaxCapacity > 2
-                                  ? () => setState(() => teamMaxCapacity--)
-                                  : null,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                            ),
-                            Text(
-                              '$teamMaxCapacity',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              'Members',
-                              style: const TextStyle(fontSize: 11, color: greyText),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add_circle_outline, color: blue, size: 20),
-                              onPressed: teamMaxCapacity < 10
-                                  ? () => setState(() => teamMaxCapacity++)
-                                  : null,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                            ),
-                          ],
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: border),
+                          ),
+                          child: DropdownButton<int>(
+                            value: teamMaxCapacity,
+                            underline: const SizedBox.shrink(),
+                            icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: blue),
+                            items: List.generate(9, (index) => index + 2).map((int value) {
+                              return DropdownMenuItem<int>(
+                                value: value,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '$value',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Text(
+                                      'Members',
+                                      style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (int? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  teamMaxCapacity = newValue;
+                                });
+                              }
+                            },
+                          ),
                         ),
                       ],
                     ),
@@ -2330,33 +2339,53 @@ class _PlanScreenState extends State<PlanScreen> {
               ),
               const SizedBox(height: 14),
 
-              // Member Capacity - DROPDOWN (mobile friendly)
+// Member Capacity - DROPDOWN SELECTOR
               Row(
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: Text(
                       'Max Capacity',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
                     ),
                   ),
-                  DropdownButton<int>(
-                    value: teamMaxCapacity,
-                    items: List.generate(9, (index) => index + 2) // 2 to 10
-                        .map((value) => DropdownMenuItem<int>(
-                      value: value,
-                      child: Text('$value Members'),
-                    ))
-                        .toList(),
-                    onChanged: (newValue) {
-                      if (newValue != null) {
-                        setState(() => teamMaxCapacity = newValue);
-                      }
-                    },
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: ink),
-                    underline: Container(), // remove default underline
-                    icon: const Icon(Icons.arrow_drop_down, color: blue),
-                    dropdownColor: Colors.white,
-                    elevation: 4,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: border),
+                    ),
+                    child: DropdownButton<int>(
+                      value: teamMaxCapacity,
+                      underline: const SizedBox.shrink(),
+                      icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: blue),
+                      items: List.generate(9, (index) => index + 2).map((int value) {
+                        return DropdownMenuItem<int>(
+                          value: value,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '$value',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'Members',
+                                style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (int? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            teamMaxCapacity = newValue;
+                          });
+                        }
+                      },
+                    ),
                   ),
                 ],
               ),
