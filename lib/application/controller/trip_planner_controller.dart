@@ -113,7 +113,11 @@ class TripPlannerController {
   /// SAVE TRIP PLAN
   /// ==========================================================================
 
-  Future<TripPlan> savePlan(TripPlan plan) => _plans.savePlan(plan);
+  Future<TripPlan> savePlan(
+      TripPlan plan,
+      ) {
+    return _plans.savePlan(plan);
+  }
 
   /// ==========================================================================
   /// SEARCH PLACES
