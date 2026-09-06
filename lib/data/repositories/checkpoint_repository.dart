@@ -676,4 +676,321 @@ class CheckpointRepository {
       return <String>{};
     }
   }
+
+  Future<ActiveCheckpointData>
+  getActiveCheckpointDestinations() async {
+    final SupabaseClient client =
+        Supabase.instance.client;
+
+    final User? user =
+        client.auth.currentUser;
+
+    if (user == null) {
+      return const ActiveCheckpointData(
+        destinations: [],
+        rewardPoints: {},
+      );
+    }
+
+    // ============================================================
+    // 1. LOAD ACTIVE CHECKPOINT MISSIONS
+    // ============================================================
+
+    final missionRows =
+    await client
+        .from('checkpoint_missions')
+        .select(
+      '''
+            destination_id,
+            reward_points
+            ''',
+    )
+        .eq(
+      'is_active',
+      true,
+    );
+
+    final Set<String> activeDestinationIds =
+    <String>{};
+
+    final Map<String, int> rewardPoints =
+    <String, int>{};
+
+    for (final raw in missionRows) {
+      final Map<String, dynamic> row =
+      Map<String, dynamic>.from(raw);
+
+      final String destinationId =
+          row['destination_id']
+              ?.toString()
+              .trim() ??
+              '';
+
+      if (destinationId.isEmpty) {
+        continue;
+      }
+
+      activeDestinationIds.add(
+        destinationId,
+      );
+
+      final dynamic rewardRaw =
+      row['reward_points'];
+
+      final int reward =
+      rewardRaw is num
+          ? rewardRaw.toInt()
+          : int.tryParse(
+        rewardRaw?.toString() ?? '',
+      ) ??
+          0;
+
+      rewardPoints.putIfAbsent(
+        destinationId,
+            () => reward,
+      );
+    }
+
+    if (activeDestinationIds.isEmpty) {
+      return const ActiveCheckpointData(
+        destinations: [],
+        rewardPoints: {},
+      );
+    }
+
+    // ============================================================
+    // 2. LOAD CURRENT USER'S BLIND BOX HISTORY
+    //
+    // IMPORTANT:
+    // Purple Blind Box pins are personal.
+    // Another user's draws must not appear on this user's map.
+    // ============================================================
+
+    final historyRows =
+    await client
+        .from('blind_box_history')
+        .select(
+      'destination_id',
+    )
+        .eq(
+      'user_id',
+      user.id,
+    );
+
+    final Set<String>
+    currentUserBlindBoxDestinationIds =
+    <String>{};
+
+    for (final raw in historyRows) {
+      final Map<String, dynamic> row =
+      Map<String, dynamic>.from(raw);
+
+      final String destinationId =
+          row['destination_id']
+              ?.toString()
+              .trim() ??
+              '';
+
+      if (destinationId.isNotEmpty) {
+        currentUserBlindBoxDestinationIds.add(
+          destinationId,
+        );
+      }
+    }
+
+    debugPrint(
+      '[CHECKPOINT] Current user: ${user.email}',
+    );
+
+    debugPrint(
+      '[CHECKPOINT] User Blind Box destinations: '
+          '$currentUserBlindBoxDestinationIds',
+    );
+
+    // ============================================================
+    // 3. LOAD ACTIVE DESTINATION DETAILS
+    // ============================================================
+
+    final destinationRows =
+    await client
+        .from('blind_box_destinations')
+        .select()
+        .inFilter(
+      'destination_id',
+      activeDestinationIds.toList(),
+    );
+
+    final List<CheckpointDestination>
+    visibleDestinations =
+    <CheckpointDestination>[];
+
+    final Set<String>
+    visibleDestinationIds =
+    <String>{};
+
+    // ============================================================
+    // 4. APPLY VISIBILITY RULE
+    //
+    // CURATED
+    // → visible to everyone
+    //
+    // GOOGLE
+    // → visible only if current user drew it
+    // ============================================================
+
+    for (final raw in destinationRows) {
+      try {
+        final Map<String, dynamic> row =
+        Map<String, dynamic>.from(raw);
+
+        final CheckpointDestination destination =
+        CheckpointDestination.fromJson(
+          row,
+        );
+
+        final String source =
+            destination.destinationSource
+                ?.trim()
+                .toUpperCase() ??
+                '';
+
+        final bool isBlindBox =
+            source == 'GOOGLE';
+
+        // --------------------------------------------------------
+        // Hidden Gem
+        // --------------------------------------------------------
+
+        if (!isBlindBox) {
+          visibleDestinations.add(
+            destination,
+          );
+
+          visibleDestinationIds.add(
+            destination.destinationId,
+          );
+
+          continue;
+        }
+
+        // --------------------------------------------------------
+        // Blind Box
+        //
+        // Only current user's history is allowed.
+        // --------------------------------------------------------
+
+        final bool userHasDrawnDestination =
+        currentUserBlindBoxDestinationIds
+            .contains(
+          destination.destinationId,
+        );
+
+        if (userHasDrawnDestination) {
+          visibleDestinations.add(
+            destination,
+          );
+
+          visibleDestinationIds.add(
+            destination.destinationId,
+          );
+        }
+      } catch (error) {
+        debugPrint(
+          '[CHECKPOINT] Unable to parse destination: '
+              '$error',
+        );
+      }
+    }
+
+    // ============================================================
+    // 5. REMOVE REWARDS FOR HIDDEN DESTINATIONS
+    // ============================================================
+
+    final Map<String, int>
+    visibleRewardPoints =
+    <String, int>{};
+
+    for (final String destinationId
+    in visibleDestinationIds) {
+      final int? reward =
+      rewardPoints[
+      destinationId];
+
+      if (reward != null) {
+        visibleRewardPoints[
+        destinationId] = reward;
+      }
+    }
+
+    debugPrint(
+      '[CHECKPOINT] Visible destinations: '
+          '${visibleDestinations.length}',
+    );
+
+    debugPrint(
+      '[CHECKPOINT] Visible Blind Box count: '
+          '${visibleDestinations.where(
+            (destination) =>
+        destination.destinationSource
+            ?.trim()
+            .toUpperCase() ==
+            'GOOGLE',
+      ).length}',
+    );
+
+    return ActiveCheckpointData(
+      destinations:
+      visibleDestinations,
+
+      rewardPoints:
+      visibleRewardPoints,
+    );
+  }
+
+  Future<String?>
+  getCurrentProfilePictureUrl() async {
+    final user =
+        Supabase.instance.client.auth.currentUser;
+
+    if (user == null) {
+      return null;
+    }
+
+    final profile =
+    await Supabase.instance.client
+        .from('profiles')
+        .select(
+      'profile_picture_url',
+    )
+        .eq(
+      'id',
+      user.id,
+    )
+        .maybeSingle();
+
+    final picture =
+    profile?['profile_picture_url']
+        ?.toString()
+        .trim();
+
+    if (picture == null ||
+        picture.isEmpty) {
+      return null;
+    }
+
+    return picture;
+  }
+}
+
+class ActiveCheckpointData {
+  final List<CheckpointDestination>
+  destinations;
+
+  final Map<String, int>
+  rewardPoints;
+
+  const ActiveCheckpointData({
+    required this.destinations,
+    required this.rewardPoints,
+  });
 }

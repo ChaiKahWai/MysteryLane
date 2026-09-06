@@ -54,6 +54,11 @@ class BlindBoxHistoryUi extends BlindBoxDestinationUi {
   final String drawnAtDate;
   final String drawnAtTime;
 
+  // Needed when starting a checkpoint mission from history.
+  final String destinationId;
+  final String rawCategory;
+  final double latitude;
+  final double longitude;
 
   const BlindBoxHistoryUi({
     required super.id,
@@ -68,6 +73,12 @@ class BlindBoxHistoryUi extends BlindBoxDestinationUi {
     required super.userRatingCount,
     required this.drawnAtDate,
     required this.drawnAtTime,
+
+    // Defaults keep older code compiling.
+    this.destinationId = '',
+    this.rawCategory = 'unknown',
+    this.latitude = 0,
+    this.longitude = 0,
   });
 }
 
@@ -393,28 +404,75 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
   BlindBoxHistoryUi _mapHistoryResultToUi(
       BlindBoxHistoryResult result,
       ) {
-    final localTime = result.drawnAt.toLocal();
+    final localTime =
+    result.drawnAt.toLocal();
 
     return BlindBoxHistoryUi(
+      // id here is the Google Place ID.
       id: result.placeId,
-      title: result.name,
-      tag: _formatPlaceType(result.category),
-      distance: '${result.radiusKm.toStringAsFixed(0)} km radius',
-      lore: result.description?.trim().isNotEmpty == true
+
+      destinationId:
+      result.destinationId,
+
+      title:
+      result.name,
+
+      tag:
+      _formatPlaceType(
+        result.category,
+      ),
+
+      rawCategory:
+      result.category,
+
+      latitude:
+      result.latitude,
+
+      longitude:
+      result.longitude,
+
+      distance:
+      '${result.radiusKm.toStringAsFixed(0)} km radius',
+
+      lore:
+      result.description
+          ?.trim()
+          .isNotEmpty ==
+          true
           ? result.description!
           : 'A mystery destination is waiting for you to explore.',
-      difficulty: result.drawType == 'REDRAW'
+
+      difficulty:
+      result.drawType == 'REDRAW'
           ? 'Redrawn destination'
           : 'Explore this destination',
-      imageUrl: result.imageUrl ?? '',
-      locationName: result.address.trim().isNotEmpty
+
+      imageUrl:
+      result.imageUrl ?? '',
+
+      locationName:
+      result.address
+          .trim()
+          .isNotEmpty
           ? result.address
           : '${result.latitude.toStringAsFixed(5)}, '
           '${result.longitude.toStringAsFixed(5)}',
-      rating: result.rating,
-      userRatingCount: result.userRatingCount,
-      drawnAtDate: _formatHistoryDate(localTime),
-      drawnAtTime: _formatHistoryTime(localTime),
+
+      rating:
+      result.rating,
+
+      userRatingCount:
+      result.userRatingCount,
+
+      drawnAtDate:
+      _formatHistoryDate(
+        localTime,
+      ),
+
+      drawnAtTime:
+      _formatHistoryTime(
+        localTime,
+      ),
     );
   }
 
@@ -677,6 +735,210 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       _showBlindBoxMessage(
         error.toString().replaceFirst('Exception: ', ''),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _generatingCheckpointMission = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _generateAndOpenCheckpointMissionFromHistory(
+      BlindBoxHistoryUi item,
+      ) async {
+    if (_generatingCheckpointMission) {
+      return;
+    }
+
+    // item.id should contain the Google Place ID.
+    if (item.id.trim().isEmpty) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Google Place ID is missing for this destination.',
+            ),
+          ),
+        );
+
+      return;
+    }
+
+    setState(() {
+      _generatingCheckpointMission = true;
+    });
+
+    bool loadingDialogOpen = false;
+
+    try {
+      // ==========================================================
+      // SHOW LOADING
+      // ==========================================================
+
+      loadingDialogOpen = true;
+
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) {
+          return const PopScope(
+            canPop: false,
+            child: AlertDialog(
+              content: Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                      ),
+                    ),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        'Gemini is creating your checkpoint mission...',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+
+      // ==========================================================
+      // GENERATE / REUSE MISSION
+      // ==========================================================
+
+      debugPrint(
+        '[HISTORY MISSION] Generating mission for ${item.title}',
+      );
+
+      debugPrint(
+        '[HISTORY MISSION] Google Place ID: ${item.id}',
+      );
+
+      debugPrint(
+        '[HISTORY MISSION] Coordinates: '
+            '${item.latitude}, ${item.longitude}',
+      );
+
+      final generated =
+      await _missionGenerationService
+          .generateMissionForBlindBox(
+        googlePlaceId: item.id,
+
+        name: item.title,
+
+        description: item.lore,
+
+        category: item.rawCategory,
+
+        imageUrl:
+        item.imageUrl.trim().isEmpty
+            ? null
+            : item.imageUrl,
+
+        latitude: item.latitude,
+
+        longitude: item.longitude,
+
+        formattedAddress: item.locationName,
+
+        rating: item.rating,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      // ==========================================================
+      // CLOSE LOADING
+      // ==========================================================
+
+      if (loadingDialogOpen) {
+        Navigator.of(
+          context,
+          rootNavigator: true,
+        ).pop();
+
+        loadingDialogOpen = false;
+      }
+
+      debugPrint(
+        '[HISTORY MISSION] Mission ready: '
+            '${generated.missionId}',
+      );
+
+      debugPrint(
+        '[HISTORY MISSION] Opening checkpoint map for '
+            '${generated.destination.name}',
+      );
+
+      debugPrint(
+        '[HISTORY MISSION] Destination ID: '
+            '${generated.destination.destinationId}',
+      );
+
+      // ==========================================================
+      // IMPORTANT:
+      // OPEN MAP, NOT CheckpointMissionScreen
+      //
+      // The destination ID tells CheckpointScreen which pin
+      // should be selected and focused.
+      // ==========================================================
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CheckpointScreen(
+            initialDestinationId:
+            generated.destination.destinationId,
+          ),
+        ),
+      );
+    } catch (error) {
+      debugPrint(
+        '[HISTORY MISSION] ERROR: $error',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (loadingDialogOpen) {
+        Navigator.of(
+          context,
+          rootNavigator: true,
+        ).pop();
+
+        loadingDialogOpen = false;
+      }
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              error
+                  .toString()
+                  .replaceFirst(
+                'Exception: ',
+                '',
+              ),
+            ),
+          ),
+        );
     } finally {
       if (mounted) {
         setState(() {
@@ -1545,17 +1807,35 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                     ),
                     const SizedBox(height: 26),
                     _SolidPrimaryButton(
-                      icon: Icons.navigation_rounded,
-                      label: 'START CHECKPOINT MISSION',
-                      onTap: () {
-                        // 1. Close history detail dialog
-                        Navigator.of(dialogContext).pop();
+                      icon:
+                      Icons.navigation_rounded,
 
-                        // 2. Navigate to Checkpoint page
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const CheckpointScreen(),
+                      label:
+                      _generatingCheckpointMission
+                          ? 'GENERATING MISSION...'
+                          : 'START CHECKPOINT MISSION',
+
+                      onTap: () async {
+                        // Close history detail popup first.
+                        Navigator.of(
+                          dialogContext,
+                        ).pop();
+
+                        // Wait until the dialog finishes closing.
+                        await Future<void>.delayed(
+                          const Duration(
+                            milliseconds: 100,
                           ),
+                        );
+
+                        if (!mounted) {
+                          return;
+                        }
+
+                        // Generate/retrieve the mission for THIS
+                        // exact history destination.
+                        await _generateAndOpenCheckpointMissionFromHistory(
+                          item,
                         );
                       },
                     ),

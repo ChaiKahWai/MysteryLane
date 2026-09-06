@@ -3082,31 +3082,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       shape: const CircularNotchedRectangle(),
       notchMargin: 8,
+
       child: SafeArea(
         top: false,
+
         child: Row(
           children: [
+            // =====================================================
+            // BLIND BOX
+            // =====================================================
+
             Expanded(
               child: _buildProfileBottomItem(
                 icon: Icons.inventory_2_outlined,
                 label: 'BLIND BOX',
+
                 onTap: () {
-                  _showMessage(
-                    'Blind Box is not connected yet.',
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                      const BlindBoxPage(),
+                    ),
                   );
                 },
               ),
             ),
 
+            // =====================================================
+            // MISSIONS
+            // =====================================================
+
             Expanded(
               child: _buildProfileBottomItem(
                 icon: Icons.assignment_outlined,
                 label: 'MISSIONS',
+
                 onTap: () {
-                  Navigator.push(
-                    context,
+                  Navigator.of(context).pushReplacement(
                     MaterialPageRoute(
-                      builder: (context) =>
+                      builder: (_) =>
                       const CheckpointScreen(),
                     ),
                   );
@@ -3114,29 +3128,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
 
+            // =====================================================
+            // SPACE FOR CENTER HOME BUTTON
+            // =====================================================
+
             const SizedBox(
               width: 74,
             ),
+
+            // =====================================================
+            // PLAN
+            // =====================================================
 
             Expanded(
               child: _buildProfileBottomItem(
                 icon: Icons.map_outlined,
                 label: 'PLAN',
+
                 onTap: () {
-                  _showMessage(
-                    'Plan is not connected yet.',
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                      const PlanScreen(),
+                    ),
                   );
                 },
               ),
             ),
 
+            // =====================================================
+            // TEAMS
+            // =====================================================
+
             Expanded(
               child: _buildProfileBottomItem(
                 icon: Icons.groups_2_outlined,
                 label: 'TEAMS',
+
                 onTap: () {
-                  _showMessage(
-                    'Teams is not connected yet.',
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                      const GroupScreen(),
+                    ),
                   );
                 },
               ),

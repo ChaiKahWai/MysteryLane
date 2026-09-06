@@ -563,35 +563,38 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeButton() {
-    final bool active = _selectedItem == 'Home';
-
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.only(
+        top: 10,
+      ),
       child: InkWell(
         customBorder: const CircleBorder(),
-        onTap: () => _showPressedMessage('Home'),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: active ? 66 : 62,
-          height: active ? 66 : 62,
+
+        // Already on Home page.
+        // Do nothing when pressed.
+        onTap: () {},
+
+        child: Container(
+          width: 66,
+          height: 66,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: const LinearGradient(
-              colors: [skyBlue, teal],
+              colors: [
+                Color(0xFF0284C7),
+                Color(0xFF0D9488),
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            border: Border.all(color: Colors.white, width: 4),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x3D0284C7),
-                blurRadius: 16,
-                offset: Offset(0, 7),
-              ),
-            ],
+            border: Border.all(
+              color: Colors.white,
+              width: 4,
+            ),
           ),
           child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment:
+            MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.home_rounded,
