@@ -208,10 +208,30 @@ class _GroupScreenState extends State<GroupScreen> {
   }
 
   List<Map<String, dynamic>> _filterMyTeams() {
-    if (_searchQuery.isEmpty) return _myTeams;
     return _myTeams.where((team) {
-      final name = team['travel_groups']['team_name']?.toLowerCase() ?? '';
-      return name.contains(_searchQuery.toLowerCase());
+      final groupData = team['travel_groups'] as Map<String, dynamic>;
+      final groupId = groupData['group_id'] as String;
+
+      // ---- Search filter ----
+      final name = groupData['team_name']?.toLowerCase() ?? '';
+      if (_searchQuery.isNotEmpty && !name.contains(_searchQuery.toLowerCase())) {
+        return false;
+      }
+
+      // ---- Date filter (if a date is selected) ----
+      if (_selectedDate != null) {
+        final plan = _teamTripPlans[groupId];
+        if (plan == null) return false;
+        final start = plan.startDate;
+        final end = plan.endDate;
+        if (start == null || end == null) return false;
+        final selected = _selectedDate!;
+        final isAfterStart = selected.isAfter(start) || selected.isAtSameMomentAs(start);
+        final isBeforeEnd = selected.isBefore(end) || selected.isAtSameMomentAs(end);
+        if (!isAfterStart || !isBeforeEnd) return false;
+      }
+
+      return true;
     }).toList();
   }
 
@@ -687,10 +707,16 @@ class _GroupScreenState extends State<GroupScreen> {
           ),
         ),
         if (filtered.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(32.0),
+          Padding(
+            padding: const EdgeInsets.all(32.0),
             child: Center(
-              child: Text('You are not in any teams yet.'),
+              child: Text(
+                _selectedDate != null
+                    ? 'No teams with trips covering ${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}.'
+                    : 'You are not in any teams yet.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, color: greyText),
+              ),
             ),
           )
         else
