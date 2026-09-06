@@ -7,6 +7,7 @@ import 'core/config/supabase_config.dart';
 import 'presentation/screens/auth/welcome_screen.dart';
 import 'presentation/screens/auth/login_screen.dart';
 import 'presentation/screens/profile/reset_password_screen.dart';
+import 'presentation/screens/home/home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +32,6 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
   StreamSubscription<AuthState>? _authSubscription;
 
   bool _handlingVerification = false;
-
   bool _resetPasswordScreenOpen = false;
 
   @override
@@ -105,8 +105,7 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
         navigator
             .push(
           MaterialPageRoute(
-            builder: (_) =>
-            const ResetPasswordScreen(),
+            builder: (_) => const ResetPasswordScreen(),
           ),
         )
             .then(
@@ -139,6 +138,8 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
           .eq('id', user.id)
           .maybeSingle();
 
+      // Existing user:
+      // keep the current login session.
       if (existingProfile != null) {
         return;
       }
@@ -152,9 +153,7 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
       final String phoneNumber =
           metadata['phone_number']?.toString().trim() ?? '';
 
-      await SupabaseConfig.client
-          .from('profiles')
-          .insert({
+      await SupabaseConfig.client.from('profiles').insert({
         'id': user.id,
         'full_name': fullName,
         'phone_number': phoneNumber,
@@ -167,7 +166,33 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
         'team_status': null,
       });
 
-        await SupabaseConfig.client.auth.signOut();
+      // [M8] Registration is now complete because the email is
+      // verified and the corresponding traveller profile exists.
+      final NavigatorState? navigator =
+          navigatorKey.currentState;
+
+      if (navigator != null) {
+        final BuildContext? appContext =
+            navigatorKey.currentContext;
+
+        if (appContext != null) {
+          ScaffoldMessenger.of(appContext)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Email verification completed successfully. '
+                      'Your MYsteryLane account has been created.',
+                ),
+                duration: Duration(seconds: 3),
+              ),
+            );
+        }
+      }
+
+      // Terminate the temporary verification session before
+      // returning the traveller to Login.
+      await SupabaseConfig.client.auth.signOut();
 
       if (!mounted) {
         return;
@@ -179,11 +204,9 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
             return;
           }
 
-          navigatorKey.currentState
-              ?.pushAndRemoveUntil(
+          navigatorKey.currentState?.pushAndRemoveUntil(
             MaterialPageRoute(
-              builder: (_) =>
-              const LoginScreen(),
+              builder: (_) => const LoginScreen(),
             ),
                 (route) => false,
           );
@@ -210,11 +233,22 @@ class _MysteryLaneAppState extends State<MysteryLaneApp> {
 
   @override
   Widget build(BuildContext context) {
+    final Session? session =
+        SupabaseConfig.client.auth.currentSession;
+
     return MaterialApp(
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'MYsteryLane',
-      home: const WelcomeScreen(),
+
+      // If user already logged in before,
+      // go directly to Home.
+      home: session != null
+          ? const HomeScreen()
+          : const WelcomeScreen(),
     );
   }
 }
+
+
+//hi

@@ -127,13 +127,12 @@ class SupabaseDataSource {
         },
       );
 
-      // The draw has already succeeded atomically at this point. Wait for the
-      // destination's Gemini question bank so the puzzle opens with researched
-      // trivia, but never convert a Gemini outage into a failed Blind Box draw.
+      // Start server-side preparation for every text category. The endpoint
+      // acknowledges immediately while the shared question banks grow.
       try {
         await _client.functions.invoke(
           'generate-destination-questions',
-          body: {'destination_id': destinationId},
+          body: {'destination_id': destinationId, 'prepare_all': true},
         );
       } on FunctionException {
         // Preserve the successful draw. The existing destination bank remains
@@ -190,6 +189,44 @@ class SupabaseDataSource {
     } catch (error) {
       throw SupabaseDataException('Failed to load Blind Box history: $error');
     }
+  }
+
+  Future<void> savePuzzleLocation({
+    required String destinationId,
+    required String locationSource,
+  }) async {
+    final user = _requireUser();
+    await _client.from('user_puzzle_locations').upsert({
+      'user_id': user.id,
+      'destination_id': destinationId,
+      'location_source': locationSource,
+      'selected_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,destination_id,location_source');
+  }
+
+  Future<List<Map<String, dynamic>>> getSavedPuzzleLocations({
+    required String locationSource,
+  }) async {
+    final user = _requireUser();
+    final response = await _client
+        .from('user_puzzle_locations')
+        .select('''
+          destination_id,
+          selected_at,
+          blind_box_destinations (
+            destination_id,
+            name,
+            category,
+            image_url,
+            address
+          )
+        ''')
+        .eq('user_id', user.id)
+        .eq('location_source', locationSource)
+        .order('selected_at', ascending: false);
+    return (response as List)
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList();
   }
 
   int _toInt(dynamic value) {

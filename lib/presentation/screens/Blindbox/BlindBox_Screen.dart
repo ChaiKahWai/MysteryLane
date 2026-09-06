@@ -4,8 +4,17 @@ import '../../../data/models/blind_box_history.dart';
 import '../home/home_screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
 import 'package:flutter/services.dart';
-//import '../plan/plan_screen.dart';
-//import '../group/group_screen.dart';
+import '../plan/plan_screen.dart';
+import '../profile/leaderboard_screen.dart';
+import '../group/chat_list_screen.dart';
+import '../profile/profile_screen.dart';
+import '../group/group_screen.dart';
+
+import 'package:mysterylane/application/services/blind_box_mission_generation_service.dart';
+
+import 'package:mysterylane/data/models/checkpoint_destination.dart';
+
+import '../checkpoint/checkpoint_mission_screen.dart';
 
 enum MysteryLaneTab {
   blindBox,
@@ -128,6 +137,12 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
   int _blindBoxChances = 0;
 
   BlindBoxDestinationUi? _currentDestination;
+
+  /// Keeps the real Google Places result for the currently revealed
+  /// destination. The UI model only stores display fields, while Gemini
+  /// mission generation needs the original place id / coordinates / type.
+  BlindBoxResult? _currentBlindBoxResult;
+
   List<BlindBoxHistoryUi> _history = [];
 
   TextStyle get _heading => const TextStyle(
@@ -161,6 +176,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
 
     if (oldWidget.currentDestination?.id != widget.currentDestination?.id) {
       _currentDestination = widget.currentDestination;
+      _currentBlindBoxResult = null;
       _showResult = _currentDestination != null;
     }
   }
@@ -279,6 +295,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       if (!mounted) return;
 
       setState(() {
+        _currentBlindBoxResult = result;
         _currentDestination = _mapResultToUi(result);
         _showResult = true;
       });
@@ -318,6 +335,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       if (!mounted) return;
 
       setState(() {
+        _currentBlindBoxResult = result;
         _currentDestination = _mapResultToUi(result);
         _showResult = true;
       });
@@ -525,18 +543,14 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     //  _replaceWith(const PlanScreen());
     // break;
 
-    // case MysteryLaneTab.teams:
-    //  _replaceWith(const GroupScreen());
-    // break;
+      case MysteryLaneTab.teams:
+        _replaceWith(const GroupScreen());
+        break;
       case MysteryLaneTab.plan:
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(
-              behavior: SnackBarBehavior.floating,
-              content: Text('Plan page will be connected later.'),
-            ),
-          );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const PlanScreen()),
+        );
         break;
 
     //case MysteryLaneTab.teams:
@@ -546,6 +560,143 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       // TODO: Handle this case.
         throw UnimplementedError();
     }
+  }
+
+  // ==========================================================================
+  // GEMINI CHECKPOINT MISSION GENERATION
+  // ==========================================================================
+
+  final BlindBoxMissionGenerationService _missionGenerationService =
+  BlindBoxMissionGenerationService();
+
+  bool _generatingCheckpointMission = false;
+
+  Future<void> _generateAndOpenCheckpointMission() async {
+    if (_generatingCheckpointMission) return;
+
+    final uiDestination = _currentDestination;
+    final place = _currentBlindBoxResult;
+
+    if (uiDestination == null) {
+      _showBlindBoxMessage('No Blind Box destination is currently selected.');
+      return;
+    }
+
+    // Normal Blind Box draws always keep the original BlindBoxResult.
+    // A destination injected externally through currentDestination does not.
+    if (place == null) {
+      if (widget.onStartMission != null) {
+        widget.onStartMission!.call(uiDestination);
+        return;
+      }
+
+      _showBlindBoxMessage(
+        'This destination does not contain the Google Places data needed to generate a mission. Please draw a new Blind Box destination.',
+      );
+      return;
+    }
+
+    setState(() {
+      _generatingCheckpointMission = true;
+    });
+
+    bool loadingDialogOpen = false;
+
+    try {
+      if (!mounted) return;
+
+      loadingDialogOpen = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return const PopScope(
+            canPop: false,
+            child: AlertDialog(
+              content: Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        'Gemini is creating your checkpoint mission...',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+
+      final generated = await _missionGenerationService.generateMissionForBlindBox(
+        googlePlaceId: place.placeId,
+        name: place.name,
+        description: place.description,
+        category: place.primaryType,
+        imageUrl: place.imageUrl,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        formattedAddress: place.formattedAddress,
+        rating: place.rating,
+      );
+
+      if (!mounted) return;
+
+      if (loadingDialogOpen && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingDialogOpen = false;
+      }
+
+      debugPrint(
+        '[BLIND BOX UI] Ready checkpoint mission: ${generated.missionId}',
+      );
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CheckpointMissionScreen(
+            destination: generated.destination,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      if (loadingDialogOpen && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingDialogOpen = false;
+      }
+
+      _showBlindBoxMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _generatingCheckpointMission = false;
+        });
+      }
+    }
+  }
+
+  void _showBlindBoxMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(message),
+        ),
+      );
   }
 
   @override
@@ -1206,9 +1357,15 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
 
                     const SizedBox(height: 27),
                     _SolidPrimaryButton(
-                      icon: Icons.navigation_rounded,
-                      label: 'GO CHECKPOINT MISSION',
-                      onTap: () => widget.onStartMission?.call(destination),
+                      icon: _generatingCheckpointMission
+                          ? Icons.auto_awesome_rounded
+                          : Icons.navigation_rounded,
+                      label: _generatingCheckpointMission
+                          ? 'GENERATING MISSION...'
+                          : 'GO CHECKPOINT MISSION',
+                      onTap: _generatingCheckpointMission
+                          ? () {}
+                          : _generateAndOpenCheckpointMission,
                     ),
                     const SizedBox(height: 12),
                     _OutlineActionButton(
@@ -1565,6 +1722,27 @@ class _MysteryLaneTopBar extends StatelessWidget {
   static const Color teal = Color(0xFF0D9488);
   static const Color darkText = Color(0xFF0F172A);
 
+  void _openChat(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ChatListScreen()),
+    );
+  }
+
+  void _openLeaderboard(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
+    );
+  }
+
+  void _openProfile(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -1617,46 +1795,69 @@ class _MysteryLaneTopBar extends StatelessWidget {
                     ),
                   ),
                 ),
-                _TopCircleButton(
-                  background: const Color(0xFFFFFBEB),
-                  border: const Color(0xFFFDE68A),
-                  icon: Icons.emoji_events_rounded,
-                  iconColor: const Color(0xFFD97706),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 42,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F9FF),
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: const Color(0xFFBAE6FD)),
-                  ),
-                  child: const Icon(
-                    Icons.chat_bubble_outline_rounded,
-                    color: skyBlue,
-                    size: 19,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 38,
-                  height: 38,
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                    border: Border.all(
-                      color: const Color(0xFFBAE6FD),
-                      width: 1.4,
+                // Leaderboard
+                InkWell(
+                  onTap: () => _openLeaderboard(context),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 43,
+                    height: 43,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: const Icon(
+                      Icons.emoji_events_rounded,
+                      color: Color(0xFFD97706),
+                      size: 22,
                     ),
                   ),
-                  child: const CircleAvatar(
-                    backgroundColor: Color(0xFFE0F2FE),
-                    child: Icon(
-                      Icons.person_rounded,
+                ),
+                const SizedBox(width: 6),
+                // Chat
+                InkWell(
+                  onTap: () => _openChat(context),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 42,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                    ),
+                    child: const Icon(
+                      Icons.chat_bubble_outline_rounded,
                       color: skyBlue,
-                      size: 20,
+                      size: 19,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                // Profile
+                InkWell(
+                  onTap: () => _openProfile(context),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(
+                        color: const Color(0xFFBAE6FD),
+                        width: 1.4,
+                      ),
+                    ),
+                    child: const CircleAvatar(
+                      backgroundColor: Color(0xFFE0F2FE),
+                      child: Icon(
+                        Icons.person_rounded,
+                        color: skyBlue,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),

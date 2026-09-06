@@ -13,8 +13,21 @@ import '../profile/profile_screen.dart';
 import '../../../application/services/puzzle_challenge_service.dart';
 import '../../../data/models/puzzle_model.dart';
 import '../../../data/models/puzzle_question_quality.dart';
+import '../../../data/models/puzzle_selection.dart';
+import '../group/chat_list_screen.dart';
+import '../plan/plan_screen.dart';
+import '../group/group_screen.dart';
 
 enum PuzzleCategory { image, scrambled, word, mcq, trueFalse }
+
+// Image Recognition is retained only so older attempts can still be displayed
+// in Puzzle History. New challenges intentionally offer the four text formats.
+const List<PuzzleCategory> playablePuzzleCategories = [
+  PuzzleCategory.scrambled,
+  PuzzleCategory.word,
+  PuzzleCategory.mcq,
+  PuzzleCategory.trueFalse,
+];
 
 extension PuzzleCategoryX on PuzzleCategory {
   String get key {
@@ -23,16 +36,25 @@ extension PuzzleCategoryX on PuzzleCategory {
         return 'Image Guessing';
 
       case PuzzleCategory.scrambled:
-        return 'Scrambled Word';
+        return 'Guess the Word';
 
       case PuzzleCategory.word:
-        return 'Guess the Word';
+        return 'Missing Word Challenge';
 
       case PuzzleCategory.mcq:
         return 'Multiple Choice Question';
 
       case PuzzleCategory.trueFalse:
         return 'True or False';
+    }
+  }
+
+  String get historyKey {
+    switch (this) {
+      case PuzzleCategory.scrambled:
+        return 'Scrambled Anagrams';
+      default:
+        return key;
     }
   }
 }
@@ -89,6 +111,7 @@ class CategoryQuestion {
   final List<String>? options;
   final String? imageUrl;
   final String? locationId;
+  final String? displayBoxContent;
 
   const CategoryQuestion({
     required this.id,
@@ -100,6 +123,7 @@ class CategoryQuestion {
     this.options,
     this.imageUrl,
     this.locationId,
+    this.displayBoxContent,
   });
 }
 
@@ -133,11 +157,11 @@ const Map<PuzzleCategory, CategoryInfo> categoryInfo = {
     difficulty: 'Easy',
   ),
   PuzzleCategory.word: CategoryInfo(
-    title: 'Word Riddle Cipher',
+    title: 'Missing Word Challenge',
     description:
-        'Decipher cryptic rhymes and fill in the missing location answers.',
-    icon: '📜',
-    difficulty: 'Hard',
+        'Answer destination questions by choosing the correct word or phrase.',
+    icon: '🧩',
+    difficulty: 'Easy',
   ),
   PuzzleCategory.mcq: CategoryInfo(
     title: 'Multiple Choice Trivia',
@@ -160,18 +184,20 @@ const List<CategoryQuestion> puzzleQuestionDatabase = [
     id: 'q-word-1',
     category: PuzzleCategory.word,
     question: 'Which mountain is called "the roof of the Alps"?',
-    subtitle: 'Guess the Word · Answer before timer ends.',
+    subtitle: 'Missing Word Challenge · Choose the correct answer.',
     answer: 'Mont Blanc',
     hint:
-        'Located in western Alps on the French-Italian border, standing at 4,807 meters.',
+        'Located in the western Alps on the French-Italian border.',
+    options: ['Mont Blanc', 'Mount Fuji', 'Mount Kinabalu', 'Ben Nevis'],
   ),
   CategoryQuestion(
     id: 'q-word-2',
     category: PuzzleCategory.word,
     question: 'What is the capital city of Japan?',
-    subtitle: 'Guess the Word · Answer before timer ends.',
+    subtitle: 'Missing Word Challenge · Choose the correct answer.',
     answer: 'Tokyo',
     hint: 'This megacity was formerly known as Edo.',
+    options: ['Tokyo', 'Kyoto', 'Osaka', 'Nagoya'],
   ),
   CategoryQuestion(
     id: 'q-image-1',
@@ -292,6 +318,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   String? _attemptId;
 
   bool _isLoadingChallenge = false;
+  String? _preparationNotice;
   bool _isSubmittingAnswer = false;
 
   int _challengeCompletionTimeSeconds = 0;
@@ -329,7 +356,9 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   late PuzzleLocationSource _locationSource;
   bool _isLoadingBlindBoxLocations = false;
   final List<MissionCheckpoint> _blindBoxLocations = [];
+  final List<MissionCheckpoint> _savedCheckpointLocations = [];
   int _selectedBlindBoxIndex = 0;
+  int? _selectedSavedCheckpointIndex;
   final SupabaseDataSource _supabaseDataSource = SupabaseDataSource();
   final Random _random = Random();
   CategoryQuestion? _currentResolvedQuestion;
@@ -337,6 +366,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   bool _isLoadingHistory = true;
   String? _historyError;
   PuzzleCategory? _historyCategoryFilter;
+  String? _headerProfilePictureUrl;
 
   @override
   void initState() {
@@ -344,7 +374,9 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     _userEp = widget.userEp;
     _locationSource = widget.initialLocationSource;
     _loadBlindBoxLocations();
+    _loadSavedCheckpointLocations();
     _loadPuzzleHistory();
+    _loadHeaderProfile();
 
     countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -379,10 +411,22 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   bool get _hasBlindBoxLocations => _blindBoxLocations.isNotEmpty;
 
   bool get _hasCheckpointLocation =>
+      _activeCheckpointMission != null;
+
+  bool get _hasCurrentCheckpoint =>
       widget.mission != null && widget.mission!.title.trim().isNotEmpty;
 
-  bool get _isRandomPuzzleMode =>
-      !_hasBlindBoxLocations && !_hasCheckpointLocation;
+  MissionCheckpoint? get _activeCheckpointMission {
+    final savedIndex = _selectedSavedCheckpointIndex;
+    if (savedIndex != null &&
+        savedIndex >= 0 &&
+        savedIndex < _savedCheckpointLocations.length) {
+      return _savedCheckpointLocations[savedIndex];
+    }
+    return _hasCurrentCheckpoint ? widget.mission : null;
+  }
+
+  bool get _isRandomPuzzleMode => _activeLocationMission == null;
 
   bool get _showBlindBoxFilterContent =>
       _locationSource == PuzzleLocationSource.blindBox && _hasBlindBoxLocations;
@@ -391,11 +435,9 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       _locationSource == PuzzleLocationSource.checkpoint &&
       _hasCheckpointLocation;
 
-  MissionCheckpoint? get _checkpointMission => widget.mission;
+  MissionCheckpoint? get _checkpointMission => _activeCheckpointMission;
 
   MissionCheckpoint? get _activeLocationMission {
-    if (_isRandomPuzzleMode) return null;
-
     if (_locationSource == PuzzleLocationSource.blindBox) {
       if (_blindBoxLocations.isEmpty) return null;
       final safeIndex = _selectedBlindBoxIndex.clamp(
@@ -478,20 +520,18 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   }
 
   void _syncLocationFilterAfterLoad() {
-    if (_isRandomPuzzleMode) return;
-
-    if (_hasBlindBoxLocations && !_hasCheckpointLocation) {
+    if (_hasBlindBoxLocations && !_hasCurrentCheckpoint) {
       _locationSource = PuzzleLocationSource.blindBox;
       _selectedBlindBoxIndex = 0;
       return;
     }
 
-    if (_hasCheckpointLocation && !_hasBlindBoxLocations) {
+    if (_hasCurrentCheckpoint && !_hasBlindBoxLocations) {
       _locationSource = PuzzleLocationSource.checkpoint;
       return;
     }
 
-    if (_hasBlindBoxLocations && _hasCheckpointLocation) {
+    if (_hasBlindBoxLocations && _hasCurrentCheckpoint) {
       if (widget.initialLocationSource == PuzzleLocationSource.checkpoint) {
         _locationSource = PuzzleLocationSource.checkpoint;
       } else {
@@ -554,6 +594,40 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       if (mounted) {
         setState(() => _isLoadingBlindBoxLocations = false);
       }
+    }
+  }
+
+  Future<void> _loadSavedCheckpointLocations() async {
+    try {
+      final rows = await _supabaseDataSource.getSavedPuzzleLocations(
+        locationSource: 'CHECKPOINT',
+      );
+      final currentId = widget.mission?.id;
+      final built = <MissionCheckpoint>[];
+      for (final row in rows) {
+        final raw = row['blind_box_destinations'];
+        if (raw is! Map) continue;
+        final destination = Map<String, dynamic>.from(raw);
+        final id = destination['destination_id']?.toString();
+        if (id == null || id.isEmpty || id == currentId) continue;
+        built.add(
+          MissionCheckpoint(
+            id: id,
+            title: destination['name']?.toString() ?? 'Checkpoint location',
+            imageUrl: destination['image_url']?.toString(),
+            locationName: destination['address']?.toString(),
+            category: destination['category']?.toString() ?? 'Checkpoint',
+          ),
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _savedCheckpointLocations
+          ..clear()
+          ..addAll(built);
+      });
+    } catch (error) {
+      debugPrint('LOAD SAVED CHECKPOINT LOCATIONS ERROR: $error');
     }
   }
 
@@ -676,10 +750,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         );
         break;
       case 'profile':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ProfileScreen()),
-        );
+        _openProfile();
         break;
       default:
         if (Navigator.of(context).canPop()) {
@@ -688,6 +759,43 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
           _replaceWith(const HomeScreen());
         }
     }
+  }
+
+  Future<void> _loadHeaderProfile() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        if (mounted) setState(() => _headerProfilePictureUrl = null);
+        return;
+      }
+
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('profile_picture_url, exploration_points')
+          .eq('id', user.id)
+          .maybeSingle();
+      if (!mounted) return;
+
+      final picture = profile?['profile_picture_url']?.toString().trim();
+      setState(() {
+        _headerProfilePictureUrl =
+            picture != null && picture.isNotEmpty ? picture : null;
+        _userEp = int.tryParse(
+              profile?['exploration_points']?.toString() ?? '',
+            ) ??
+            _userEp;
+      });
+    } catch (error) {
+      debugPrint('PUZZLE HEADER PROFILE PHOTO ERROR: $error');
+    }
+  }
+
+  Future<void> _openProfile() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+    );
+    await _loadHeaderProfile();
   }
 
   void _handleBottomNavigation(MysteryLaneTab tab) {
@@ -706,10 +814,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         }
         break;
       case MysteryLaneTab.plan:
-        _showMessage('Plan page will be connected later.');
+        _replaceWith(const PlanScreen());
         break;
       case MysteryLaneTab.teams:
-        _showMessage('Teams page will be connected later.');
+        _replaceWith(const GroupScreen());
         break;
     }
   }
@@ -748,6 +856,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
 
     setState(() {
       _isLoadingChallenge = true;
+      _preparationNotice = null;
       selectedCategory = category;
     });
 
@@ -761,8 +870,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
 
       final questions = await _challengeService.loadChallengeQuestions(
         userId: user.id,
-        destinationId: location?.id,
+        destinationId: !_isRandomPuzzleMode
+            ? location?.id : null,
         puzzleType: category.key,
+        historyCategory: category.historyKey,
       );
 
       if (!mounted) return;
@@ -777,7 +888,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       // Create a new puzzle attempt.
       final attemptId = await _challengeService.startAttempt(
         userId: user.id,
-        puzzleType: category.key,
+        puzzleType: category.historyKey,
       );
 
       if (!mounted) return;
@@ -825,11 +936,11 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      _showMessage(
-        e is PuzzlePreparationException
+      setState(() {
+        _preparationNotice = e is PuzzlePreparationException
             ? e.message
-            : 'Unable to start puzzle challenge. Please try again.',
-      );
+            : 'Puzzles are temporarily unavailable. Your progress is saved. Please retry shortly.';
+      });
     } finally {
       if (mounted) {
         setState(() {
@@ -854,13 +965,15 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       case 'scrambled':
       case 'scrambled word':
       case 'scrambled anagrams':
+      case 'guess the word':
         category = PuzzleCategory.scrambled;
         break;
 
       case 'word':
-      case 'guess the word':
       case 'word riddle':
       case 'word riddle cipher':
+      case 'missing word':
+      case 'missing word challenge':
         category = PuzzleCategory.word;
         break;
 
@@ -891,6 +1004,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       options: question.options.isEmpty ? null : question.options,
       imageUrl: question.imageUrl,
       locationId: question.destinationId,
+      displayBoxContent: question.displayBoxContent,
     );
   }
 
@@ -938,6 +1052,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     final String userAnswer = timedOut
         ? ''
         : (currentQuestion.category == PuzzleCategory.mcq ||
+              currentQuestion.category == PuzzleCategory.word ||
               currentQuestion.category == PuzzleCategory.trueFalse)
         ? (selectedOption ?? '')
         : answerInput.trim();
@@ -962,11 +1077,12 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
 
     final puzzle = _challengeQuestions[_challengeQuestionIndex];
 
-    final normalizedUserAnswer = userAnswer.trim().toLowerCase();
-    final normalizedCorrectAnswer = puzzle.correctAnswer.trim().toLowerCase();
-
     final bool correct =
-        !timedOut && normalizedUserAnswer == normalizedCorrectAnswer;
+        !timedOut &&
+        _challengeService.checkAnswer(
+          userAnswer: userAnswer,
+          correctAnswer: puzzle.correctAnswer,
+        );
 
     questionTimer?.cancel();
 
@@ -1012,6 +1128,23 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
           _challengeQuestionIndex >= _challengeQuestions.length - 1;
 
       if (isLastQuestion) {
+        if (!mounted) return;
+
+        setState(() {
+          isSolved = true;
+          _lastAnswerWasCorrect = correct;
+          _lastAnswerTimedOut = timedOut;
+          _lastEarnedMarks = earnedMarks;
+          _isSubmittingAnswer = false;
+          errorMsg = null;
+        });
+
+        // Keep the final result visible long enough to read before opening the
+        // completion/leaderboard view.
+        await Future.delayed(const Duration(milliseconds: 2500));
+
+        if (!mounted) return;
+
         await _completePuzzleChallenge(
           completionTimeSeconds: _challengeCompletionTimeSeconds,
         );
@@ -1267,15 +1400,17 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
             foreground: skyBlue,
             background: const Color(0xFFF0F9FF),
             border: const Color(0xFFBAE6FD),
-            onTap: () => _showMessage('Chat page will be connected later.'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChatListScreen()),
+              );
+            },
           ),
           const SizedBox(width: 7),
-          action(
-            icon: Icons.person_rounded,
-            foreground: skyBlue,
-            background: const Color(0xFFF0F9FF),
-            border: const Color(0xFFBAE6FD),
-            onTap: () => _handleAppNavigation('profile'),
+          _PuzzleProfileButton(
+            onTap: _openProfile,
+            imageUrl: _headerProfilePictureUrl,
           ),
         ],
       ),
@@ -1296,7 +1431,9 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   Widget _buildCategoriesView() {
     return SingleChildScrollView(
       key: const ValueKey('categories'),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      // The Scaffold already reserves the bottom bar. Keep only a small inset
+      // so the fourth card is visible without a large empty panel below it.
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1343,18 +1480,24 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                     child: const Padding(
                       padding: EdgeInsets.symmetric(vertical: 11),
                       child: Center(
-                        child: Text(
-                          'Checkpoint Mission',
-                          style: TextStyle(
-                            color: Color(0xFF475569),
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Checkpoint Mission',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(
+                              color: Color(0xFF475569),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
+                const SizedBox(width: 4),
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 11),
@@ -1363,12 +1506,17 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                       borderRadius: BorderRadius.circular(26),
                     ),
                     alignment: Alignment.center,
-                    child: const Text(
-                      'Puzzle Challenge',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Puzzle Challenge',
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ),
@@ -1536,7 +1684,11 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         }
         if (source == PuzzleLocationSource.checkpoint &&
             !_hasCheckpointLocation) {
-          _showMessage('No checkpoint mission location available.');
+          if (_savedCheckpointLocations.isNotEmpty) {
+            _showLocationPicker();
+          } else {
+            _showMessage('No checkpoint location has been selected yet.');
+          }
           return;
         }
 
@@ -1616,7 +1768,11 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   }
 
   void _showLocationPicker() {
-    if (!_hasCheckpointLocation && _blindBoxLocations.length < 2) return;
+    if (!_hasCurrentCheckpoint &&
+        _savedCheckpointLocations.isEmpty &&
+        _blindBoxLocations.isEmpty) {
+      return;
+    }
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1647,21 +1803,41 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
                   children: [
-                    if (_hasCheckpointLocation)
+                    if (_hasCurrentCheckpoint)
                       _locationPickerTile(
-                        title: _checkpointMission!.title,
-                        subtitle: 'Current checkpoint · Recommended',
+                        title: widget.mission!.title,
+                        subtitle: 'Current Checkpoint - Recommended',
                         icon: Icons.flag_rounded,
                         selected:
                             _locationSource == PuzzleLocationSource.checkpoint,
                         onTap: () {
                           setState(() {
                             _locationSource = PuzzleLocationSource.checkpoint;
+                            _selectedSavedCheckpointIndex = null;
                             _currentResolvedQuestion = null;
                           });
                           Navigator.pop(sheetContext);
                         },
                       ),
+                    ...List.generate(_savedCheckpointLocations.length, (index) {
+                      final location = _savedCheckpointLocations[index];
+                      return _locationPickerTile(
+                        title: location.title,
+                        subtitle: 'Checkpoint location',
+                        icon: Icons.flag_outlined,
+                        selected:
+                            _locationSource == PuzzleLocationSource.checkpoint &&
+                            _selectedSavedCheckpointIndex == index,
+                        onTap: () {
+                          setState(() {
+                            _locationSource = PuzzleLocationSource.checkpoint;
+                            _selectedSavedCheckpointIndex = index;
+                            _currentResolvedQuestion = null;
+                          });
+                          Navigator.pop(sheetContext);
+                        },
+                      );
+                    }),
                     ...List.generate(_blindBoxLocations.length, (index) {
                       final location = _blindBoxLocations[index];
                       return _locationPickerTile(
@@ -1764,10 +1940,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
           ),
         ],
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
               Icon(Icons.shuffle_rounded, color: Colors.white, size: 18),
               SizedBox(width: 8),
@@ -1781,16 +1957,29 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
               ),
             ],
           ),
-          SizedBox(height: 6),
-          Text(
-            'No Blind Box or Checkpoint location found. Questions will be '
-            'randomly generated from the entire puzzle question database.',
+          const SizedBox(height: 6),
+          const Text(
+            'No puzzle destination was selected. This challenge will use '
+            'general Malaysia questions.',
             style: TextStyle(
               color: Color(0xFFEDE9FE),
               fontSize: 12,
               height: 1.45,
             ),
           ),
+          if (_savedCheckpointLocations.isNotEmpty ||
+              _blindBoxLocations.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _showLocationPicker,
+              icon: const Icon(Icons.swap_horiz_rounded, size: 17),
+              label: const Text('Choose a saved puzzle location'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white70),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2090,12 +2279,30 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_preparationNotice != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_preparationNotice!),
+                  TextButton.icon(
+                    onPressed: _isLoadingChallenge
+                        ? null : () => _selectCategory(selectedCategory),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry preparation'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         const Text(
           'Available Challenge Categories',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
-        ...PuzzleCategory.values.map(_categoryCard),
+        ...playablePuzzleCategories.map(_categoryCard),
       ],
     );
   }
@@ -2236,9 +2443,9 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
     final filteredHistory = _historyCategoryFilter == null
         ? _puzzleHistory
         : _puzzleHistory
-              .where(
-                (item) => item.puzzleCategory == _historyCategoryFilter!.key,
-              )
+              .where((item) =>
+                  _categoryFromStoredType(item.puzzleCategory) ==
+                  _historyCategoryFilter)
               .toList();
 
     return Column(
@@ -2251,19 +2458,24 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
               'Your Puzzle Attempt Log',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            PopupMenuButton<PuzzleCategory?>(
+            PopupMenuButton<String>(
               tooltip: 'Filter puzzle category',
-              initialValue: _historyCategoryFilter,
-              onSelected: (value) =>
-                  setState(() => _historyCategoryFilter = value),
+              initialValue: _historyCategoryFilter?.name ?? 'all',
+              onSelected: (value) => setState(() {
+                _historyCategoryFilter = value == 'all'
+                    ? null
+                    : playablePuzzleCategories
+                        .where((category) => category.name == value)
+                        .firstOrNull;
+              }),
               itemBuilder: (context) => [
-                const PopupMenuItem<PuzzleCategory?>(
-                  value: null,
+                const PopupMenuItem<String>(
+                  value: 'all',
                   child: Text('All categories'),
                 ),
-                ...PuzzleCategory.values.map(
-                  (category) => PopupMenuItem<PuzzleCategory?>(
-                    value: category,
+                ...playablePuzzleCategories.map(
+                  (category) => PopupMenuItem<String>(
+                    value: category.name,
                     child: Text(categoryInfo[category]!.title),
                   ),
                 ),
@@ -2315,6 +2527,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   }
 
   Widget _historyCard(PuzzleChallengeHistory item) {
+    final historyCategory = _categoryFromStoredType(item.puzzleCategory);
+    final historyInfo = historyCategory == null
+        ? null
+        : categoryInfo[historyCategory];
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -2327,12 +2543,15 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         collapsedShape: const Border(),
         tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-        leading: const CircleAvatar(
-          backgroundColor: Color(0xFFF0F9FF),
-          child: Icon(Icons.extension_rounded, color: skyBlue),
+        leading: CircleAvatar(
+          backgroundColor: const Color(0xFFF0F9FF),
+          child: Text(
+            historyInfo?.icon ?? '🧩',
+            style: const TextStyle(fontSize: 20),
+          ),
         ),
         title: Text(
-          item.puzzleCategory,
+          historyInfo?.title ?? item.puzzleCategory,
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
@@ -2361,6 +2580,10 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         ),
         children: List.generate(item.answers.length, (index) {
           final answer = item.answers[index];
+          final historyQuestion = _historyQuestionText(
+            answer.questionText,
+            historyCategory,
+          );
           final resultColor = answer.isCorrect
               ? const Color(0xFF047857)
               : const Color(0xFFDC2626);
@@ -2377,7 +2600,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Question ${index + 1}: ${answer.questionText}',
+                  'Question ${index + 1}: $historyQuestion',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -2425,9 +2648,54 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         '${two(malaysia.hour)}:${two(malaysia.minute)} MYT';
   }
 
+  String _historyQuestionText(
+    String storedQuestion,
+    PuzzleCategory? category,
+  ) {
+    if (category != PuzzleCategory.trueFalse) return storedQuestion;
+
+    final match = RegExp(
+      r'^“(.+)” correctly answers: “(.+)”$',
+      dotAll: true,
+    ).firstMatch(storedQuestion.trim());
+    if (match == null) return storedQuestion;
+
+    return '${match.group(2)!}\nAnswer to check: ${match.group(1)!}';
+  }
+
+  ({String question, String? answerToCheck}) _trueFalseContent(
+    CategoryQuestion question,
+  ) {
+    if (question.category != PuzzleCategory.trueFalse) {
+      return (question: question.question, answerToCheck: null);
+    }
+
+    final separateBox = question.displayBoxContent?.trim();
+    if (separateBox != null && separateBox.isNotEmpty) {
+      return (question: question.question, answerToCheck: separateBox);
+    }
+
+    final match = RegExp(
+      r'^“(.+)” correctly answers: “(.+)”$',
+      dotAll: true,
+    ).firstMatch(question.question.trim());
+    if (match == null) {
+      return (
+        question: 'Is the statement below true or false?',
+        answerToCheck: question.question,
+      );
+    }
+
+    return (
+      question: match.group(2)!,
+      answerToCheck: match.group(1)!,
+    );
+  }
+
   Widget _buildQuestionView() {
     final info = categoryInfo[selectedCategory]!;
     final question = currentQuestion;
+    final trueFalseContent = _trueFalseContent(question);
 
     return SingleChildScrollView(
       key: const ValueKey('questions'),
@@ -2435,49 +2703,13 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       child: Column(
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Puzzle Challenge',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-              ),
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  _iconButton(
-                    icon: Icons.lightbulb,
-                    background: const Color(0xFFFFF7ED),
-                    foreground: const Color(0xFFD97706),
-                    onTap: _useHint,
-                  ),
-                  if (hintsAvailable > 0)
-                    Positioned(
-                      right: -3,
-                      top: -3,
-                      child: Container(
-                        width: 16,
-                        height: 16,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFF59E0B),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          '$hintsAvailable',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
+          const SizedBox(
+            width: double.infinity,
+            child: Text(
+              'Puzzle Challenge',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
           ),
           const SizedBox(height: 12),
           Container(
@@ -2590,8 +2822,22 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                   ),
                   const SizedBox(height: 18),
                 ],
+                if (malaysiaFallbackNotice(_challengeQuestions) != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(malaysiaFallbackNotice(_challengeQuestions)!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF1E40AF))),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Text(
-                  question.question,
+                  trueFalseContent.question,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 21,
@@ -2599,6 +2845,48 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                     height: 1.25,
                   ),
                 ),
+                if (trueFalseContent.answerToCheck != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'ANSWER TO CHECK',
+                          style: TextStyle(
+                            color: Color(0xFF0284C7),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          trueFalseContent.answerToCheck!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (question.category == PuzzleCategory.scrambled) ...[
+                  const SizedBox(height: 16),
+                  _buildScrambledWordBox(question),
+                ],
                 const SizedBox(height: 5),
                 Text(
                   question.subtitle,
@@ -2707,6 +2995,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   Widget _buildAnswerForm(CategoryQuestion question) {
     final isChoice =
         question.category == PuzzleCategory.mcq ||
+        question.category == PuzzleCategory.word ||
         question.category == PuzzleCategory.trueFalse;
 
     return Column(
@@ -3178,6 +3467,87 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
       ),
     );
   }
+
+  PuzzleCategory? _categoryFromStoredType(String value) {
+    switch (value.trim().toLowerCase()) {
+      case 'scrambled':
+      case 'scrambled word':
+      case 'scrambled anagrams':
+      case 'guess the word':
+        return PuzzleCategory.scrambled;
+      case 'word':
+      case 'word riddle':
+      case 'word riddle cipher':
+      case 'missing word':
+      case 'missing word challenge':
+        return PuzzleCategory.word;
+      case 'mcq':
+      case 'multiple choice':
+      case 'multiple choice question':
+      case 'multiple choice trivia':
+        return PuzzleCategory.mcq;
+      case 'true/false':
+      case 'true or false':
+        return PuzzleCategory.trueFalse;
+      default:
+        return null;
+    }
+  }
+
+  Widget _buildScrambledWordBox(CategoryQuestion question) {
+    final savedBox = question.displayBoxContent?.trim();
+    final scrambled = savedBox != null && savedBox.isNotEmpty
+        ? savedBox
+        : _scrambleAnswer(question.answer, question.id);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F9FF),
+        border: Border.all(color: const Color(0xFFBAE6FD)),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'ARRANGE THESE LETTERS',
+            style: TextStyle(
+              color: Color(0xFF0284C7),
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            scrambled.split('').join('  '),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF0F172A),
+              fontSize: 21,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _scrambleAnswer(String answer, String questionId) {
+    final clean = answer.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (clean.length < 2) return clean;
+
+    final letters = clean.split('');
+    final random = Random(questionId.hashCode ^ clean.hashCode);
+    for (var attempt = 0; attempt < 5; attempt++) {
+      letters.shuffle(random);
+      final result = letters.join();
+      if (result != clean) return result;
+    }
+
+    return '${clean.substring(1)}${clean[0]}';
+  }
 }
 
 class _PuzzleBottomBar extends StatelessWidget {
@@ -3231,6 +3601,51 @@ class _PuzzleBottomBar extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PuzzleProfileButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final String? imageUrl;
+
+  const _PuzzleProfileButton({required this.onTap, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final cleanUrl = imageUrl?.trim();
+    final ImageProvider? provider = cleanUrl != null && cleanUrl.isNotEmpty
+        ? NetworkImage(cleanUrl)
+        : null;
+
+    return Tooltip(
+      message: 'Profile',
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 38,
+          height: 38,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFBAE6FD), width: 1.4),
+          ),
+          child: CircleAvatar(
+            backgroundColor: const Color(0xFFE0F2FE),
+            backgroundImage: provider,
+            child: provider == null
+                ? const Icon(
+                    Icons.person_rounded,
+                    size: 20,
+                    color: Color(0xFF0284C7),
+                  )
+                : null,
+          ),
+        ),
+      ),
+    );
+  }
+
 }
 
 class _PuzzleBottomItem extends StatelessWidget {

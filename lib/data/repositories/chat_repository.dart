@@ -4,6 +4,7 @@ import '../../core/config/supabase_config.dart';
 
 class ChatRepository {
   final SupabaseClient _client = SupabaseConfig.client;
+  final Map<String, String?> _profileCache = {}; // cache for user names
 
   // Stream for real-time messages of a specific team
   Stream<List<ChatMessage>> getMessagesStream(String groupId) {
@@ -12,9 +13,44 @@ class ChatRepository {
         .stream(primaryKey: ['message_id'])
         .eq('group_id', groupId)
         .order('sent_at', ascending: true)
-        .map((data) => (data as List)
-        .map((json) => ChatMessage.fromJson(json))
-        .toList());
+        .asyncMap((data) async {
+      final list = data as List;
+      final messages = list.map((json) => ChatMessage.fromJson(json)).toList();
+
+      // Collect all user IDs from messages
+      final userIds = messages.map((m) => m.userId).toSet().toList();
+      if (userIds.isNotEmpty) {
+        // Fetch profiles for these users (batch)
+        final profiles = await _fetchProfiles(userIds);
+        // Update cache with fetched data
+        for (var p in profiles) {
+          _profileCache[p['id']] = p['full_name'] as String?;
+        }
+      }
+
+      // Map to final messages with fullName
+      return messages.map((msg) {
+        final name = _profileCache[msg.userId];
+        return ChatMessage(
+          messageId: msg.messageId,
+          groupId: msg.groupId,
+          userId: msg.userId,
+          message: msg.message,
+          sentAt: msg.sentAt,
+          fullName: name ?? 'Unknown',
+        );
+      }).toList();
+    });
+  }
+
+  // Helper to fetch profiles by IDs
+  Future<List<Map<String, dynamic>>> _fetchProfiles(List<String> userIds) async {
+    if (userIds.isEmpty) return [];
+    final response = await _client
+        .from('profiles')
+        .select('id, full_name')
+        .inFilter('id', userIds);
+    return response as List<Map<String, dynamic>>;
   }
 
   // Send a message
@@ -30,7 +66,7 @@ class ChatRepository {
     });
   }
 
-  // Get last message for a team (for chat list preview)
+  // Get last message for a team (chat list preview) – still uses join, works fine
   Future<Map<String, dynamic>?> getLastMessageForTeam(String groupId) async {
     final response = await _client
         .from('team_chat_messages')
@@ -42,7 +78,6 @@ class ChatRepository {
 
     if (response == null) return null;
 
-    // Safely extract fields
     final fullName = response['profiles']?['full_name'] ?? 'Unknown';
     return {
       'message': response['message'] ?? '',

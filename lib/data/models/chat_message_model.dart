@@ -4,6 +4,7 @@ class ChatMessage {
   final String userId;
   final String message;
   final DateTime sentAt;
+  final String? fullName;
 
   ChatMessage({
     required this.messageId,
@@ -11,6 +12,7 @@ class ChatMessage {
     required this.userId,
     required this.message,
     required this.sentAt,
+    this.fullName,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
