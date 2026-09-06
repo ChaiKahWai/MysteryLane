@@ -49,6 +49,7 @@ class GroupService {
     return newGroup;
   }
 
+  // ---- UPDATED: requestToJoinByCode now prevents duplicates ----
   Future<void> requestToJoinByCode({
     required String code,
     required String userId,
@@ -57,6 +58,19 @@ class GroupService {
     if (group == null) {
       throw Exception('Invalid or inactive invitation code');
     }
+
+    // Check if already a member
+    final isMember = await _repository.hasActiveMembership(group.groupId, userId);
+    if (isMember) {
+      throw Exception('You are already a member of this team.');
+    }
+
+    // Check if there's a pending request
+    final hasPending = await _repository.hasPendingRequest(group.groupId, userId);
+    if (hasPending) {
+      throw Exception('You already have a pending join request for this team.');
+    }
+
     await _repository.insertJoinRequest(
       groupId: group.groupId,
       userId: userId,
@@ -71,7 +85,6 @@ class GroupService {
     return await _repository.fetchPublicTeams();
   }
 
-  // ---- getTeamDetails – members already contain profiles ----
   Future<Map<String, dynamic>> getTeamDetails(String groupId) async {
     final team = await _repository.fetchTeamInfo(groupId);
     final members = await _repository.fetchTeamMembers(groupId);

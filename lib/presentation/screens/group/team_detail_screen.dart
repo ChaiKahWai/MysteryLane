@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <- added for clipboard
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../application/services/group_service.dart';
 import '../../../data/models/travel_group_model.dart';
@@ -209,11 +210,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     }
   }
 
+  // ---- FIXED: copy code now actually copies to clipboard ----
   void _copyInviteCode() {
-    if (_team?.invitationCode != null) {
+    final code = _team?.invitationCode;
+    if (code != null && code.isNotEmpty) {
+      Clipboard.setData(ClipboardData(text: code));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Invitation code: ${_team!.invitationCode} (copied)'),
+          content: Text('Invitation code "$code" copied to clipboard!'),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -260,8 +265,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       );
       await _loadData();
     } catch (e) {
+      String message = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error joining team: $e')),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -678,6 +684,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         IconButton(
                           icon: const Icon(Icons.copy),
                           onPressed: _copyInviteCode,
+                          tooltip: 'Copy invite code',
                         ),
                       ],
                     ),

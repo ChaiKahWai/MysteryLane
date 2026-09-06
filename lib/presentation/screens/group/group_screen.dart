@@ -582,30 +582,45 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- BODY: My Teams list ----
+  // ---- BODY: My Teams list (updated: "Join a team" is now a blue button, not a card) ----
   Widget _buildMyTeamsList() {
     final filtered = _filterMyTeams();
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
-        Card(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          color: const Color(0xFFF0F9FF),
-          child: ListTile(
-            leading: const Icon(Icons.add_link, color: skyBlue),
-            title: const Text(
-              'Join a team with invitation code',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: skyBlue),
-            onTap: () {
+        // ---- "Join a team" as a prominent button (different UI) ----
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: ElevatedButton.icon(
+            onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const JoinTeamScreen()),
               ).then((_) => _loadData());
             },
+            icon: const Icon(Icons.add_link, color: Colors.white, size: 20),
+            label: const Text(
+              'Join a team with invitation code',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+                color: Colors.white,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: skyBlue,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 2,
+              shadowColor: skyBlue.withOpacity(0.3),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
           ),
         ),
+        // ---- Team cards (white + light blue border) ----
         if (filtered.isEmpty)
           const Padding(
             padding: EdgeInsets.all(32.0),
@@ -618,6 +633,12 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
             final groupData = team['travel_groups'] as Map<String, dynamic>;
             final role = team['member_role'] ?? 'MEMBER';
             return Card(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.blue.shade100, width: 1.5),
+              ),
+              elevation: 2,
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: ListTile(
                 title: Text(groupData['team_name'] ?? 'Unnamed'),
@@ -644,7 +665,7 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
     );
   }
 
-  // ---- BODY: Public Teams list (enhanced with first stop & light blue card) ----
+  // ---- BODY: Public Teams list (unchanged) ----
   Widget _buildPublicTeamsList(List<Map<String, dynamic>> paginated, int totalPages) {
     if (_filteredPublicTeams.isEmpty) {
       return Center(
@@ -692,18 +713,15 @@ class _GroupScreenState extends State<GroupScreen> with SingleTickerProviderStat
         final firstStopName = item['firstStopName'] as String?;
 
         return Card(
-          color: Colors.white, // white background
+          color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.blue.shade100, width: 1.5), // light blue border
+            side: BorderSide(color: Colors.blue.shade100, width: 1.5),
           ),
           elevation: 2,
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: ListTile(
-            title: Text(
-              team.teamName,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+            title: Text(team.teamName),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

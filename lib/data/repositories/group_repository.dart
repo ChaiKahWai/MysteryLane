@@ -34,17 +34,38 @@ class GroupRepository {
     return TravelGroup.fromJson(response);
   }
 
+  // ---- FIXED: addTeamMember now upserts (insert or update) ----
   Future<void> addTeamMember({
     required String groupId,
     required String userId,
     required String role,
   }) async {
-    await _client.from('travel_group_members').insert({
-      'group_id': groupId,
-      'user_id': userId,
-      'member_role': role,
-      'membership_status': 'ACTIVE',
-    });
+    // Check if membership already exists (any status)
+    final existing = await _client
+        .from('travel_group_members')
+        .select('group_member_id, membership_status')
+        .eq('group_id', groupId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (existing != null) {
+      // Update existing record to ACTIVE with the new role
+      await _client
+          .from('travel_group_members')
+          .update({
+        'member_role': role,
+        'membership_status': 'ACTIVE',
+      })
+          .eq('group_member_id', existing['group_member_id']);
+    } else {
+      // Insert new membership
+      await _client.from('travel_group_members').insert({
+        'group_id': groupId,
+        'user_id': userId,
+        'member_role': role,
+        'membership_status': 'ACTIVE',
+      });
+    }
   }
 
   Future<void> insertJoinRequest({
@@ -58,7 +79,30 @@ class GroupRepository {
     });
   }
 
-  // ---- FIXED: fetchUserTeams filters only ACTIVE groups ----
+  // Check if user is already an active member
+  Future<bool> hasActiveMembership(String groupId, String userId) async {
+    final response = await _client
+        .from('travel_group_members')
+        .select('group_member_id')
+        .eq('group_id', groupId)
+        .eq('user_id', userId)
+        .eq('membership_status', 'ACTIVE')
+        .maybeSingle();
+    return response != null;
+  }
+
+  // Check if user has a pending request
+  Future<bool> hasPendingRequest(String groupId, String userId) async {
+    final response = await _client
+        .from('team_join_requests')
+        .select('request_id')
+        .eq('group_id', groupId)
+        .eq('user_id', userId)
+        .eq('request_status', 'PENDING')
+        .maybeSingle();
+    return response != null;
+  }
+
   Future<List<Map<String, dynamic>>> fetchUserTeams(String userId) async {
     final response = await _client
         .from('travel_group_members')
@@ -80,7 +124,7 @@ class GroupRepository {
         ''')
         .eq('user_id', userId)
         .eq('membership_status', 'ACTIVE')
-        .eq('travel_groups.group_status', 'ACTIVE'); // Only ACTIVE groups
+        .eq('travel_groups.group_status', 'ACTIVE');
 
     final List<dynamic> data = response;
     final result = <Map<String, dynamic>>[];
@@ -274,12 +318,10 @@ class GroupRepository {
   }
 
   Future<void> disbandTeam({required String groupId, required String ownerId}) async {
-    // Verify owner
     final group = await fetchTeamInfo(groupId);
     if (group?.ownerId != ownerId) {
       throw Exception('Only the owner can disband the team.');
     }
-    // Close the group
     await _client
         .from('travel_groups')
         .update({'group_status': 'CLOSED'})
