@@ -21,7 +21,8 @@ import '../profile/leaderboard_screen.dart';
 import '../group/group_screen.dart';
 
 class PlanScreen extends StatefulWidget {
-  const PlanScreen({super.key});
+  final String? initialGroupId;
+  const PlanScreen({super.key, this.initialGroupId});
 
   @override
   State<PlanScreen> createState() => _PlanScreenState();
@@ -42,7 +43,7 @@ class _PlanScreenState extends State<PlanScreen> {
       planSearch = TextEditingController(),
       teamName = TextEditingController();
 
-  final GroupService _groupService = GroupService();
+  final GroupService _groupService = GroupService(); // <-- only one declaration
   final FocusNode _placeSearchFocus = FocusNode();
 
   int teamMaxCapacity = 5;
@@ -84,10 +85,11 @@ class _PlanScreenState extends State<PlanScreen> {
     super.initState();
     try {
       _initController();
-      load();
-      nearby();
-      blindBoxController = BlindBoxController.production();
-      _loadBlindBoxPlaces(); // Fetch the history
+      if (widget.initialGroupId != null) {
+        _loadGroupPlan(widget.initialGroupId!);
+      } else {
+        load();   // original load all plans
+      }
     } catch (e) {
       error = '$e';
     }
@@ -101,6 +103,48 @@ class _PlanScreenState extends State<PlanScreen> {
     planSearch.dispose();
     teamName.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadGroupPlan(String groupId) async {
+    setState(() => loading = true);
+    try {
+      final plan = await _groupService.getTripPlanForGroup(groupId);
+      if (plan != null) {
+        setState(() {
+          _currentPlan = plan;
+          name.text = plan.name;
+          start = plan.startDate;
+          end = plan.endDate;
+          mode = plan.mode;
+          stops = List.from(plan.stops);
+          accepted = plan.routeAccepted;
+          history = end.isBefore(DateTime.now());
+          route = null;
+          page = 3;               // directly open itinerary view
+          isCreating = false;
+          _lastViewedPlanId = plan.id;
+          // clear any per‑day routes
+          _dayRoutes.clear();
+          _dayAccepted.clear();
+        });
+        if (accepted && stops.length >= 2) {
+          _fetchRoute();
+        }
+        // load squad if team plan
+        if (plan.mode == 'team') {
+          _loadSquadForPlan();
+        }
+      } else {
+        note('This team does not have a trip plan yet.');
+        // fallback to the regular dashboard after showing the message
+        setState(() => page = 0);
+      }
+    } catch (e) {
+      note('Unable to load team plan: $e');
+      setState(() => page = 0);
+    } finally {
+      setState(() => loading = false);
+    }
   }
 
   // =========================================================================
@@ -715,19 +759,19 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   void fresh() => setState(() {
-        isCreating = true;
-        page = 1;
-        history = false;
-        name.clear();
-        teamName.clear();
-        teamMaxCapacity = 5;
-        mode = 'solo';
-        places = [];
-        stops = [];
-        route = null;
-        accepted = false;
-        nearby();
-      });
+    isCreating = true;
+    page = 1;
+    history = false;
+    name.clear();
+    teamName.clear();
+    teamMaxCapacity = 5;
+    mode = 'solo';
+    places = [];
+    stops = [];
+    route = null;
+    accepted = false;
+    nearby();
+  });
 
   void viewPlan(TripPlan p) {
     final now = DateTime.now();
@@ -1130,18 +1174,18 @@ class _PlanScreenState extends State<PlanScreen> {
     final yes = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
-                title: const Text('Remove destination?'),
-                content:
-                    const Text('Are you sure you want to remove this destination?'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(c, false),
-                      child: const Text('Cancel')),
-                  FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                      onPressed: () => Navigator.pop(c, true),
-                      child: const Text('Remove'))
-                ]));
+            title: const Text('Remove destination?'),
+            content:
+            const Text('Are you sure you want to remove this destination?'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(c, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: () => Navigator.pop(c, true),
+                  child: const Text('Remove'))
+            ]));
     if (yes == true) {
       setState(() {
         stops.removeAt(i);
@@ -1421,18 +1465,18 @@ class _PlanScreenState extends State<PlanScreen> {
     final body = error != null
         ? Center(child: Text(error!))
         : page == 0
-            ? dashboard()
-            : page == 1
-                ? create()
-                : page == 2
-                  ? dayByDayStep()
-                  : itinerary();
+        ? dashboard()
+        : page == 1
+        ? create()
+        : page == 2
+        ? dayByDayStep()
+        : itinerary();
     return Scaffold(
         backgroundColor: const Color(0xFFF8FAFC),
         body: SafeArea(
             child: Stack(children: [
-          Column(children: [header(), Expanded(child: body)]),
-          Align(alignment: Alignment.bottomCenter, child: bottom()),
+              Column(children: [header(), Expanded(child: body)]),
+              Align(alignment: Alignment.bottomCenter, child: bottom()),
               if (page == 0)
                 Positioned(right: 12, bottom: 140, child: createButton())
             ])));
@@ -1543,10 +1587,10 @@ class _PlanScreenState extends State<PlanScreen> {
                   child: OutlinedButton(
                     onPressed: () => setState(() => page = 1),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      minimumSize: const Size(0, 32),
-                      side: const BorderSide(color: border),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        minimumSize: const Size(0, 32),
+                        side: const BorderSide(color: border),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                     ),
                     child: const Text('Back', style: TextStyle(color: ink, fontSize: 11, fontWeight: FontWeight.bold)),
                   ),
@@ -2050,55 +2094,55 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   Widget create() => ListView(padding: const EdgeInsets.fromLTRB(18, 20, 18, 102), children: [
-        banner(),
-        const SizedBox(height: 18),
-        tabs(active: false, enabled: true),
-        const SizedBox(height: 18),
-        surface(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          step('STEP 1 OF 2 • TRIP SETUP', 'Create New Expedition\nPlan'),
-          const Divider(height: 28),
-          label('TRIP PLAN NAME *'),
-          const SizedBox(height: 8),
-          field(name, 'Enter Trip Plan Name', (val) {
-            // If the name they typed matches an existing plan, show a warning
-            if (plans.any((p) => p.name.toLowerCase() == val.toLowerCase())) {
-              note('Name already exists!');
-            }
-          }),
-          const SizedBox(height: 16),
-          Row(children: [
-            Expanded(child: dateBox('START DATE', start, () => pick(true))),
-            const SizedBox(width: 12),
-            Expanded(child: dateBox('END DATE', end, () => pick(false)))
-          ]),
-          const SizedBox(height: 14),
-          Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                  color: const Color(0xFFF0F9FF),
-                  borderRadius: BorderRadius.circular(14)),
-              child: Row(children: [
-                const Expanded(
-                    child: Text('Calculated Total Days:',
-                        style:
-                            TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                badge('$days DAYS')
-              ])),
-          const SizedBox(height: 20),
-          mapSection(),
-          const SizedBox(height: 20),
-          primary('NEXT • DAY-BY-DAY SETUP  →', next)
-        ]))
-      ]);
+    banner(),
+    const SizedBox(height: 18),
+    tabs(active: false, enabled: true),
+    const SizedBox(height: 18),
+    surface(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      step('STEP 1 OF 2 • TRIP SETUP', 'Create New Expedition\nPlan'),
+      const Divider(height: 28),
+      label('TRIP PLAN NAME *'),
+      const SizedBox(height: 8),
+      field(name, 'Enter Trip Plan Name', (val) {
+        // If the name they typed matches an existing plan, show a warning
+        if (plans.any((p) => p.name.toLowerCase() == val.toLowerCase())) {
+          note('Name already exists!');
+        }
+      }),
+      const SizedBox(height: 16),
+      Row(children: [
+        Expanded(child: dateBox('START DATE', start, () => pick(true))),
+        const SizedBox(width: 12),
+        Expanded(child: dateBox('END DATE', end, () => pick(false)))
+      ]),
+      const SizedBox(height: 14),
+      Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+              color: const Color(0xFFF0F9FF),
+              borderRadius: BorderRadius.circular(14)),
+          child: Row(children: [
+            const Expanded(
+                child: Text('Calculated Total Days:',
+                    style:
+                    TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+            badge('$days DAYS')
+          ])),
+      const SizedBox(height: 20),
+      mapSection(),
+      const SizedBox(height: 20),
+      primary('NEXT • DAY-BY-DAY SETUP  →', next)
+    ]))
+  ]);
   Widget mapSection() =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         primary(
             mapOpen ? 'CLOSE INTERACTIVE MAP' : 'OPEN INTERACTIVE MAP',
-            () => setState(() => mapOpen = !mapOpen)),
+                () => setState(() => mapOpen = !mapOpen)),
         if (mapOpen) ...[
           const SizedBox(height: 18),
           field(placeSearch, 'Search map location, mission or landmark',
-              (_) => search(),
+                  (_) => search(),
               suffix: Icons.search,
               focusNode: _placeSearchFocus),
 
@@ -2464,20 +2508,20 @@ class _PlanScreenState extends State<PlanScreen> {
                           decoration: const InputDecoration(labelText: 'Day'),
                           items: List.generate(
                               days,
-                              (d) => DropdownMenuItem(
+                                  (d) => DropdownMenuItem(
                                   value: d + 1, child: Text('Day ${d + 1}'))),
                           onChanged: (v) => setSheet(() {
-                                selectedDay = v!;
-                                selectedPosition = 1;
-                              })),
+                            selectedDay = v!;
+                            selectedPosition = 1;
+                          })),
                       const SizedBox(height: 14),
                       DropdownButtonFormField<int>(
                           initialValue: selectedPosition,
                           decoration:
-                              const InputDecoration(labelText: 'Position in the day'),
+                          const InputDecoration(labelText: 'Position in the day'),
                           items: List.generate(
                               maxPosition(selectedDay),
-                              (p) => DropdownMenuItem(
+                                  (p) => DropdownMenuItem(
                                   value: p + 1, child: Text('Number ${p + 1}'))),
                           onChanged: (v) => setSheet(() => selectedPosition = v!)),
                       const SizedBox(height: 20),
@@ -2589,10 +2633,10 @@ class _PlanScreenState extends State<PlanScreen> {
             child: Row(children: [
               Expanded(
                   child: nav(Icons.inventory_2_outlined, 'BLIND BOX', false,
-                      () => openPage(const BlindBoxPage()))),
+                          () => openPage(const BlindBoxPage()))),
               Expanded(
                   child: nav(Icons.assignment_outlined, 'MISSIONS', false,
-                      () => openPage(const CheckpointScreen()))),
+                          () => openPage(const CheckpointScreen()))),
               const SizedBox(width: 72),
               Expanded(child: nav(Icons.map_outlined, 'PLAN', true, () {})),
               Expanded(
@@ -2651,11 +2695,11 @@ class _PlanScreenState extends State<PlanScreen> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: on
                     ? const [
-                        BoxShadow(
-                            color: Color(0x550284C7),
-                            blurRadius: 12,
-                            offset: Offset(0, 5))
-                      ]
+                  BoxShadow(
+                      color: Color(0x550284C7),
+                      blurRadius: 12,
+                      offset: Offset(0, 5))
+                ]
                     : null),
             child: Icon(i, color: on ? Colors.white : const Color(0xFF64748B))),
         const SizedBox(height: 3),
@@ -3096,10 +3140,10 @@ class _PlanScreenState extends State<PlanScreen> {
                 decoration: BoxDecoration(
                     color: on
                         ? (s == 'All Pins'
-                            ? ink
-                            : (blind
-                                ? const Color(0xFFFAF5FF)
-                                : const Color(0xFFF0F9FF)))
+                        ? ink
+                        : (blind
+                        ? const Color(0xFFFAF5FF)
+                        : const Color(0xFFF0F9FF)))
                         : Colors.white,
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(
@@ -3742,7 +3786,7 @@ class _PlanScreenState extends State<PlanScreen> {
   Widget badge(String s) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration:
-          BoxDecoration(color: blue, borderRadius: BorderRadius.circular(10)),
+      BoxDecoration(color: blue, borderRadius: BorderRadius.circular(10)),
       child: Text(s,
           style: const TextStyle(
               color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)));
@@ -3757,7 +3801,7 @@ class _PlanScreenState extends State<PlanScreen> {
   Widget overlay(String s, Color c) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration:
-          BoxDecoration(color: ink, borderRadius: BorderRadius.circular(12)),
+      BoxDecoration(color: ink, borderRadius: BorderRadius.circular(12)),
       child: Text(s,
           style: TextStyle(fontSize: 9, color: c, fontWeight: FontWeight.bold)));
 
