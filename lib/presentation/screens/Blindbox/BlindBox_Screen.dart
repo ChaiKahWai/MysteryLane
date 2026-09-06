@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../application/controller/BlindBox_Controller.dart';
 import '../../../data/models/blind_box_history.dart';
 import '../home/home_screen.dart';
@@ -11,8 +12,6 @@ import '../profile/profile_screen.dart';
 import '../group/group_screen.dart';
 
 import 'package:mysterylane/application/services/blind_box_mission_generation_service.dart';
-
-import 'package:mysterylane/data/models/checkpoint_destination.dart';
 
 import '../checkpoint/checkpoint_mission_screen.dart';
 
@@ -156,6 +155,12 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
 
   List<BlindBoxHistoryUi> _history = [];
 
+  // Draw History date filter. Null means show all dates.
+  DateTime? _selectedHistoryDate;
+
+  // Header profile image so the Blind Box top bar matches Checkpoint.
+  String? _headerProfilePictureUrl;
+
   TextStyle get _heading => const TextStyle(
     color: _slate900,
     fontWeight: FontWeight.w900,
@@ -177,6 +182,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       if (mounted) {
         _loadBlindBoxBalance();
         _loadBlindBoxHistory();
+        _loadHeaderProfile();
       }
     });
   }
@@ -198,6 +204,206 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       _controller.dispose();
     }
     super.dispose();
+  }
+
+  // ==========================================================================
+  // TOP BAR PROFILE
+  // ==========================================================================
+
+  Future<void> _loadHeaderProfile() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('profile_picture_url')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (!mounted) return;
+
+      final picture = profile?['profile_picture_url']?.toString().trim();
+
+      setState(() {
+        _headerProfilePictureUrl =
+        (picture != null && picture.isNotEmpty) ? picture : null;
+      });
+    } catch (error) {
+      debugPrint('[BLIND BOX UI] Header profile error: $error');
+    }
+  }
+
+  void _openHomeFromTopBar() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+          (route) => false,
+    );
+  }
+
+  void _openLeaderboardFromTopBar() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
+    );
+  }
+
+  void _openChatFromTopBar() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ChatListScreen()),
+    );
+  }
+
+  Future<void> _openProfileFromTopBar() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+    );
+
+    // The user may have changed the profile picture.
+    await _loadHeaderProfile();
+  }
+
+  PreferredSizeWidget _buildTopAppBar() {
+    return AppBar(
+      automaticallyImplyLeading: false,
+      toolbarHeight: 68,
+      elevation: 0,
+      scrolledUnderElevation: 2,
+      backgroundColor: Colors.white.withValues(alpha: 0.97),
+      surfaceTintColor: Colors.white,
+      titleSpacing: 12,
+
+      title: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _openHomeFromTopBar,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              const _BlindBoxMysteryLaneLogo(),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: const Text(
+                    'MYSTERYLANE',
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: _slate900,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+
+      actions: [
+        _BlindBoxTopActionButton(
+          tooltip: 'Leaderboard',
+          icon: Icons.emoji_events_rounded,
+          background: const Color(0xFFFFFBEB),
+          foreground: const Color(0xFFD97706),
+          onTap: _openLeaderboardFromTopBar,
+        ),
+        const SizedBox(width: 4),
+        _BlindBoxTopActionButton(
+          tooltip: 'Chat',
+          icon: Icons.chat_bubble_outline_rounded,
+          background: const Color(0xFFF0F9FF),
+          foreground: _primary,
+          onTap: _openChatFromTopBar,
+        ),
+        const SizedBox(width: 4),
+        _BlindBoxProfileButton(
+          onTap: _openProfileFromTopBar,
+          imageUrl: _headerProfilePictureUrl,
+        ),
+        const SizedBox(width: 8),
+      ],
+
+      bottom: const PreferredSize(
+        preferredSize: Size.fromHeight(1),
+        child: Divider(
+          height: 1,
+          thickness: 1,
+          color: Color(0xFFE2E8F0),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================================
+  // DRAW HISTORY DATE FILTER
+  // ==========================================================================
+
+  List<BlindBoxHistoryUi> get _filteredHistory {
+    final selectedDate = _selectedHistoryDate;
+
+    if (selectedDate == null) {
+      return _history;
+    }
+
+    return _history.where((item) {
+      final parts = item.drawnAtDate.split('/');
+      if (parts.length != 3) return false;
+
+      final day = int.tryParse(parts[0]);
+      final month = int.tryParse(parts[1]);
+      final year = int.tryParse(parts[2]);
+
+      if (day == null || month == null || year == null) {
+        return false;
+      }
+
+      return selectedDate.day == day &&
+          selectedDate.month == month &&
+          selectedDate.year == year;
+    }).toList(growable: false);
+  }
+
+  Future<void> _pickHistoryDate() async {
+    final now = DateTime.now();
+
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _selectedHistoryDate ?? now,
+      firstDate: DateTime(2020),
+      lastDate: now,
+      helpText: 'Filter Draw History',
+      confirmText: 'FILTER',
+      cancelText: 'CANCEL',
+    );
+
+    if (selected == null || !mounted) return;
+
+    setState(() {
+      _selectedHistoryDate = DateTime(
+        selected.year,
+        selected.month,
+        selected.day,
+      );
+    });
+  }
+
+  void _clearHistoryDateFilter() {
+    setState(() {
+      _selectedHistoryDate = null;
+    });
+  }
+
+  String _formatSelectedHistoryDate(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    return '$day/$month/${date.year}';
   }
 
   Future<void> _loadBlindBoxBalance({
@@ -232,55 +438,86 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     }
   }
 
-  Future<void> _buyBlindBoxChance() async {
-    if (_isBuyingChance) return;
-
-    if (_blindBoxChances >= 10) {
-      _showError(
-        const BlindBoxException(
-          'You already have the maximum of 10 Blind Box chances.',
-        ),
-      );
-      return;
+  Future<bool> _buyBlindBoxChances({
+    required int quantity,
+  }) async {
+    if (_isBuyingChance) {
+      return false;
     }
 
-    if (_userEp < BlindBoxController.blindBoxChanceCostEp) {
+    if (quantity < 1) {
       _showError(
         const BlindBoxException(
-          'You need 200 Exploration Points to get 1 Blind Box chance.',
+          'Please select at least '
+              '1 Blind Box Chance.',
         ),
       );
-      return;
+
+      return false;
     }
 
-    setState(() => _isBuyingChance = true);
+    setState(() {
+      _isBuyingChance = true;
+    });
 
     try {
-      final balance = await _controller.buyBlindBoxChance();
+      final balance =
+      await _controller
+          .buyBlindBoxChances(
+        quantity: quantity,
+      );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return false;
+      }
+
+      // ============================================================
+      // UPDATE MAIN BLIND BOX BALANCE
+      // ============================================================
 
       setState(() {
-        _userEp = balance.explorationPoints;
-        _blindBoxChances = balance.chances;
+        _userEp =
+            balance.explorationPoints;
+
+        _blindBoxChances =
+            balance.chances;
       });
+
+      final String chanceWord =
+      quantity == 1
+          ? 'chance'
+          : 'chances';
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(
-            behavior: SnackBarBehavior.floating,
+          SnackBar(
+            behavior:
+            SnackBarBehavior.floating,
+
             content: Text(
-              '1 Blind Box chance added successfully.',
+              '$quantity Blind Box '
+                  '$chanceWord added successfully.',
             ),
           ),
         );
+
+      // IMPORTANT:
+      // true = database purchase succeeded.
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        return false;
+      }
+
       _showError(error);
+
+      return false;
     } finally {
       if (mounted) {
-        setState(() => _isBuyingChance = false);
+        setState(() {
+          _isBuyingChance = false;
+        });
       }
     }
   }
@@ -597,26 +834,13 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
         }
         break;
 
-    //case MysteryLaneTab.plan:
-    //  _replaceWith(const PlanScreen());
-    // break;
+      case MysteryLaneTab.plan:
+        _replaceWith(const PlanScreen());
+        break;
 
       case MysteryLaneTab.teams:
         _replaceWith(const GroupScreen());
         break;
-      case MysteryLaneTab.plan:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const PlanScreen()),
-        );
-        break;
-
-    //case MysteryLaneTab.teams:
-    //  _replaceWith(const GroupScreen());
-    //  break;
-      case MysteryLaneTab.teams:
-      // TODO: Handle this case.
-        throw UnimplementedError();
     }
   }
 
@@ -961,15 +1185,14 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
       );
   }
 
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _pageBg,
       extendBody: false,
-      appBar: const PreferredSize(
-        preferredSize: Size.fromHeight(68),
-        child: _MysteryLaneTopBar(),
-      ),
+      appBar: _buildTopAppBar(),
       body: SafeArea(
         top: false,
         bottom: false,
@@ -1136,7 +1359,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '+ GET',
+                      '+ BUY',
                       maxLines: 1,
                       style: _bodyStyle.copyWith(
                         fontSize: 9.5,
@@ -1147,7 +1370,7 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      '200 EP',
+                      '200 EP EA',
                       maxLines: 1,
                       style: _bodyStyle.copyWith(
                         fontSize: 8.5,
@@ -1347,6 +1570,8 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
   // --------------------------------------------------------------------------
 
   Widget _buildHistoryView() {
+    final filteredHistory = _filteredHistory;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1367,7 +1592,8 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text(
-                  '${_history.length} RECORDED\nDRAWS',
+                  '${filteredHistory.length} RECORDED\nDRAWS',
+                  textAlign: TextAlign.right,
                   style: _bodyStyle.copyWith(
                     color: _slate500,
                     fontSize: 9.5,
@@ -1380,7 +1606,91 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
             ],
           ),
         ),
+
+        const SizedBox(height: 14),
+
+        // Date filter
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: _pickHistoryDate,
+                borderRadius: BorderRadius.circular(15),
+                child: Container(
+                  height: 46,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: _selectedHistoryDate == null
+                          ? const Color(0xFFE2E8F0)
+                          : _primary,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_month_rounded,
+                        size: 19,
+                        color: _primary,
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          _selectedHistoryDate == null
+                              ? 'Filter by date'
+                              : _formatSelectedHistoryDate(
+                            _selectedHistoryDate!,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _bodyStyle.copyWith(
+                            color: _selectedHistoryDate == null
+                                ? _slate500
+                                : _slate900,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: _slate500,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (_selectedHistoryDate != null) ...[
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: _clearHistoryDateFilter,
+                borderRadius: BorderRadius.circular(15),
+                child: Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: _slate700,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+
         const SizedBox(height: 20),
+
         if (_isLoadingHistory && _history.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
@@ -1393,25 +1703,27 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
           )
         else if (_history.isEmpty)
           _buildEmptyHistory()
-        else ...[
-            if (_isLoadingHistory)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 14),
-                child: LinearProgressIndicator(
-                  color: _primary,
-                  minHeight: 2,
+        else if (filteredHistory.isEmpty)
+            _buildNoFilteredHistory()
+          else ...[
+              if (_isLoadingHistory)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 14),
+                  child: LinearProgressIndicator(
+                    color: _primary,
+                    minHeight: 2,
+                  ),
+                ),
+              ...filteredHistory.map(
+                    (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 13),
+                  child: _HistoryCard(
+                    item: item,
+                    onTap: () => _showHistoryDialog(item),
+                  ),
                 ),
               ),
-            ..._history.map(
-                  (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 13),
-                child: _HistoryCard(
-                  item: item,
-                  onTap: () => _showHistoryDialog(item),
-                ),
-              ),
-            ),
-          ],
+            ],
       ],
     );
   }
@@ -1441,6 +1753,57 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
               fontSize: 11,
               color: _slate500,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoFilteredHistory() {
+    final selectedDate = _selectedHistoryDate;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 30,
+        vertical: 38,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(27),
+        border: Border.all(
+          color: const Color(0xFFCBD5E1),
+        ),
+      ),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.calendar_month_outlined,
+            color: _slate500,
+            size: 38,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'No draws found',
+            textAlign: TextAlign.center,
+            style: _heading.copyWith(fontSize: 17),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            selectedDate == null
+                ? 'No Blind Box destinations match this filter.'
+                : 'No Blind Box destinations were drawn on ${_formatSelectedHistoryDate(selectedDate)}.',
+            textAlign: TextAlign.center,
+            style: _bodyStyle.copyWith(
+              fontSize: 11,
+              color: _slate500,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 15),
+          TextButton.icon(
+            onPressed: _clearHistoryDateFilter,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Show All History'),
           ),
         ],
       ),
@@ -1849,144 +2212,564 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
     );
   }
 
-  Future<void> _showChanceDialog() {
-    return showDialog<void>(
+  Future<void> _showChanceDialog() async {
+    if (_isBuyingChance) return;
+
+    Map<String, int> status;
+
+    try {
+      status = await _controller.loadBlindBoxPurchaseStatus();
+    } catch (error) {
+      if (!mounted) return;
+      _showError(error);
+      return;
+    }
+
+    if (!mounted) return;
+
+    final int currentEp = status['exploration_points'] ?? _userEp;
+    final int currentChances =
+        status['blind_box_chances'] ?? _blindBoxChances;
+    final int purchasedToday = status['purchased_today'] ?? 0;
+    final int dailyRemaining = status['daily_remaining'] ?? 0;
+    final int holdingRemaining = status['holding_remaining'] ??
+        (BlindBoxController.maxBlindBoxChances - currentChances);
+    final int dailyLimit = status['daily_limit'] ??
+        BlindBoxController.maxDailyBlindBoxPurchases;
+    final int maxChances = status['max_chances'] ??
+        BlindBoxController.maxBlindBoxChances;
+    final int costPerChance = status['chance_cost_ep'] ??
+        BlindBoxController.blindBoxChanceCostEp;
+
+    setState(() {
+      _userEp = currentEp;
+      _blindBoxChances = currentChances;
+    });
+
+    final int affordableQuantity = costPerChance <= 0
+        ? 0
+        : currentEp ~/ costPerChance;
+
+    int maxSelectable = holdingRemaining;
+    if (dailyRemaining < maxSelectable) {
+      maxSelectable = dailyRemaining;
+    }
+    if (affordableQuantity < maxSelectable) {
+      maxSelectable = affordableQuantity;
+    }
+    if (maxSelectable < 0) {
+      maxSelectable = 0;
+    }
+
+    int selectedQuantity = maxSelectable > 0 ? 1 : 0;
+    bool dialogBuying = false;
+
+    String? unavailableReason() {
+      if (holdingRemaining <= 0) {
+        return 'You already hold the maximum of $maxChances Blind Box Chances.';
+      }
+
+      if (dailyRemaining <= 0) {
+        return 'You have reached today\'s purchase limit of $dailyLimit Blind Box Chances.';
+      }
+
+      if (affordableQuantity <= 0) {
+        return 'You need at least $costPerChance EP to buy 1 Blind Box Chance.';
+      }
+
+      return null;
+    }
+
+    await showDialog<void>(
       context: context,
+      barrierDismissible: false,
       barrierColor: const Color(0xA6424D61),
       builder: (dialogContext) {
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 22),
-          backgroundColor: Colors.transparent,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: Container(
-              padding: const EdgeInsets.all(23),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(27),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final int totalCost = selectedQuantity * costPerChance;
+            final int afterPurchase = currentChances + selectedQuantity;
+            final String? blockedMessage = unavailableReason();
+            final bool canBuy =
+                maxSelectable > 0 && selectedQuantity > 0 && !dialogBuying;
+
+            void decreaseQuantity() {
+              if (dialogBuying || selectedQuantity <= 1) return;
+
+              setDialogState(() {
+                selectedQuantity--;
+              });
+            }
+
+            void increaseQuantity() {
+              if (dialogBuying || selectedQuantity >= maxSelectable) return;
+
+              setDialogState(() {
+                selectedQuantity++;
+              });
+            }
+
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 24,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.card_giftcard_rounded,
-                        color: Color(0xFFD97706),
-                      ),
-                      const SizedBox(width: 9),
-                      Expanded(
-                        child: Text(
-                          'Get Blind Box Chance',
-                          style: _heading.copyWith(fontSize: 20),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        icon: const Icon(Icons.close_rounded),
+              backgroundColor: Colors.transparent,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 380),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(27),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x380F172A),
+                        blurRadius: 24,
+                        offset: Offset(0, 12),
                       ),
                     ],
                   ),
-                  const Divider(color: Color(0xFFE8EEF4)),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBEB),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFFDE68A)),
-                    ),
+                  child: SingleChildScrollView(
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _DialogInfoRow(
-                          label: 'Maximum:',
-                          value: '10 chances max',
-                          valueColor: const Color(0xFF92400E),
+                        Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF7D6),
+                                borderRadius: BorderRadius.circular(13),
+                              ),
+                              child: const Icon(
+                                Icons.card_giftcard_rounded,
+                                color: Color(0xFFD97706),
+                                size: 21,
+                              ),
+                            ),
+                            const SizedBox(width: 11),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Buy Blind Box Chances',
+                                    style: _heading.copyWith(fontSize: 19),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '$costPerChance EP per chance',
+                                    style: _bodyStyle.copyWith(
+                                      color: _slate500,
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: dialogBuying
+                                  ? null
+                                  : () => Navigator.of(dialogContext).pop(),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 10),
+                        const Divider(color: Color(0xFFE8EEF4)),
+                        const SizedBox(height: 12),
+
+                        Container(
+                          padding: const EdgeInsets.all(15),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFBEB),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color(0xFFFDE68A),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              _DialogInfoRow(
+                                label: 'Current Chances:',
+                                value: '$currentChances / $maxChances',
+                                valueColor: const Color(0xFF92400E),
+                              ),
+                              const SizedBox(height: 9),
+                              _DialogInfoRow(
+                                label: 'Purchased Today:',
+                                value: '$purchasedToday / $dailyLimit',
+                                valueColor: const Color(0xFF92400E),
+                              ),
+                              const SizedBox(height: 9),
+                              _DialogInfoRow(
+                                label: 'Daily Remaining:',
+                                value: '$dailyRemaining',
+                                valueColor: const Color(0xFF92400E),
+                              ),
+                              const SizedBox(height: 9),
+                              _DialogInfoRow(
+                                label: 'Your Points:',
+                                value: '$currentEp EP',
+                                valueColor: _primary,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        Text(
+                          'SELECT QUANTITY',
+                          style: _bodyStyle.copyWith(
+                            color: _slate500,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.1,
+                          ),
                         ),
                         const SizedBox(height: 9),
-                        _DialogInfoRow(
-                          label: 'Remaining Chances:',
-                          value: '$_blindBoxChances / 10',
-                          valueColor: const Color(0xFF92400E),
+
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(17),
+                            border: Border.all(
+                              color: const Color(0xFFE2E8F0),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              _QuantityButton(
+                                icon: Icons.remove_rounded,
+                                enabled: selectedQuantity > 1 && !dialogBuying,
+                                onTap: decreaseQuantity,
+                              ),
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      '$selectedQuantity',
+                                      style: _heading.copyWith(
+                                        fontSize: 26,
+                                      ),
+                                    ),
+                                    Text(
+                                      selectedQuantity == 1
+                                          ? 'CHANCE'
+                                          : 'CHANCES',
+                                      style: _bodyStyle.copyWith(
+                                        color: _slate500,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.0,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              _QuantityButton(
+                                icon: Icons.add_rounded,
+                                enabled: selectedQuantity < maxSelectable &&
+                                    !dialogBuying,
+                                onTap: increaseQuantity,
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                onPressed: maxSelectable > 0 && !dialogBuying
+                                    ? () {
+                                  setDialogState(() {
+                                    selectedQuantity = maxSelectable;
+                                  });
+                                }
+                                    : null,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _primary,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  side: const BorderSide(
+                                    color: Color(0xFFBAE6FD),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'MAX',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 9),
-                        _DialogInfoRow(
-                          label: 'Your Current Points:',
-                          value: '$_userEp pts',
-                          valueColor: _primary,
+
+                        if (blockedMessage != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF1F2),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: const Color(0xFFFECACA),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.info_outline_rounded,
+                                  size: 18,
+                                  color: Color(0xFFDC2626),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    blockedMessage,
+                                    style: _bodyStyle.copyWith(
+                                      color: const Color(0xFF991B1B),
+                                      fontSize: 10.5,
+                                      height: 1.4,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 16),
+
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F9FF),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFFBAE6FD),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              _DialogInfoRow(
+                                label: 'Total Cost:',
+                                value: '$totalCost EP',
+                                valueColor: _primary,
+                              ),
+                              const SizedBox(height: 9),
+                              _DialogInfoRow(
+                                label: 'After Purchase:',
+                                value: '$afterPurchase / $maxChances chances',
+                                valueColor: const Color(0xFF0D9488),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        Text(
+                          'Limit: you can hold up to $maxChances chances and purchase up to $dailyLimit chances per day.',
+                          style: _bodyStyle.copyWith(
+                            color: _slate500,
+                            fontSize: 10.5,
+                            height: 1.4,
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: dialogBuying
+                                    ? null
+                                    : () => Navigator.of(dialogContext).pop(),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _slate700,
+                                  side: BorderSide.none,
+                                  backgroundColor: const Color(0xFFF1F5F9),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                child: Text(
+                                  'Cancel',
+                                  style: _bodyStyle.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton(
+                                onPressed: canBuy
+                                    ? () async {
+                                  setDialogState(() {
+                                    dialogBuying = true;
+                                  });
+
+                                  final int purchasedQuantity =
+                                      selectedQuantity;
+
+                                  final bool success =
+                                  await _buyBlindBoxChances(
+                                    quantity: purchasedQuantity,
+                                  );
+
+                                  if (!mounted) {
+                                    return;
+                                  }
+
+                                  if (success) {
+                                    // =====================================================
+                                    // PURCHASE SUCCESSFUL -> CLOSE DIALOG
+                                    // =====================================================
+                                    final rootNavigator =
+                                    Navigator.of(
+                                      context,
+                                      rootNavigator: true,
+                                    );
+
+                                    if (rootNavigator.canPop()) {
+                                      rootNavigator.pop();
+                                    }
+
+                                    // Reload again to make sure Hub values
+                                    // are exactly the same as database.
+                                    await _loadBlindBoxBalance();
+                                  } else {
+                                    // Purchase failed -> keep dialog open.
+                                    if (dialogContext.mounted) {
+                                      setDialogState(() {
+                                        dialogBuying = false;
+                                      });
+                                    }
+                                  }
+                                }
+                                    : null,
+
+                                style: ElevatedButton.styleFrom(
+                                  elevation: 1,
+
+                                  backgroundColor:
+                                  const Color(0xFFD97706),
+
+                                  disabledBackgroundColor:
+                                  const Color(0xFFE2E8F0),
+
+                                  foregroundColor:
+                                  Colors.white,
+
+                                  padding:
+                                  const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 14,
+                                  ),
+
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                    BorderRadius.circular(14),
+                                  ),
+                                ),
+
+                                child: dialogBuying
+                                    ? const SizedBox(
+                                  width: 19,
+                                  height: 19,
+                                  child:
+                                  CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                    : FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    selectedQuantity > 0
+                                        ? 'GET $selectedQuantity · $totalCost EP'
+                                        : 'UNAVAILABLE',
+
+                                    style: _bodyStyle.copyWith(
+                                      fontWeight:
+                                      FontWeight.w900,
+                                      fontSize: 10.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Spend 200 Exploration Points to get 1 additional Blind Box chance.',
-                    style: _bodyStyle.copyWith(
-                      color: _slate700,
-                      fontSize: 11.5,
-                      height: 1.45,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(dialogContext).pop(),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _slate700,
-                            side: BorderSide.none,
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: Text(
-                            'Cancel',
-                            style: _bodyStyle.copyWith(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: _isBuyingChance
-                              ? null
-                              : () async {
-                            Navigator.of(dialogContext).pop();
-                            await _buyBlindBoxChance();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            elevation: 1,
-                            backgroundColor: const Color(0xFFD97706),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: Text(
-                            'Get 1 Chance',
-                            style: _bodyStyle.copyWith(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 10.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
+    );
+  }
+
+}
+
+class _QuantityButton extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _QuantityButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: enabled
+          ? const Color(0xFFE0F2FE)
+          : const Color(0xFFF1F5F9),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: enabled ? onTap : null,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled
+                ? const Color(0xFF0284C7)
+                : const Color(0xFFCBD5E1),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1994,155 +2777,133 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
 // =============================================================================
 // TOP APP BAR
 // =============================================================================
-
-class _MysteryLaneTopBar extends StatelessWidget {
-  const _MysteryLaneTopBar();
-
-  static const Color skyBlue = Color(0xFF0284C7);
-  static const Color teal = Color(0xFF0D9488);
-  static const Color darkText = Color(0xFF0F172A);
-
-  void _openChat(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ChatListScreen()),
-    );
-  }
-
-  void _openLeaderboard(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
-    );
-  }
-
-  void _openProfile(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ProfileScreen()),
-    );
-  }
+class _BlindBoxMysteryLaneLogo extends StatelessWidget {
+  const _BlindBoxMysteryLaneLogo();
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      elevation: 1.5,
-      shadowColor: const Color(0x330284C7),
-      child: SafeArea(
-        bottom: false,
-        child: SizedBox(
-          height: 68,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [skyBlue, teal],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Color(0x300284C7),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.explore_rounded,
-                    color: Colors.white,
-                    size: 23,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Text(
-                    'MYSTERYLANE',
-                    maxLines: 1,
-                    overflow: TextOverflow.clip,
-                    style: TextStyle(
-                      color: darkText,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                ),
-                // Leaderboard
-                InkWell(
-                  onTap: () => _openLeaderboard(context),
-                  customBorder: const CircleBorder(),
-                  child: Container(
-                    width: 43,
-                    height: 43,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBEB),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFFDE68A)),
-                    ),
-                    child: const Icon(
-                      Icons.emoji_events_rounded,
-                      color: Color(0xFFD97706),
-                      size: 22,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                // Chat
-                InkWell(
-                  onTap: () => _openChat(context),
-                  customBorder: const CircleBorder(),
-                  child: Container(
-                    width: 42,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F9FF),
-                      borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: const Color(0xFFBAE6FD)),
-                    ),
-                    child: const Icon(
-                      Icons.chat_bubble_outline_rounded,
-                      color: skyBlue,
-                      size: 19,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                // Profile
-                InkWell(
-                  onTap: () => _openProfile(context),
-                  customBorder: const CircleBorder(),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      border: Border.all(
-                        color: const Color(0xFFBAE6FD),
-                        width: 1.4,
-                      ),
-                    ),
-                    child: const CircleAvatar(
-                      backgroundColor: Color(0xFFE0F2FE),
-                      child: Icon(
-                        Icons.person_rounded,
-                        color: skyBlue,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF0284C7),
+            Color(0xFF0D9488),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x300284C7),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.explore_rounded,
+        color: Colors.white,
+        size: 23,
+      ),
+    );
+  }
+}
+
+class _BlindBoxTopActionButton extends StatelessWidget {
+  final String tooltip;
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+  final VoidCallback onTap;
+
+  const _BlindBoxTopActionButton({
+    required this.tooltip,
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+
+      child: InkWell(
+        borderRadius: BorderRadius.circular(99),
+        onTap: onTap,
+
+        child: Container(
+          width: 38,
+          height: 38,
+
+          decoration: BoxDecoration(
+            color: background,
+            shape: BoxShape.circle,
+
+            border: Border.all(
+              color: foreground.withValues(
+                alpha: 0.20,
+              ),
             ),
+          ),
+
+          child: Icon(
+            icon,
+            color: foreground,
+            size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BlindBoxProfileButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final String? imageUrl;
+
+  const _BlindBoxProfileButton({
+    required this.onTap,
+    required this.imageUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cleanUrl = imageUrl?.trim();
+    final ImageProvider? provider =
+    cleanUrl != null && cleanUrl.isNotEmpty ? NetworkImage(cleanUrl) : null;
+
+    return Tooltip(
+      message: 'Profile',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Container(
+          width: 38,
+          height: 38,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0xFFBAE6FD),
+              width: 1.4,
+            ),
+          ),
+          child: CircleAvatar(
+            backgroundColor: const Color(0xFFE0F2FE),
+            backgroundImage: provider,
+            child: provider == null
+                ? const Icon(
+              Icons.person_rounded,
+              size: 20,
+              color: Color(0xFF0284C7),
+            )
+                : null,
           ),
         ),
       ),
@@ -2497,7 +3258,7 @@ class _SubTabButton extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 5),
                   decoration: BoxDecoration(
                     color: selected
-                        ? Colors.white.withOpacity(.20)
+                        ? Colors.white.withValues(alpha: .10)
                         : const Color(0xFFBAE6FD),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -3278,3 +4039,4 @@ class _NetworkImage extends StatelessWidget {
     );
   }
 }
+

@@ -636,8 +636,7 @@ class _CheckpointScreenState
 
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
-      automaticallyImplyLeading:
-      false,
+      automaticallyImplyLeading: false,
 
       toolbarHeight: 68,
 
@@ -645,54 +644,52 @@ class _CheckpointScreenState
 
       scrolledUnderElevation: 2,
 
-      backgroundColor:
-      Colors.white.withValues(
+      backgroundColor: Colors.white.withValues(
         alpha: 0.97,
       ),
 
-      surfaceTintColor:
-      Colors.white,
+      surfaceTintColor: Colors.white,
 
-      titleSpacing: 16,
+      // Reduce a little horizontal space
+      titleSpacing: 12,
 
       title: InkWell(
-        borderRadius:
-        BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(14),
+        onTap: _openHome,
 
-        onTap:
-        _openHome,
-
-        child:
-        const Padding(
-          padding:
-          EdgeInsets.symmetric(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
             vertical: 6,
           ),
 
           child: Row(
-            mainAxisSize:
-            MainAxisSize.min,
-
             children: [
-              _MysteryLaneLogo(),
+              // =====================================================
+              // LOGO
+              // =====================================================
+              const _MysteryLaneLogo(),
 
-              SizedBox(width: 10),
+              const SizedBox(width: 8),
 
-              Text(
-                'MYSTERYLANE',
+              // =====================================================
+              // RESPONSIVE TITLE
+              // =====================================================
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
 
-                style: TextStyle(
-                  color:
-                  darkText,
+                  child: const Text(
+                    'MYSTERYLANE',
+                    maxLines: 1,
 
-                  fontSize:
-                  20,
-
-                  fontWeight:
-                  FontWeight.w900,
-
-                  letterSpacing:
-                  -0.5,
+                    style: TextStyle(
+                      color: darkText,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -702,72 +699,41 @@ class _CheckpointScreenState
 
       actions: [
         _TopActionButton(
-          tooltip:
-          'Leaderboard',
-
-          icon:
-          Icons.emoji_events_rounded,
-
-          background:
-          const Color(
-            0xFFFFFBEB,
-          ),
-
-          foreground:
-          const Color(
-            0xFFD97706,
-          ),
-
-          onTap:
-          _openLeaderboard,
+          tooltip: 'Leaderboard',
+          icon: Icons.emoji_events_rounded,
+          background: const Color(0xFFFFFBEB),
+          foreground: const Color(0xFFD97706),
+          onTap: _openLeaderboard,
         ),
 
-        const SizedBox(width: 6),
+        const SizedBox(width: 4),
 
         _TopActionButton(
-          tooltip:
-          'Chat',
-
-          icon:
-          Icons
-              .chat_bubble_outline_rounded,
-
-          background:
-          const Color(
-            0xFFF0F9FF,
-          ),
-
-          foreground:
-          skyBlue,
-
-          onTap:
-          _openChat,
+          tooltip: 'Chat',
+          icon: Icons.chat_bubble_outline_rounded,
+          background: const Color(0xFFF0F9FF),
+          foreground: skyBlue,
+          onTap: _openChat,
         ),
 
-        const SizedBox(width: 6),
+        const SizedBox(width: 4),
 
         _ProfileButton(
-          onTap:
-          _openProfile,
-
+          onTap: _openProfile,
           imageUrl:
-          _controller
-              .headerProfilePictureUrl,
+          _controller.headerProfilePictureUrl,
         ),
 
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
       ],
 
-      bottom:
-      const PreferredSize(
-        preferredSize:
-        Size.fromHeight(1),
+      bottom: const PreferredSize(
+        preferredSize: Size.fromHeight(1),
 
         child: Divider(
           height: 1,
           thickness: 1,
-          color:
-          Color(0xFFE2E8F0),
+          color: Color(0xFFE2E8F0),
         ),
       ),
     );
