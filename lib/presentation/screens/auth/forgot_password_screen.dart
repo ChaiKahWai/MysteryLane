@@ -51,22 +51,9 @@ class _ForgotPasswordScreenState
     setState(() => _isLoading = true);
 
     try {
-      final dynamic result =
-      await SupabaseConfig.client.rpc(
-        'is_password_reset_eligible',
-        params: {'input_email': email},
-      );
-
-      if (result != true) {
-        if (!mounted) return;
-        _showMessage(
-          'Password reset is unavailable for this account. '
-              'Please complete your registration and email verification first.',
-          isError: true,
-        );
-        return;
-      }
-
+      // Send the recovery request directly through Supabase Auth.
+      // Do not depend on a custom database RPC here because an RPC
+      // permission/configuration problem can block valid verified users.
       await SupabaseConfig.client.auth.resetPasswordForEmail(
         email,
         redirectTo:
@@ -80,22 +67,38 @@ class _ForgotPasswordScreenState
             'Please check your email.',
         isError: false,
       );
-    } on AuthException {
+    } on AuthException catch (error) {
+      debugPrint(
+        'FORGOT PASSWORD AUTH ERROR: '
+            'message=${error.message}, code=${error.code}',
+      );
+
       if (!mounted) return;
+
+      final String errorText = error.message.toLowerCase();
+      final String errorCode = error.code?.toLowerCase() ?? '';
+
+      if (errorCode.contains('rate_limit') ||
+          errorText.contains('rate limit') ||
+          errorText.contains('too many requests')) {
+        _showMessage(
+          'Too many password-reset requests. Please try again later.',
+          isError: true,
+        );
+        return;
+      }
+
       _showMessage(
-        'Unable to complete the request. Please try again.',
+        'Unable to send the password-reset email. Please try again.',
         isError: true,
       );
-    } on PostgrestException {
+    } catch (error, stackTrace) {
+      debugPrint('FORGOT PASSWORD ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+
       if (!mounted) return;
       _showMessage(
-        'Unable to complete the request. Please try again.',
-        isError: true,
-      );
-    } catch (_) {
-      if (!mounted) return;
-      _showMessage(
-        'Unable to complete the request. Please try again.',
+        'Unable to send the password-reset email. Please try again.',
         isError: true,
       );
     } finally {
