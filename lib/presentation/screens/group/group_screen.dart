@@ -31,24 +31,17 @@ class _GroupScreenState extends State<GroupScreen> {
 
   final GroupService _groupService = GroupService();
 
-  // ---- Tab state (0 = My Teams, 1 = Public Teams) ----
   int _selectedTabIndex = 0;
 
   List<Map<String, dynamic>> _myTeams = [];
   List<Map<String, dynamic>> _publicTeams = [];
   bool _isLoading = false;
   String _searchQuery = '';
-
-  // Date filter
   DateTime? _selectedDate;
-
-  // Pagination
   int _currentPage = 0;
   static const int _itemsPerPage = 10;
 
   String? _headerProfilePictureUrl;
-
-  // ---- New maps for team trip plans and owner names ----
   Map<String, TripPlan> _teamTripPlans = {};
   Map<String, String> _teamOwnerNames = {};
 
@@ -147,7 +140,6 @@ class _GroupScreenState extends State<GroupScreen> {
         final myTeams = await _groupService.getUserTeams(user.id);
         final publicTeams = await _groupService.getPublicTeams();
 
-        // Fetch trip plans and owner names for my teams in parallel
         final Map<String, TripPlan> plans = {};
         final Map<String, String> ownerNames = {};
         await Future.wait(myTeams.map((team) async {
@@ -155,7 +147,6 @@ class _GroupScreenState extends State<GroupScreen> {
           final groupId = groupData['group_id'] as String;
           final ownerId = groupData['owner_id'] as String?;
 
-          // Fetch trip plan
           try {
             final plan = await _groupService.getTripPlanForGroup(groupId);
             if (plan != null) {
@@ -165,7 +156,6 @@ class _GroupScreenState extends State<GroupScreen> {
             // ignore
           }
 
-          // Fetch owner name
           if (ownerId != null && ownerId.isNotEmpty) {
             try {
               final profile = await Supabase.instance.client
@@ -190,7 +180,10 @@ class _GroupScreenState extends State<GroupScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading teams: $e')),
+        SnackBar(
+          content: Text('Error loading teams: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -212,13 +205,11 @@ class _GroupScreenState extends State<GroupScreen> {
       final groupData = team['travel_groups'] as Map<String, dynamic>;
       final groupId = groupData['group_id'] as String;
 
-      // ---- Search filter ----
       final name = groupData['team_name']?.toLowerCase() ?? '';
       if (_searchQuery.isNotEmpty && !name.contains(_searchQuery.toLowerCase())) {
         return false;
       }
 
-      // ---- Date filter (if a date is selected) ----
       if (_selectedDate != null) {
         final plan = _teamTripPlans[groupId];
         if (plan == null) return false;
@@ -254,7 +245,6 @@ class _GroupScreenState extends State<GroupScreen> {
       }).toList();
     }
 
-    // Exclude teams the user has already joined
     final Set<String> joinedGroupIds = _myTeams
         .map((team) => team['travel_groups']['group_id'] as String)
         .toSet();
@@ -288,7 +278,6 @@ class _GroupScreenState extends State<GroupScreen> {
     });
   }
 
-  // ---- Date picker methods ----
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -322,6 +311,7 @@ class _GroupScreenState extends State<GroupScreen> {
     return Scaffold(
       backgroundColor: pageBackground,
       extendBody: false,
+      resizeToAvoidBottomInset: false, // prevent body resize on keyboard
       appBar: _buildTopAppBar(),
       body: Column(
         children: [
@@ -475,7 +465,7 @@ class _GroupScreenState extends State<GroupScreen> {
     );
   }
 
-  // ---- IN‑BODY HEADER (custom pill tabs like planner) ----
+  // ---- IN‑BODY HEADER ----
   Widget _buildBodyHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -493,7 +483,6 @@ class _GroupScreenState extends State<GroupScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          // Custom tab row
           Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
@@ -669,7 +658,7 @@ class _GroupScreenState extends State<GroupScreen> {
     );
   }
 
-  // ---- BODY: My Teams list (UPDATED with trip details) ----
+  // ---- BODY: My Teams list ----
   Widget _buildMyTeamsList() {
     final filtered = _filterMyTeams();
     return ListView(
@@ -779,7 +768,7 @@ class _GroupScreenState extends State<GroupScreen> {
     );
   }
 
-  // ---- BODY: Public Teams list with ALERTDIALOG for errors ----
+  // ---- BODY: Public Teams list ----
   Widget _buildPublicTeamsList(List<Map<String, dynamic>> paginated, int totalPages) {
     if (_filteredPublicTeams.isEmpty) {
       return Center(
@@ -876,7 +865,10 @@ class _GroupScreenState extends State<GroupScreen> {
                     userId: user.id,
                   );
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Join request sent!')),
+                    const SnackBar(
+                      content: Text('Join request sent!'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
                   );
                   _loadData();
                 } catch (e) {
@@ -888,7 +880,6 @@ class _GroupScreenState extends State<GroupScreen> {
                       lowerMsg.contains('duplicate')) {
                     message = 'You already have a pending request or are already a member of this team.';
                   }
-                  // Show popup dialog
                   await showDialog(
                     context: context,
                     builder: (ctx) => AlertDialog(

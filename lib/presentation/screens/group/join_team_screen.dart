@@ -63,7 +63,10 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
     final code = _codeController.text.trim().toUpperCase();
     if (code.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter an invitation code')),
+        const SnackBar(
+          content: Text('Please enter an invitation code'),
+          behavior: SnackBarBehavior.floating, // <-- Floating to avoid layout shift
+        ),
       );
       return;
     }
@@ -76,13 +79,19 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
       }
       await _service.requestToJoinByCode(code: code, userId: user.id);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Join request sent!')),
+        const SnackBar(
+          content: Text('Join request sent!'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
       Navigator.pop(context);
     } catch (e) {
       String message = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -139,25 +148,26 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
     return Scaffold(
       backgroundColor: pageBackground,
       extendBody: true,
+      resizeToAvoidBottomInset: false, // <-- Prevent body from shrinking on keyboard
       appBar: _buildTopAppBar(),
-      body: Padding(
+      body: SingleChildScrollView(      // <-- Allow scrolling when keyboard is open
         padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ---- Icon / Logo (changed to key) ----
+            // ---- Icon / Logo ----
             Container(
               alignment: Alignment.center,
               child: Icon(
-                Icons.vpn_key_rounded, // <- replaced lock with key
+                Icons.vpn_key_rounded,
                 size: 72,
                 color: skyBlue.withOpacity(0.7),
               ),
             ),
             const SizedBox(height: 24),
 
-            // ---- MAIN TITLE: ENTER PRIVATE TEAM CODE ----
+            // ---- MAIN TITLE ----
             const Text(
               'ENTER TEAM CODE',
               textAlign: TextAlign.center,
@@ -170,7 +180,7 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
             ),
             const SizedBox(height: 8),
 
-            // ---- SUBTITLE: PRIVATE PASSCODE VERIFICATION ----
+            // ---- SUBTITLE ----
             const Text(
               'PASSCODE VERIFICATION',
               textAlign: TextAlign.center,

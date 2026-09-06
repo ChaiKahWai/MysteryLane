@@ -87,7 +87,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
         _myTeams = teams;
       });
 
-      // FIX: Extract group_id from the nested travel_groups map
       for (var team in teams) {
         final groupData = team['travel_groups'] as Map<String, dynamic>?;
         if (groupData == null) continue;
@@ -101,7 +100,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading chats: $e')),
+        SnackBar(
+          content: Text('Error loading chats: $e'),
+          behavior: SnackBarBehavior.floating, // floating to avoid layout shift
+        ),
       );
     } finally {
       setState(() => _loading = false);
@@ -184,6 +186,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       extendBody: true,
+      resizeToAvoidBottomInset: false, // <-- prevent body resize on keyboard
       appBar: _buildTopAppBar(),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -283,13 +286,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 return _ChatListItem(
                   teamName: groupData['team_name'],
                   lastMessage: lastMsg,
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => TeamChatScreen(groupId: groupId),
                       ),
                     );
+                    _loadData(); // Refresh chat list after returning
                   },
                   formatTime: _formatTime,
                 );
@@ -304,7 +308,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  // ---- TOP APP BAR (unchanged) ----
+  // ---- TOP APP BAR ----
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
       automaticallyImplyLeading: false,
@@ -371,7 +375,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  // ---- BOTTOM BAR (unchanged) ----
+  // ---- BOTTOM BAR ----
   Widget _buildBottomBar() {
     return BottomAppBar(
       height: 78,
@@ -429,7 +433,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  // ---- HOME FLOATING BUTTON (unchanged) ----
+  // ---- HOME FLOATING BUTTON ----
   Widget _buildHomeButton() {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -480,7 +484,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 }
 
-// ---- Custom chat list item with white + light blue theme ----
+// ---- Custom chat list item ----
 class _ChatListItem extends StatefulWidget {
   final String teamName;
   final Map<String, dynamic>? lastMessage;
