@@ -115,10 +115,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      Navigator.of(context).pushReplacement(
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => const HomeScreen(),
         ),
+            (route) => false,
       );
     } on AuthException catch (error) {
       if (!mounted) return;
