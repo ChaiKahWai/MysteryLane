@@ -9,6 +9,7 @@ import '../group/group_screen.dart';
 import '../group/chat_list_screen.dart';
 import '../Blindbox/BlindBox_Screen.dart';
 import '../checkpoint/checkpoint_screen.dart';
+import '../puzzle/puzzle_screen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -483,9 +484,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: () async {
-          await Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ProfileScreen()),
-          );
+          await Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
           if (mounted) await _loadLeaderboard();
         },
         child: Container(
@@ -518,7 +519,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       alignment: Alignment.centerLeft,
       child: OutlinedButton.icon(
         onPressed: () {
-          Navigator.of(context).pop();
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const PuzzleScreen()),
+          );
         },
         style: OutlinedButton.styleFrom(
           foregroundColor: _text,
@@ -531,7 +534,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ),
         icon: const Icon(Icons.arrow_back, size: 18, color: _blue),
         label: const Text(
-          'Back to Home',
+          'Go Back Puzzle Challenge',
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
         ),
       ),

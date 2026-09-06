@@ -40,7 +40,15 @@ class PuzzleRepository {
         .map((json) => PuzzleQuestion.fromMap(Map<String, dynamic>.from(json)))
         .toList();
     final usable = questions
-        .where((question) => isDestinationTriviaText(question.questionText))
+        .where(
+          (question) => isPlayableCategoryQuestion(
+            puzzleType: question.puzzleType,
+            questionText: question.questionText,
+            correctAnswer: question.correctAnswer,
+            options: question.options,
+            displayBoxContent: question.displayBoxContent,
+          ),
+        )
         .toList();
     // Repair legacy banks from Puzzle Challenge, not by consuming a new draw.
     if (destinationId != null && usable.length < 10 && allowPreparation) {
@@ -99,15 +107,17 @@ class PuzzleRepository {
     );
 
     // Read every completed round, not just the API's default first page.
-    final previousAttempts = await _readPages((from, to) => _supabase
-        .from('puzzle_attempts')
-        .select('attempt_id, completed_at')
-        .eq('user_id', userId)
-        .eq('puzzle_category', historyCategory ?? puzzleType)
-        .not('completed_at', 'is', null)
-        .order('completed_at', ascending: false)
-        .order('attempt_id')
-        .range(from, to));
+    final previousAttempts = await _readPages(
+      (from, to) => _supabase
+          .from('puzzle_attempts')
+          .select('attempt_id, completed_at')
+          .eq('user_id', userId)
+          .eq('puzzle_category', historyCategory ?? puzzleType)
+          .not('completed_at', 'is', null)
+          .order('completed_at', ascending: false)
+          .order('attempt_id')
+          .range(from, to),
+    );
 
     final attemptIds = (previousAttempts as List)
         .map((row) => row['attempt_id']?.toString())
@@ -123,22 +133,29 @@ class PuzzleRepository {
       // have old questions incorrectly classified as unseen.
       for (var start = 0; start < attemptIds.length; start += 50) {
         final ids = attemptIds.skip(start).take(50).toList();
-        previousAnswers.addAll(await _readPages((from, to) => _supabase
-            .from('puzzle_attempt_answers')
-            .select(
-              'puzzle_id, attempt_id, '
-              'puzzle_questions(question_text, destination_id)',
-            )
-            .inFilter('attempt_id', ids)
-            .order('attempt_id').order('puzzle_id')
-            .range(from, to)));
+        previousAnswers.addAll(
+          await _readPages(
+            (from, to) => _supabase
+                .from('puzzle_attempt_answers')
+                .select(
+                  'puzzle_id, attempt_id, '
+                  'puzzle_questions(question_text, destination_id)',
+                )
+                .inFilter('attempt_id', ids)
+                .order('attempt_id')
+                .order('puzzle_id')
+                .range(from, to),
+          ),
+        );
       }
 
       // General questions are shared across destinations; avoid the latest
       // round's IDs even when it was at a different destination.
-      recentlyAnsweredPuzzleIds.addAll((previousAnswers as List)
-          .where((row) => row['attempt_id']?.toString() == attemptIds.first)
-          .map((row) => row['puzzle_id'].toString()));
+      recentlyAnsweredPuzzleIds.addAll(
+        (previousAnswers as List)
+            .where((row) => row['attempt_id']?.toString() == attemptIds.first)
+            .map((row) => row['puzzle_id'].toString()),
+      );
 
       answeredPuzzleIds.addAll(
         (previousAnswers as List)
@@ -156,8 +173,7 @@ class PuzzleRepository {
               row['puzzle_questions']['question_text']?.toString() ?? '',
             )
           : '';
-      String? answerDestinationId(dynamic row) =>
-          row['puzzle_questions'] is Map
+      String? answerDestinationId(dynamic row) => row['puzzle_questions'] is Map
           ? row['puzzle_questions']['destination_id']?.toString()
           : null;
       // Question wording can legitimately be similar at different places.
@@ -218,26 +234,61 @@ class PuzzleRepository {
       'True or False',
     };
     if (destinationId != null && destinationFirstTypes.contains(puzzleType)) {
-      final general = questions.where((q) => !answeredPuzzleIds.contains(q.id) &&
-                  !recentlyAnsweredPuzzleIds.contains(q.id)).length >= questionCount
+      final general =
+          questions
+                  .where(
+                    (q) =>
+                        !answeredPuzzleIds.contains(q.id) &&
+                        !recentlyAnsweredPuzzleIds.contains(q.id),
+                  )
+                  .length >=
+              questionCount
           ? <PuzzleQuestion>[]
-          : (await _supabase.from('puzzle_questions').select()
-              .isFilter('destination_id', null)
-              .eq('category', 'Malaysia General Knowledge')
-              .eq('puzzle_type', puzzleType).eq('is_active', true) as List)
-              .map((row) => PuzzleQuestion.fromMap(Map<String, dynamic>.from(row)))
-              .toList();
-      final round = selectDestinationFirstRound(questions, general,
-          answeredPuzzleIds, recentlyAnsweredPuzzleIds, count: questionCount);
+          : (await _supabase
+                        .from('puzzle_questions')
+                        .select()
+                        .isFilter('destination_id', null)
+                        .eq('category', 'Malaysia General Knowledge')
+                        .eq('puzzle_type', puzzleType)
+                        .eq('is_active', true)
+                    as List)
+                .map(
+                  (row) =>
+                      PuzzleQuestion.fromMap(Map<String, dynamic>.from(row)),
+                )
+                .where(
+                  (question) => isPlayableCategoryQuestion(
+                    puzzleType: question.puzzleType,
+                    questionText: question.questionText,
+                    correctAnswer: question.correctAnswer,
+                    options: question.options,
+                    displayBoxContent: question.displayBoxContent,
+                  ),
+                )
+                .toList();
+      final round = selectDestinationFirstRound(
+        questions,
+        general,
+        answeredPuzzleIds,
+        recentlyAnsweredPuzzleIds,
+        count: questionCount,
+      );
       if (round.length != questionCount) {
-        throw const PuzzlePreparationException('The saved question library is incomplete. Please contact support. Your draw is saved.');
+        throw const PuzzlePreparationException(
+          'The saved question library is incomplete. Please contact support. Your draw is saved.',
+        );
       }
       return round;
     }
 
     String? preparationFailure;
-    if (selectPuzzleRound(questions, answeredPuzzleIds,
-            recentlyAnsweredPuzzleIds, count: questionCount).length < questionCount) {
+    if (selectPuzzleRound(
+          questions,
+          answeredPuzzleIds,
+          recentlyAnsweredPuzzleIds,
+          count: questionCount,
+        ).length <
+        questionCount) {
       try {
         final preparation = await _supabase.functions.invoke(
           'generate-destination-questions',
@@ -256,10 +307,18 @@ class PuzzleRepository {
         if (preparation.status == 202) {
           for (var poll = 0; poll < 40; poll++) {
             await Future<void>.delayed(const Duration(seconds: 3));
-            questions = await getQuestions(destinationId: destinationId,
-                puzzleType: puzzleType, allowPreparation: false);
-            if (selectPuzzleRound(questions, answeredPuzzleIds,
-                    recentlyAnsweredPuzzleIds, count: questionCount).length >= questionCount) {
+            questions = await getQuestions(
+              destinationId: destinationId,
+              puzzleType: puzzleType,
+              allowPreparation: false,
+            );
+            if (selectPuzzleRound(
+                  questions,
+                  answeredPuzzleIds,
+                  recentlyAnsweredPuzzleIds,
+                  count: questionCount,
+                ).length >=
+                questionCount) {
               break;
             }
           }
@@ -270,7 +329,8 @@ class PuzzleRepository {
             ? details['error'] as String
             : 'Question generation could not reach the server. Please check your connection.';
       } catch (_) {
-        preparationFailure = 'Question generation could not reach the server. Please check your connection.';
+        preparationFailure =
+            'Question generation could not reach the server. Please check your connection.';
         // Keep usable saved questions when the provider is unavailable.
         // The selection rule below still prevents a ten-out-of-ten repeat.
       }
@@ -288,8 +348,9 @@ class PuzzleRepository {
     );
     if (selection.length < questionCount) {
       throw PuzzlePreparationException(
-        preparationFailure ?? 'We are still preparing enough different questions for this challenge. '
-        'Your progress is saved. Please try again shortly or choose another puzzle category.',
+        preparationFailure ??
+            'We are still preparing enough different questions for this challenge. '
+                'Your progress is saved. Please try again shortly or choose another puzzle category.',
       );
     }
     selection.shuffle();
@@ -315,8 +376,10 @@ class PuzzleRepository {
 
   Future<void> _growSharedBank(String destinationId) async {
     try {
-      await _supabase.functions.invoke('generate-destination-questions',
-          body: {'destination_id': destinationId, 'prepare_all': true});
+      await _supabase.functions.invoke(
+        'generate-destination-questions',
+        body: {'destination_id': destinationId, 'prepare_all': true},
+      );
     } catch (_) {
       // Saved rounds still work. A later draw/play can resume replenishment.
     }

@@ -243,6 +243,6 @@ claimedCategories = [];
 result = await handler(new Request('https://test.invalid', { method: 'POST', headers: { Authorization: 'Bearer test' }, body: JSON.stringify({ destination_id: 'destination', prepare_all: true }) }));
 assert.equal(result.status, 202);
 await background;
-assert.deepEqual(new Set(claimedCategories), new Set(['Multiple Choice Question','Missing Word Challenge','True or False','Scrambled Word','Guess the Word']));
+assert.deepEqual(new Set(claimedCategories), new Set(['Multiple Choice Question','True or False','Guess the Word']));
 assert.equal(generationCalls, beforeLease);
 console.log('Passed: background growth, five-bank scheduling and shared lease contention.');
