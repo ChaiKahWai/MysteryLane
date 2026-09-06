@@ -283,13 +283,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 return _ChatListItem(
                   teamName: groupData['team_name'],
                   lastMessage: lastMsg,
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => TeamChatScreen(groupId: groupId),
                       ),
                     );
+                    _loadData(); // Refresh chat list after returning
                   },
                   formatTime: _formatTime,
                 );
