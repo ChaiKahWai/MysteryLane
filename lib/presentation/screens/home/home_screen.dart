@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 import '../../../core/config/supabase_config.dart';
 import '../Blindbox/BlindBox_Screen.dart';
@@ -22,6 +23,11 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color darkText = Color(0xFF0F172A);
   static const Color pageBackground = Color(0xFFF8FAFC);
 
+  late final List<String> _heroImages;
+
+  int _heroImageIndex = 0;
+  Timer? _heroImageTimer;
+
   String _selectedItem = 'Home';
 
   String? _headerProfilePictureUrl;
@@ -29,7 +35,37 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+
     _loadHeaderProfile();
+
+    final storage = SupabaseConfig.client.storage
+        .from('homepage-backgrounds');
+
+    _heroImages = [
+      storage.getPublicUrl('home-1.png'),
+      storage.getPublicUrl('home-2.png'),
+      storage.getPublicUrl('home-3.png'),
+    ];
+
+    if (_heroImages.length > 1) {
+      _heroImageTimer = Timer.periodic(
+        const Duration(seconds: 5),
+            (_) {
+          if (!mounted) return;
+
+          setState(() {
+            _heroImageIndex =
+                (_heroImageIndex + 1) % _heroImages.length;
+          });
+        },
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _heroImageTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadHeaderProfile() async {
@@ -177,6 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
+      automaticallyImplyLeading: false,
       toolbarHeight: 68,
       elevation: 0,
       scrolledUnderElevation: 2,
@@ -340,31 +377,41 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80',
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 900),
+            child: Image.network(
+              _heroImages[_heroImageIndex],
+              key: ValueKey<String>(
+                _heroImages[_heroImageIndex],
+              ),
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
 
-              return const ColoredBox(
-                color: Color(0xFF0C4A6E),
-                child: Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              return const ColoredBox(
-                color: Color(0xFF0C4A6E),
-                child: Center(
-                  child: Icon(
-                    Icons.landscape_rounded,
-                    size: 90,
-                    color: Color(0x66FFFFFF),
+                return const ColoredBox(
+                  color: Color(0xFF0C4A6E),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return const ColoredBox(
+                  color: Color(0xFF0C4A6E),
+                  child: Center(
+                    child: Icon(
+                      Icons.landscape_rounded,
+                      size: 90,
+                      color: Color(0x66FFFFFF),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
           const DecoratedBox(
             decoration: BoxDecoration(
@@ -399,7 +446,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     child: const Text(
-                      'FEATURED DISCOVERY  •  VOL. IV',
+                      'FEATURED MALAYSIA • KUALA LUMPUR',
                       style: TextStyle(
                         color: Color(0xFFE0F2FE),
                         fontSize: 9,

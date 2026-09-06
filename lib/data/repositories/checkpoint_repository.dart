@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/config/supabase_config.dart';
 import '../models/checkpoint_destination.dart';
 import '../models/checkpoint_mission.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CheckpointRepository {
   // ============================================================
@@ -612,65 +613,64 @@ class CheckpointRepository {
 // GET COMPLETED CHECKPOINT DESTINATION IDS
 // ============================================================
 
-  Future<Set<String>>
-  getCompletedDestinationIds() async {
-    final user =
-        SupabaseConfig.client.auth.currentUser;
+  Future<Set<String>> getCompletedDestinationIds() async {
+    final user = Supabase.instance.client.auth.currentUser;
 
     if (user == null) {
       return <String>{};
     }
 
     try {
-      final List<dynamic> userMissions =
-      await SupabaseConfig.client
+      final rows = await Supabase.instance.client
           .from('user_checkpoint_missions')
-          .select(
-        'mission_id',
-      )
-          .eq(
-        'user_id',
-        user.id,
-      )
-          .eq(
-        'mission_status',
-        'COMPLETED',
-      );
+          .select('''
+          mission_id,
+          checkpoint_missions (
+            destination_id
+          )
+        ''')
+          .eq('user_id', user.id)
+          .eq('mission_status', 'COMPLETED');
 
-      if (userMissions.isEmpty) {
-        return <String>{};
+      final Set<String> destinationIds = {};
+
+      for (final raw in rows) {
+        final row = Map<String, dynamic>.from(raw);
+
+        final missionRaw =
+        row['checkpoint_missions'];
+
+        if (missionRaw is! Map) {
+          continue;
+        }
+
+        final mission =
+        Map<String, dynamic>.from(missionRaw);
+
+        final destinationId =
+        mission['destination_id']
+            ?.toString();
+
+        if (destinationId != null &&
+            destinationId.isNotEmpty) {
+          destinationIds.add(destinationId);
+        }
       }
 
-      final List<String> missionIds =
-      userMissions
-          .map(
-            (dynamic row) =>
-            row['mission_id']
-                .toString(),
-      )
-          .toList();
-
-      final List<dynamic> missions =
-      await SupabaseConfig.client
-          .from('checkpoint_missions')
-          .select(
-        'mission_id, destination_id',
-      )
-          .inFilter(
-        'mission_id',
-        missionIds,
+      debugPrint(
+        '[CHECKPOINT] Current user: ${user.id}',
       );
 
-      return missions
-          .map(
-            (dynamic row) =>
-            row['destination_id']
-                .toString(),
-      )
-          .toSet();
+      debugPrint(
+        '[CHECKPOINT] Completed destinations: '
+            '$destinationIds',
+      );
+
+      return destinationIds;
     } catch (error) {
       debugPrint(
-        'LOAD COMPLETED DESTINATIONS ERROR: $error',
+        '[CHECKPOINT] Failed to load completed '
+            'destinations: $error',
       );
 
       return <String>{};
