@@ -82,13 +82,17 @@ class TripPlanDataSource {
     return plans;
   }
 
-  Future<TripPlan> savePlan(TripPlan plan) async {
+  Future<TripPlan> savePlan(
+      TripPlan plan, {
+        String? groupId,
+      }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw const TripPlanDataException('Please log in first.');
 
     // Create the base data map (without the ID first, to handle new vs. existing plans)
-    Map<String, dynamic> planData = {
+    final Map<String, dynamic> planData = {
       'user_id': user.id,
+      if (groupId != null) 'group_id': groupId,
       'trip_name': plan.name,
       'start_date': _date(plan.startDate),
       'end_date': _date(plan.endDate),
@@ -175,16 +179,57 @@ class TripPlanDataSource {
     );
   }
 
+  Future<TripPlan?> getPlanForGroup(String groupId) async {
+    final row = await _client
+        .from('trip_plans')
+        .select('''
+        trip_id,
+        group_id,
+        trip_name,
+        start_date,
+        end_date,
+        route_status,
+        estimated_travel_minutes,
+        trip_plan_destinations (
+          destination_id,
+          travel_day,
+          sequence_order,
+          source,
+          blind_box_destinations (
+            google_place_id,
+            name,
+            address,
+            latitude,
+            longitude
+          )
+        )
+      ''')
+        .eq('group_id', groupId)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (row == null) return null;
+
+    return _planFromRow(Map<String, dynamic>.from(row));
+  }
+
   TripPlan _planFromRow(Map<String, dynamic> row) {
     final rawStops = List<Map<String, dynamic>>.from(
       row['trip_plan_destinations'] ?? [],
-    )..sort((a, b) {
-      // Fix the comparator – compare ints correctly
-      final dayA = (a['travel_day'] as int?) ?? 0;
-      final dayB = (b['travel_day'] as int?) ?? 0;
-      if (dayA != dayB) return dayA.compareTo(dayB);
-      final seqA = (a['sequence_order'] as int?) ?? 0;
-      final seqB = (b['sequence_order'] as int?) ?? 0;
+    );
+
+    rawStops.sort((a, b) {
+      final dayA = (a['travel_day'] as num?)?.toInt() ?? 0;
+      final dayB = (b['travel_day'] as num?)?.toInt() ?? 0;
+
+      if (dayA != dayB) {
+        return dayA.compareTo(dayB);
+      }
+
+      final seqA = (a['sequence_order'] as num?)?.toInt() ?? 0;
+      final seqB = (b['sequence_order'] as num?)?.toInt() ?? 0;
+
       return seqA.compareTo(seqB);
     });
 
@@ -193,22 +238,36 @@ class TripPlanDataSource {
       name: row['trip_name'] as String,
       startDate: DateTime.parse(row['start_date'] as String),
       endDate: DateTime.parse(row['end_date'] as String),
-      mode: 'solo',
+
+      // Group-linked plans contain group_id.
+      mode: row['group_id'] == null ? 'solo' : 'group',
+
       visibility: 'private',
       inviteCode: null,
-      routeAccepted: row['route_status'] == 'ACCEPTED' || row['route_status'] == 'GENERATED',
+
+      routeAccepted:
+      row['route_status'] == 'ACCEPTED' ||
+          row['route_status'] == 'GENERATED',
+
+      estimatedTravelMinutes:
+      (row['estimated_travel_minutes'] as num?)?.toInt(),
+
       stops: rawStops.map((stop) {
-        final dest = stop['blind_box_destinations'] as Map<String, dynamic>;
+        final destination = Map<String, dynamic>.from(
+          stop['blind_box_destinations'] as Map,
+        );
+
         return ItineraryStop(
-          placeId: dest['google_place_id'] as String? ?? stop['destination_id'].toString(),
-          name: dest['name'] as String,
-          address: dest['address'] as String? ?? '',
-          latitude: (dest['latitude'] as num).toDouble(),
-          longitude: (dest['longitude'] as num).toDouble(),
-          dayNumber: stop['travel_day'] as int? ?? 1,
-          sortOrder: stop['sequence_order'] as int? ?? 0,
-          // Add the source field (if needed)
-          source: 'GOOGLE',   // or read from stop['source'] if stored
+          placeId:
+          destination['google_place_id'] as String? ??
+              stop['destination_id'].toString(),
+          name: destination['name'] as String,
+          address: destination['address'] as String? ?? '',
+          latitude: (destination['latitude'] as num).toDouble(),
+          longitude: (destination['longitude'] as num).toDouble(),
+          dayNumber: (stop['travel_day'] as num?)?.toInt() ?? 1,
+          sortOrder: (stop['sequence_order'] as num?)?.toInt() ?? 0,
+          source: stop['source'] as String? ?? 'SEARCH',
         );
       }).toList(),
     );

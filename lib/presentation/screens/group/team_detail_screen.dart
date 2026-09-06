@@ -132,7 +132,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   void _openPlan() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const PlanScreen()),
+      MaterialPageRoute(
+        builder: (_) => PlanScreen(
+          groupId: widget.groupId,
+        ),
+      ),
     );
   }
 

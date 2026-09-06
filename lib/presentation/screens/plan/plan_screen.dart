@@ -14,7 +14,12 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 class PlanScreen extends StatefulWidget {
-  const PlanScreen({super.key});
+  final String? groupId;
+
+  const PlanScreen({
+    super.key,
+    this.groupId,
+  });
 
   @override
   State<PlanScreen> createState() => _PlanScreenState();
@@ -71,17 +76,20 @@ class _PlanScreenState extends State<PlanScreen> {
   @override
   void initState() {
     super.initState();
+
+    if (widget.groupId != null) {
+      mode = 'group';
+    }
+
     try {
       _initController();
-      load();
       nearby();
       blindBoxController = BlindBoxController.production();
-      _loadBlindBoxPlaces(); // Fetch the history
+      _loadBlindBoxPlaces();
     } catch (e) {
       error = '$e';
     }
   }
-
   @override
   void dispose() {
     api?.dispose();
@@ -105,18 +113,36 @@ class _PlanScreenState extends State<PlanScreen> {
 
   Future<void> load() async {
     if (api == null) return;
+
     setState(() => loading = true);
+
     try {
-      final r = await api!.loadMyPlans();
-      if (mounted) setState(() {
-        plans = r;
-        _allPlans = r;
-        _displayedPlans = r; // Initialize to show everything
-      });
+      final List<TripPlan> loadedPlans;
+
+      if (widget.groupId != null) {
+        final groupPlan =
+        await api!.getPlanForGroup(widget.groupId!);
+
+        loadedPlans = groupPlan == null
+            ? <TripPlan>[]
+            : <TripPlan>[groupPlan];
+      } else {
+        loadedPlans = await api!.loadMyPlans();
+      }
+
+      if (mounted) {
+        setState(() {
+          plans = loadedPlans;
+          _allPlans = loadedPlans;
+          _displayedPlans = loadedPlans;
+        });
+      }
     } catch (e) {
       note('Unable to load plans: $e');
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+      }
     }
   }
 
@@ -487,7 +513,10 @@ class _PlanScreenState extends State<PlanScreen> {
     // 3. NEW: Save to the database so it persists when you leave and come back!
     if (_currentPlan != null) {
       try {
-        await api!.savePlan(_currentPlan!);
+        await api!.savePlan(
+          _currentPlan!,
+          groupId: widget.groupId,
+        );
       } catch (e) {
         note('Failed to save route status: $e');
       }
@@ -607,16 +636,20 @@ class _PlanScreenState extends State<PlanScreen> {
     setState(() => loading = true);
     try {
       normalizeStops();
-      final p = await api!.savePlan(TripPlan(
+      final p = await api!.savePlan(
+          TripPlan(
           id: '',
           name: name.text.trim(),
           startDate: start,
           endDate: end,
-          mode: mode,
+            mode: widget.groupId == null ? mode : 'group',
           visibility: openPublic ? 'public' : 'private',
           inviteCode: openPublic ? null : '123456',
-          routeAccepted: accepted,
-          stops: stops));
+            routeAccepted: accepted,
+            stops: stops,
+          ),
+        groupId: widget.groupId,
+      );
       if (mounted) {
         setState(() {
           plans = [p, ...plans];              // Keep this

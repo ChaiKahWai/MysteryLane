@@ -113,7 +113,19 @@ class TripPlannerController {
   /// SAVE TRIP PLAN
   /// ==========================================================================
 
-  Future<TripPlan> savePlan(TripPlan plan) => _plans.savePlan(plan);
+  Future<TripPlan> savePlan(
+      TripPlan plan, {
+        String? groupId,
+      }) {
+    return _plans.savePlan(
+      plan,
+      groupId: groupId,
+    );
+  }
+
+  Future<TripPlan?> getPlanForGroup(String groupId) {
+    return _plans.getPlanForGroup(groupId);
+  }
 
   /// ==========================================================================
   /// SEARCH PLACES
