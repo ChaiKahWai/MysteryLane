@@ -34,7 +34,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
 
   PhoneNumber _selectedPhoneNumber =
-  PhoneNumber(isoCode: 'MY', dialCode: '+60');
+  PhoneNumber(
+    isoCode: 'MY',
+    dialCode: '+60',
+  );
 
   bool _isPhoneNumberValid = false;
   String _e164PhoneNumber = '';
@@ -83,22 +86,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _register() async {
     FocusScope.of(context).unfocus();
 
-    final fullName =
+    final String fullName =
     _fullNameController.text.trim();
 
-    final email =
-    _emailController.text.trim().toLowerCase();
+    final String email =
+    _emailController.text
+        .trim()
+        .toLowerCase();
 
-    final localPhoneNumber =
+    final String localPhoneNumber =
     _phoneController.text.trim();
 
-    final password =
+    final String password =
         _passwordController.text;
 
-    final confirmPassword =
+    final String confirmPassword =
         _confirmPasswordController.text;
 
-// [A6][M6][C6] Mandatory fields.
+    // [A6][M6][C6]
+    // Mandatory fields.
     if (fullName.isEmpty ||
         email.isEmpty ||
         localPhoneNumber.isEmpty ||
@@ -117,16 +123,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
         );
+
       return;
     }
 
-// [A1-A5][M1-M5][C1-C5]
+    // [A1-A5][M1-M5][C1-C5]
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-// [A3][M3][C3] The international phone widget validates
-// the number against the selected country's numbering rules.
+    // [A3][M3][C3]
+    // Validate phone number based on selected country.
     if (!_isPhoneNumberValid ||
         _e164PhoneNumber.isEmpty) {
       if (!mounted) return;
@@ -140,6 +147,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
         );
+
       return;
     }
 
@@ -153,11 +161,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: email,
         password: password,
 
-// [C7][C12]
-// Supabase Authentication manages email/password.
-// Full name and the normalized E.164 phone number are stored
-// temporarily in Auth metadata. main.dart creates the profile
-// only after successful email verification.
+        // Email and password are managed by
+        // Supabase Authentication.
+        //
+        // Full Name and normalized E.164 Phone Number
+        // are temporarily stored in Auth metadata.
+        //
+        // main.dart creates the profile only after
+        // successful email verification.
         data: {
           'full_name': fullName,
           'phone_number': _e164PhoneNumber,
@@ -175,9 +186,47 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
 
+      // ===================================================
+      // IMPORTANT FIX:
+      // DUPLICATE / ALREADY REGISTERED EMAIL CHECK
+      // ===================================================
+      //
+      // When Confirm Email is enabled, Supabase may not
+      // always throw "User already registered".
+      //
+      // For an existing confirmed email, Supabase may return
+      // an obfuscated user with an empty identities list.
+      //
+      // Therefore, check identities before displaying
+      // the verification-email dialog.
+      // ===================================================
+
+      final bool emailAlreadyRegistered =
+          user.identities != null &&
+              user.identities!.isEmpty;
+
+      if (emailAlreadyRegistered) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This email address has already been registered.',
+              ),
+            ),
+          );
+
+        return;
+      }
+
       if (!mounted) return;
 
-// [M9][C8]
+      // ===================================================
+      // NEW REGISTRATION ONLY
+      // ===================================================
+
       await showDialog(
         context: context,
         barrierDismissible: false,
@@ -191,7 +240,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 SizedBox(width: 10),
                 Expanded(
-                  child: Text('Verify Your Email'),
+                  child: Text(
+                    'Verify Your Email',
+                  ),
                 ),
               ],
             ),
@@ -205,7 +256,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 onPressed: () {
                   Navigator.pop(context);
                 },
-                child: const Text('OK'),
+                child: const Text(
+                  'OK',
+                ),
               ),
             ],
           );
@@ -217,10 +270,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final String errorText =
       error.message.toLowerCase();
 
-// [A7][M7]
-      if (errorText.contains('already registered') ||
-          errorText.contains('already exists') ||
-          errorText.contains('user already registered')) {
+      // ===================================================
+      // SECOND DUPLICATE EMAIL PROTECTION
+      // ===================================================
+      //
+      // Some Supabase configurations may still throw
+      // an AuthException for an already registered email.
+      // ===================================================
+
+      if (errorText.contains(
+        'already registered',
+      ) ||
+          errorText.contains(
+            'already exists',
+          ) ||
+          errorText.contains(
+            'user already registered',
+          )) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
@@ -230,10 +296,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
           );
+
         return;
       }
 
-// [A10][M10]
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -243,10 +309,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
         );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
 
-// [A10][M10]
+      debugPrint(
+        'REGISTER ERROR: $error',
+      );
+
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -267,10 +336,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryBlue =
+    const Color primaryBlue =
     Color(0xFF0284C7);
 
-    const darkText =
+    const Color darkText =
     Color(0xFF0F172A);
 
     return Scaffold(
@@ -297,7 +366,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     },
 
                     borderRadius:
-                    BorderRadius.circular(50),
+                    BorderRadius.circular(
+                      50,
+                    ),
 
                     child: Container(
                       width: 40,
@@ -308,8 +379,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         const Color(
                           0xFFF0F9FF,
                         ),
-                        shape: BoxShape.circle,
-                        border: Border.all(
+                        shape:
+                        BoxShape.circle,
+                        border:
+                        Border.all(
                           color:
                           const Color(
                             0xFFBAE6FD,
@@ -319,13 +392,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                       child: const Icon(
                         Icons.arrow_back,
-                        color: primaryBlue,
+                        color:
+                        primaryBlue,
                         size: 20,
                       ),
                     ),
                   ),
 
-                  const SizedBox(width: 12),
+                  const SizedBox(
+                    width: 12,
+                  ),
 
                   const Column(
                     crossAxisAlignment:
@@ -334,27 +410,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     children: [
                       Text(
                         'AUTHENTICATION LOG',
-
                         style: TextStyle(
                           fontSize: 9,
-                          color: primaryBlue,
+                          color:
+                          primaryBlue,
                           fontWeight:
                           FontWeight.bold,
-                          letterSpacing: 1.8,
+                          letterSpacing:
+                          1.8,
                         ),
                       ),
 
-                      SizedBox(height: 2),
+                      SizedBox(
+                        height: 2,
+                      ),
 
                       Text(
                         'MysteryLane',
-
                         style: TextStyle(
                           fontSize: 21,
-                          color: darkText,
+                          color:
+                          darkText,
                           fontWeight:
                           FontWeight.bold,
-                          fontFamily: 'serif',
+                          fontFamily:
+                          'serif',
                         ),
                       ),
                     ],
@@ -362,7 +442,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ],
               ),
 
-              const SizedBox(height: 22),
+              const SizedBox(
+                height: 22,
+              ),
 
               Container(
                 width: double.infinity,
@@ -372,7 +454,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   22,
                 ),
 
-                decoration: BoxDecoration(
+                decoration:
+                BoxDecoration(
                   color: Colors.white,
 
                   borderRadius:
@@ -380,23 +463,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     24,
                   ),
 
-                  border: Border.all(
+                  border:
+                  Border.all(
                     color:
                     const Color(
                       0xFFE2E8F0,
                     ),
                   ),
 
-                  boxShadow: const [
+                  boxShadow:
+                  const [
                     BoxShadow(
-                      color: Color.fromRGBO(
+                      color:
+                      Color.fromRGBO(
                         15,
                         23,
                         42,
                         0.08,
                       ),
                       blurRadius: 20,
-                      offset: Offset(
+                      offset:
+                      Offset(
                         0,
                         8,
                       ),
@@ -414,13 +501,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     children: [
                       const Text(
                         'FIELD REGISTRATION',
-
                         style: TextStyle(
                           fontSize: 9,
-                          color: primaryBlue,
+                          color:
+                          primaryBlue,
                           fontWeight:
                           FontWeight.bold,
-                          letterSpacing: 1.8,
+                          letterSpacing:
+                          1.8,
                         ),
                       ),
 
@@ -430,13 +518,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                       const Text(
                         'Begin Your Journey',
-
                         style: TextStyle(
                           fontSize: 26,
                           fontWeight:
                           FontWeight.bold,
-                          fontFamily: 'serif',
-                          color: darkText,
+                          fontFamily:
+                          'serif',
+                          color:
+                          darkText,
                         ),
                       ),
 
@@ -447,7 +536,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const Text(
                         'Register to unlock exclusive urban exploration '
                             'missions and blind boxes.',
-
                         style: TextStyle(
                           fontSize: 12,
                           color:
@@ -475,13 +563,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         Icons.person_outline,
 
                         validator: (value) {
-                          if (value == null ||
-                              value.trim().isEmpty) {
+                          if (value ==
+                              null ||
+                              value
+                                  .trim()
+                                  .isEmpty) {
                             return 'Please enter a valid full name (2–50 characters).';
                           }
 
-                          if (value.trim().length < 2 ||
-                              value.trim().length > 50) {
+                          if (value
+                              .trim()
+                              .length <
+                              2 ||
+                              value
+                                  .trim()
+                                  .length >
+                                  50) {
                             return 'Please enter a valid full name (2–50 characters).';
                           }
 
@@ -505,20 +602,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         icon:
                         Icons.email_outlined,
                         keyboardType:
-                        TextInputType.emailAddress,
+                        TextInputType
+                            .emailAddress,
 
                         validator: (value) {
-                          if (value == null ||
-                              value.trim().isEmpty) {
+                          if (value ==
+                              null ||
+                              value
+                                  .trim()
+                                  .isEmpty) {
                             return 'Please enter a valid email address.';
                           }
 
-                          final emailRegex =
+                          final RegExp
+                          emailRegex =
                           RegExp(
                             r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
                           );
 
-                          if (!emailRegex.hasMatch(
+                          if (!emailRegex
+                              .hasMatch(
                             value.trim(),
                           )) {
                             return 'Please enter a valid email address.';
@@ -546,34 +649,49 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         selectorConfig:
                         const SelectorConfig(
                           selectorType:
-                          PhoneInputSelectorType.BOTTOM_SHEET,
+                          PhoneInputSelectorType
+                              .BOTTOM_SHEET,
                           useEmoji: true,
-                          setSelectorButtonAsPrefixIcon: true,
-                          leadingPadding: 12,
+                          setSelectorButtonAsPrefixIcon:
+                          true,
+                          leadingPadding:
+                          12,
                         ),
 
                         formatInput: true,
+
                         keyboardType:
-                        const TextInputType.numberWithOptions(
+                        const TextInputType
+                            .numberWithOptions(
                           signed: false,
                           decimal: false,
                         ),
 
                         autoValidateMode:
-                        AutovalidateMode.onUserInteraction,
+                        AutovalidateMode
+                            .onUserInteraction,
 
                         errorMessage:
                         'Please enter a valid phone number for the selected country.',
 
                         onInputChanged:
-                            (PhoneNumber number) {
-                          _selectedPhoneNumber = number;
+                            (PhoneNumber
+                        number) {
+                          _selectedPhoneNumber =
+                              number;
 
-                          final String normalized =
-                              number.phoneNumber?.trim() ?? '';
+                          final String
+                          normalized =
+                              number
+                                  .phoneNumber
+                                  ?.trim() ??
+                                  '';
 
                           _e164PhoneNumber =
-                          normalized.startsWith('+')
+                          normalized
+                              .startsWith(
+                            '+',
+                          )
                               ? normalized
                               : '';
                         },
@@ -587,8 +705,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         },
 
                         validator: (value) {
-                          if (value == null ||
-                              value.trim().isEmpty) {
+                          if (value ==
+                              null ||
+                              value
+                                  .trim()
+                                  .isEmpty) {
                             return 'Please enter a valid phone number for the selected country.';
                           }
 
@@ -605,6 +726,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           'Enter phone number',
 
                           filled: true,
+
                           fillColor:
                           const Color(
                             0xFFF8FAFC,
@@ -613,7 +735,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           border:
                           OutlineInputBorder(
                             borderRadius:
-                            BorderRadius.circular(
+                            BorderRadius
+                                .circular(
                               13,
                             ),
                           ),
@@ -621,7 +744,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           enabledBorder:
                           OutlineInputBorder(
                             borderRadius:
-                            BorderRadius.circular(
+                            BorderRadius
+                                .circular(
                               13,
                             ),
                             borderSide:
@@ -636,7 +760,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           focusedBorder:
                           OutlineInputBorder(
                             borderRadius:
-                            BorderRadius.circular(
+                            BorderRadius
+                                .circular(
                               13,
                             ),
                             borderSide:
@@ -652,7 +777,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           errorBorder:
                           OutlineInputBorder(
                             borderRadius:
-                            BorderRadius.circular(
+                            BorderRadius
+                                .circular(
                               13,
                             ),
                             borderSide:
@@ -663,6 +789,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                       ),
+
                       const SizedBox(
                         height: 18,
                       ),
@@ -709,7 +836,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         },
 
                         validator: (value) {
-                          if (value == null ||
+                          if (value ==
+                              null ||
                               value.isEmpty) {
                             return 'Password must contain at least 8 characters, including at least one uppercase letter, one lowercase letter, one number, and one special character.';
                           }
@@ -793,13 +921,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
 
                         validator: (value) {
-                          if (value == null ||
+                          if (value ==
+                              null ||
                               value.isEmpty) {
                             return 'Password and confirmation password do not match.';
                           }
 
                           if (value !=
-                              _passwordController.text) {
+                              _passwordController
+                                  .text) {
                             return 'Password and confirmation password do not match.';
                           }
 
@@ -812,7 +942,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
 
                       SizedBox(
-                        width: double.infinity,
+                        width:
+                        double.infinity,
                         height: 54,
 
                         child:
@@ -822,14 +953,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ? null
                               : _register,
 
-                          icon: _isLoading
+                          icon:
+                          _isLoading
                               ? const SizedBox(
-                            width: 18,
-                            height: 18,
-
+                            width:
+                            18,
+                            height:
+                            18,
                             child:
                             CircularProgressIndicator(
-                              strokeWidth: 2,
+                              strokeWidth:
+                              2,
                               color:
                               Colors.white,
                             ),
@@ -837,7 +971,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               : const Icon(
                             Icons
                                 .how_to_reg_outlined,
-                            size: 18,
+                            size:
+                            18,
                           ),
 
                           label: Text(
@@ -847,10 +982,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                             style:
                             const TextStyle(
-                              fontSize: 12,
+                              fontSize:
+                              12,
                               fontWeight:
                               FontWeight.bold,
-                              letterSpacing: 2.4,
+                              letterSpacing:
+                              2.4,
                             ),
                           ),
 
@@ -866,7 +1003,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             shape:
                             RoundedRectangleBorder(
                               borderRadius:
-                              BorderRadius.circular(
+                              BorderRadius
+                                  .circular(
                                 16,
                               ),
                             ),
@@ -911,10 +1049,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Widget _buildTextField({
-    required TextEditingController controller,
+    required TextEditingController
+    controller,
     required String hintText,
     required IconData icon,
-    required String? Function(String?) validator,
+    required String? Function(String?)
+    validator,
     TextInputType keyboardType =
         TextInputType.text,
     bool obscureText = false,
@@ -1025,7 +1165,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           Icon(
             completed
                 ? Icons.check_circle
-                : Icons.circle_outlined,
+                : Icons
+                .circle_outlined,
 
             size: 15,
 

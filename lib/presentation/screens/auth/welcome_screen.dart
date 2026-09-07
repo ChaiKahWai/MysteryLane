@@ -213,7 +213,7 @@ class WelcomeScreen extends StatelessWidget {
                               ),
                             ),
                             child: const Text(
-                              'CREATE ACCOUNT',
+                              'Sign Up',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
