@@ -3,6 +3,7 @@ import '../../data/repositories/group_repository.dart';
 import '../../data/models/travel_group_model.dart';
 import '../../data/models/trip_plan.dart';
 import '../../data/datasources/trip_plan_data_source.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class GroupService {
   final GroupRepository _repository = GroupRepository();
@@ -14,6 +15,18 @@ class GroupService {
     return String.fromCharCodes(
       Iterable.generate(6, (_) => chars.codeUnitAt(random.nextInt(chars.length))),
     );
+  }
+
+  // In group_service.dart
+
+  Future<void> markChatAsRead(String userId, String groupId) async {
+    await Supabase.instance.client
+        .from('travel_group_members')
+        .update({
+      'last_read_at': DateTime.now().toUtc().toIso8601String(),
+    })
+        .eq('user_id', userId)
+        .eq('group_id', groupId);
   }
 
   Future<TravelGroup> createTeam({

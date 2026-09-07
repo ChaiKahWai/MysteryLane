@@ -10,6 +10,7 @@ import '../profile/profile_screen.dart';
 import '../profile/leaderboard_screen.dart';
 import 'group_screen.dart';
 import 'chat_list_screen.dart';
+import '../../../application/services/group_service.dart';
 
 class TeamChatScreen extends StatefulWidget {
   final String groupId;
@@ -30,6 +31,7 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
   final ChatService _chatService = ChatService();
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final GroupService _groupService = GroupService();
 
   String? _headerProfilePictureUrl;
   String? _teamName;
@@ -39,6 +41,7 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
     super.initState();
     _loadHeaderProfile();
     _loadTeamName();
+    _markAsRead();
   }
 
   @override
@@ -46,6 +49,16 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _markAsRead() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    try {
+      await _groupService.markChatAsRead(user.id, widget.groupId);
+    } catch (e) {
+      debugPrint('Error marking chat as read: $e');
+    }
   }
 
   Future<void> _loadHeaderProfile() async {
