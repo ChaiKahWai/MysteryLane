@@ -33,6 +33,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   List<Map<String, dynamic>> _myTeams = [];
   Map<String, dynamic> _lastMessages = {};
+  Map<String, bool> _unreadStatus = {};
+
   bool _loading = true;
   String _searchQuery = '';
 
@@ -82,27 +84,40 @@ class _ChatListScreenState extends State<ChatListScreen> {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
+
+      // 1. Fetch teams
       final teams = await _groupService.getUserTeams(user.id);
       setState(() {
         _myTeams = teams;
       });
 
-      for (var team in teams) {
-        final groupData = team['travel_groups'] as Map<String, dynamic>?;
-        if (groupData == null) continue;
-        final groupId = groupData['group_id'] as String?;
-        if (groupId == null || groupId.isEmpty) continue;
+      // 2. Extract group IDs
+      final groupIds = teams
+          .map((team) => team['travel_groups']?['group_id'] as String?)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toList();
 
-        final last = await _chatService.getLastMessageForTeam(groupId);
-        if (last != null) {
-          _lastMessages[groupId] = last;
-        }
+      // 3. Get chat data (last messages + unread status)
+      if (groupIds.isNotEmpty) {
+        final chatData = await _chatService.getChatListData(user.id, groupIds);
+        final lastMessages = chatData['lastMessages'] as Map<String, dynamic>? ?? {};
+        final unreadStatus = chatData['unreadStatus'] as Map<String, bool>? ?? {};
+        setState(() {
+          _lastMessages = lastMessages;
+          _unreadStatus = unreadStatus;
+        });
+      } else {
+        setState(() {
+          _lastMessages = {};
+          _unreadStatus = {};
+        });
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error loading chats: $e'),
-          behavior: SnackBarBehavior.floating, // floating to avoid layout shift
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } finally {
@@ -119,7 +134,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   String _formatTime(String iso) {
-    final dt = DateTime.parse(iso).toLocal();   
+    final dt = DateTime.parse(iso).toLocal();
     final now = DateTime.now();
     if (dt.day == now.day && dt.month == now.month && dt.year == now.year) {
       return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
@@ -287,15 +302,25 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   teamName: groupData['team_name'],
                   lastMessage: lastMsg,
                   onTap: () async {
+                    // Mark messages as read before entering the chat
+                    final user = Supabase.instance.client.auth.currentUser;
+                    if (user != null) {
+                      await _groupService.markChatAsRead(user.id, groupId);
+                      // Update local unread status immediately
+                      setState(() {
+                        _unreadStatus[groupId] = false;
+                      });
+                    }
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => TeamChatScreen(groupId: groupId),
                       ),
                     );
-                    _loadData(); // Refresh chat list after returning
+                    _loadData(); // Refresh after returning
                   },
                   formatTime: _formatTime,
+                  isUnread: _unreadStatus[groupId] ?? false,
                 );
               },
             ),
@@ -490,12 +515,14 @@ class _ChatListItem extends StatefulWidget {
   final Map<String, dynamic>? lastMessage;
   final VoidCallback onTap;
   final String Function(String) formatTime;
+  final bool isUnread;
 
   const _ChatListItem({
     required this.teamName,
     required this.lastMessage,
     required this.onTap,
     required this.formatTime,
+    this.isUnread = false,
   });
 
   @override
@@ -536,15 +563,33 @@ class _ChatListItemState extends State<_ChatListItem> {
         ),
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          leading: CircleAvatar(
-            backgroundColor: const Color(0xFFEAF6FE),
-            child: Text(
-              widget.teamName[0],
-              style: const TextStyle(
-                color: _ChatListScreenState.skyBlue,
-                fontWeight: FontWeight.w700,
+          leading: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CircleAvatar(
+                backgroundColor: const Color(0xFFEAF6FE),
+                child: Text(
+                  widget.teamName[0],
+                  style: const TextStyle(
+                    color: _ChatListScreenState.skyBlue,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-            ),
+              if (widget.isUnread)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 14,
+                    height: 14,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
           title: Text(
             widget.teamName,
