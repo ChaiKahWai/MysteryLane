@@ -22,7 +22,8 @@ import '../group/group_screen.dart';
 
 class PlanScreen extends StatefulWidget {
   final String? initialGroupId;
-  const PlanScreen({super.key, this.initialGroupId});
+  final String? initialPlanId;
+  const PlanScreen({super.key, this.initialGroupId, this.initialPlanId});
 
   @override
   State<PlanScreen> createState() => _PlanScreenState();
@@ -84,19 +85,24 @@ class _PlanScreenState extends State<PlanScreen> {
   @override
   void initState() {
     super.initState();
-    try {
-      _initController();
-      blindBoxController = BlindBoxController.production();
-      _loadBlindBoxPlaces();
-      if (widget.initialGroupId != null) {
-        _loadGroupPlan(widget.initialGroupId!);
-      } else {
-        load();
-        nearby();
+    blindBoxController = BlindBoxController.production();
+    _loadBlindBoxPlaces();
+
+    // Wait for API initialization before loading plans
+    _initController().then((_) {
+      if (mounted) {
+        if (widget.initialPlanId != null) {
+          _loadPlanById(widget.initialPlanId!);
+        } else if (widget.initialGroupId != null) {
+          _loadGroupPlan(widget.initialGroupId!);
+        } else {
+          load();
+          nearby();
+        }
       }
-    } catch (e) {
-      error = '$e';
-    }
+    }).catchError((e) {
+      setState(() => error = '$e');
+    });
   }
 
   @override
@@ -145,6 +151,35 @@ class _PlanScreenState extends State<PlanScreen> {
       }
     } catch (e) {
       note('Unable to load team plan: $e');
+      setState(() => page = 0);
+    } finally {
+      setState(() => loading = false);
+    }
+  }
+
+  Future<void> _loadPlanById(String planId) async {
+    if (api == null) {
+      note('API not ready.');
+      return;
+    }
+    setState(() => loading = true);
+    try {
+      final allPlans = await api!.loadMyPlans();
+      TripPlan? plan;
+      for (final p in allPlans) {
+        if (p.id == planId) {
+          plan = p;
+          break;
+        }
+      }
+      if (plan == null) {
+        note('Plan not found.');
+        setState(() => page = 0);
+        return;
+      }
+      viewPlan(plan);
+    } catch (e) {
+      note('Unable to load plan: $e');
       setState(() => page = 0);
     } finally {
       setState(() => loading = false);
@@ -756,7 +791,6 @@ class _PlanScreenState extends State<PlanScreen> {
   Future<void> _initController() async {
     try {
       api = await TripPlannerController.createProduction();
-      await load();
     } catch (e) {
       setState(() => error = '$e');
     }
@@ -2221,10 +2255,9 @@ class _PlanScreenState extends State<PlanScreen> {
               ],
             ),
           ),
-
           // 2. Full Screen Map
           Expanded(
-            child: routePreview(routeDay == 0 ? stops : stops.where((x) => x.dayNumber == routeDay).toList(), showLegend: false), //
+            child: routePreview(routeDay == 0 ? stops : stops.where((x) => x.dayNumber == routeDay).toList(), showLegend: false),
           ),
         ],
       ),
@@ -2301,15 +2334,74 @@ class _PlanScreenState extends State<PlanScreen> {
                     TextButton.icon(onPressed: _openManageSquadBottomSheet, icon: const Icon(Icons.settings_outlined, size: 14, color: blue), label: const Text('Manage Squad Members', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue))),
                   ]),
                   const SizedBox(height: 8),
-                  SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-                    member('ME', 'You (Host)', blue, true),
-                    const SizedBox(width: 8),
-                    InkWell(onTap: _openManageSquadBottomSheet, child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(color: const Color(0xFFF0F9FF), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFBAE6FD))),
-                      child: const Row(children: [Icon(Icons.person_add_alt_1_outlined, size: 14, color: blue), SizedBox(width: 6), Text('Invite Squad', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue))]),
-                    )),
-                  ])),
+
+                  // **************************************************************
+                  //  FIXED SECTION: Replaced SingleChildScrollView with Wrap
+                  //  **************************************************************
+                  if (_loadingTeam)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: LinearProgressIndicator(color: blue),
+                    )
+                  else if (_teamMembers.isEmpty)
+                  // Fallback if members haven't loaded yet or just created
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          member(
+                            'ME',
+                            'You (Host)',
+                            blue,
+                            true,
+                          ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: _openManageSquadBottomSheet,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0F9FF),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFFBAE6FD)),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.person_add_alt_1_outlined, size: 14, color: blue),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Invite Squad',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                  // ✅ NEW: Wrap handles any number of members – they will wrap to the next line
+                    Wrap(
+                      spacing: 8.0,      // horizontal gap between items
+                      runSpacing: 8.0,   // vertical gap when wrapping
+                      children: _teamMembers.map((m) {
+                        final profile = m['profiles'] as Map<String, dynamic>?;
+                        final role = m['member_role']?.toString() ?? 'MEMBER';
+                        final isHost = role == 'OWNER';
+                        final fullName = profile?['full_name'] ?? 'Traveler';
+                        final initials = fullName.length >= 2
+                            ? fullName.substring(0, 2).toUpperCase()
+                            : 'TR';
+
+                        return member(
+                          initials,
+                          isHost ? '$fullName (Host)' : fullName,
+                          isHost ? blue : const Color(0xFF64748B),
+                          isHost,
+                        );
+                      }).toList(),
+                    ),
                 ],
 
                 const Divider(height: 40),
