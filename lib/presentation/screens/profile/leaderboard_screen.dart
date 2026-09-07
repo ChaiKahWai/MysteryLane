@@ -36,7 +36,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<LeaderboardEntry> _entries = [];
 
   Timer? _timer;
-  Duration _untilMidnight = Duration.zero;
+  Duration _untilDailyRefresh = Duration.zero;
   String? _activeDateKey;
   bool _checkingReward = false;
 
@@ -192,24 +192,37 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   void _updateTimer() {
     final nowUtc = DateTime.now().toUtc();
-    final now = nowUtc.add(const Duration(hours: 8));
-    final dateKey = '${now.year}-${now.month}-${now.day}';
-    final crossedMidnight = _activeDateKey != null && _activeDateKey != dateKey;
+    final malaysiaNow = nowUtc.add(const Duration(hours: 8));
+    final todayRefreshUtc = DateTime.utc(
+      malaysiaNow.year,
+      malaysiaNow.month,
+      malaysiaNow.day,
+      6,
+      30,
+    );
+    final refreshIsToday = nowUtc.isBefore(todayRefreshUtc);
+    final nextRefreshUtc = refreshIsToday
+        ? todayRefreshUtc
+        : todayRefreshUtc.add(const Duration(days: 1));
+    final activePeriodEnd = refreshIsToday
+        ? DateTime.utc(malaysiaNow.year, malaysiaNow.month, malaysiaNow.day)
+        : DateTime.utc(
+            malaysiaNow.year,
+            malaysiaNow.month,
+            malaysiaNow.day + 1,
+          );
+    final dateKey =
+        '${activePeriodEnd.year}-${activePeriodEnd.month}-${activePeriodEnd.day}';
+    final crossedRefresh = _activeDateKey != null && _activeDateKey != dateKey;
     _activeDateKey = dateKey;
-
-    final nextMidnightUtc = DateTime.utc(
-      now.year,
-      now.month,
-      now.day + 1,
-    ).subtract(const Duration(hours: 8));
 
     if (!mounted) return;
 
     setState(() {
-      _untilMidnight = nextMidnightUtc.difference(nowUtc);
+      _untilDailyRefresh = nextRefreshUtc.difference(nowUtc);
     });
 
-    if (crossedMidnight) {
+    if (crossedRefresh) {
       Future<void>.delayed(const Duration(seconds: 5), () {
         if (mounted) _loadLeaderboard();
       });
@@ -604,11 +617,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   // ============================================================
 
   Widget _buildResetCard() {
-    final int hours = _untilMidnight.inHours;
+    final int hours = _untilDailyRefresh.inHours;
 
-    final int minutes = _untilMidnight.inMinutes.remainder(60);
+    final int minutes = _untilDailyRefresh.inMinutes.remainder(60);
 
-    final int seconds = _untilMidnight.inSeconds.remainder(60);
+    final int seconds = _untilDailyRefresh.inSeconds.remainder(60);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
