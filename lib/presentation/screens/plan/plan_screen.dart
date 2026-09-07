@@ -22,7 +22,8 @@ import '../group/group_screen.dart';
 
 class PlanScreen extends StatefulWidget {
   final String? initialGroupId;
-  const PlanScreen({super.key, this.initialGroupId});
+  final String? initialPlanId;
+  const PlanScreen({super.key, this.initialGroupId, this.initialPlanId});
 
   @override
   State<PlanScreen> createState() => _PlanScreenState();
@@ -84,19 +85,24 @@ class _PlanScreenState extends State<PlanScreen> {
   @override
   void initState() {
     super.initState();
-    try {
-      _initController();
-      blindBoxController = BlindBoxController.production();
-      _loadBlindBoxPlaces();
-      if (widget.initialGroupId != null) {
-        _loadGroupPlan(widget.initialGroupId!);
-      } else {
-        load();
-        nearby();
+    blindBoxController = BlindBoxController.production();
+    _loadBlindBoxPlaces();
+
+    // Wait for API initialization before loading plans
+    _initController().then((_) {
+      if (mounted) {
+        if (widget.initialPlanId != null) {
+          _loadPlanById(widget.initialPlanId!);
+        } else if (widget.initialGroupId != null) {
+          _loadGroupPlan(widget.initialGroupId!);
+        } else {
+          load();
+          nearby();
+        }
       }
-    } catch (e) {
-      error = '$e';
-    }
+    }).catchError((e) {
+      setState(() => error = '$e');
+    });
   }
 
   @override
@@ -145,6 +151,35 @@ class _PlanScreenState extends State<PlanScreen> {
       }
     } catch (e) {
       note('Unable to load team plan: $e');
+      setState(() => page = 0);
+    } finally {
+      setState(() => loading = false);
+    }
+  }
+
+  Future<void> _loadPlanById(String planId) async {
+    if (api == null) {
+      note('API not ready.');
+      return;
+    }
+    setState(() => loading = true);
+    try {
+      final allPlans = await api!.loadMyPlans();
+      TripPlan? plan;
+      for (final p in allPlans) {
+        if (p.id == planId) {
+          plan = p;
+          break;
+        }
+      }
+      if (plan == null) {
+        note('Plan not found.');
+        setState(() => page = 0);
+        return;
+      }
+      viewPlan(plan);
+    } catch (e) {
+      note('Unable to load plan: $e');
       setState(() => page = 0);
     } finally {
       setState(() => loading = false);
@@ -756,7 +791,6 @@ class _PlanScreenState extends State<PlanScreen> {
   Future<void> _initController() async {
     try {
       api = await TripPlannerController.createProduction();
-      await load();
     } catch (e) {
       setState(() => error = '$e');
     }
@@ -774,6 +808,7 @@ class _PlanScreenState extends State<PlanScreen> {
     stops = [];
     route = null;
     accepted = false;
+    routeDay = 0;
     nearby();
   });
 
@@ -1565,286 +1600,201 @@ class _PlanScreenState extends State<PlanScreen> {
                     child: Icon(Icons.person_rounded, size: 20, color: blue))))
       ]));
 
-  Widget dayByDayStep() => ListView(
-    padding: const EdgeInsets.fromLTRB(18, 20, 18, 102),
+  Widget dayByDayStep() => Stack(
+    fit: StackFit.expand,
     children: [
-      banner(),
-      const SizedBox(height: 18),
-      tabs(active: false, enabled: true),
-      const SizedBox(height: 18),
-      Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
-        ),
-        child: Column(
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      // 1. Fixed Header
+      Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 10),
+            child: Column(
               children: [
-                Expanded(child: step('STEP 2 OF 2 • ITINERARY & ROUTE', 'Day by Day Places')),
-                const SizedBox(width: 8),
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: OutlinedButton(
-                    onPressed: () => setState(() => page = 1),
-                    style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        minimumSize: const Size(0, 32),
-                        side: const BorderSide(color: border),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                    ),
-                    child: const Text('Back', style: TextStyle(color: ink, fontSize: 11, fontWeight: FontWeight.bold)),
-                  ),
-                ),
+                banner(),
+                const SizedBox(height: 18),
+                tabs(active: false, enabled: true),
               ],
             ),
-            const SizedBox(height: 32),
-            ...stops.asMap().entries.map((e) => stopTile(e.key, e.value)),
-            const SizedBox(height: 20),
-            label('SELECT EXPEDITION MODE'),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: modeButton('Solo', 'solo')),
-              const SizedBox(width: 10),
-              Expanded(child: modeButton('Team', 'team')),
-            ]),
+          ),
+          // 2. Full-Screen Map fills everything behind the sheet
+          Expanded(
+            child: routePreview(routeDay == 0 ? stops : stops.where((x) => x.dayNumber == routeDay).toList()),
+          ),
+        ],
+      ),
 
-            // --- TEAM EXPEDITION CONFIGURATION ---
-            if (mode == 'team') ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0F9FF),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFBAE6FD)),
-                ),
-                child: Column(
+      // 3. Draggable Bottom Sheet with all the content
+      DraggableScrollableSheet(
+        initialChildSize: 0.80,
+        minChildSize: 0.20,
+        maxChildSize: 0.85,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 10, offset: Offset(0, -2))],
+            ),
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 70),
+              children: [
+                // Drag Handle
+                Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 15), decoration: BoxDecoration(color: const Color(0xFFCBD5E1), borderRadius: BorderRadius.circular(2)))),
+
+                // Header & Back Button
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [
-                      const Icon(Icons.groups_rounded, color: blue, size: 20),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'CREATE SQUAD SETTINGS',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          letterSpacing: 1,
-                          color: blue,
-                        ),
+                    Expanded(child: step('STEP 2 OF 2 • ITINERARY & ROUTE', 'Day by Day Places')),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: () => setState(() {
+                        page = 1;
+                        routeDay = 0; // <--- ADD THIS LINE TO RESET THE DAY
+                      }),
+                      style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          minimumSize: const Size(0, 32),
+                          side: const BorderSide(color: border),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                       ),
-                    ]),
-                    const SizedBox(height: 14),
-
-                    // Team Name input field
-                    label('SQUAD NAME *'),
-                    const SizedBox(height: 6),
-                    field(
-                      teamName,
-                      name.text.isNotEmpty ? '${name.text.trim()} Squad' : 'Enter Squad Name',
-                          (_) {},
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Access Type (Public vs Private Code) - FIXED OVERFLOW
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Access Type',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
-                              ),
-                              Text(
-                                openPublic ? 'Public (Listed)' : 'Private (Code)',
-                                style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: border),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              small('PUBLIC', openPublic, () => setState(() => openPublic = true)),
-                              small('PRIVATE', !openPublic, () => setState(() => openPublic = false)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Member Capacity stepper - FIXED OVERFLOW
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Max Capacity',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
-                          ),
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.remove_circle_outline, color: blue, size: 20),
-                              onPressed: teamMaxCapacity > 2
-                                  ? () => setState(() => teamMaxCapacity--)
-                                  : null,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                            ),
-                            Text(
-                              '$teamMaxCapacity',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              'Members',
-                              style: const TextStyle(fontSize: 11, color: greyText),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add_circle_outline, color: blue, size: 20),
-                              onPressed: teamMaxCapacity < 10
-                                  ? () => setState(() => teamMaxCapacity++)
-                                  : null,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 20),
-
-                    // Info explanation card
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            openPublic ? Icons.public : Icons.lock_outline,
-                            size: 16,
-                            color: openPublic ? const Color(0xFF00A774) : blue,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              openPublic
-                                  ? 'Other travelers can browse and request to join this squad in the Teams UI.'
-                                  : 'A unique 6-character invitation code will be generated upon creation.',
-                              style: const TextStyle(fontSize: 11, color: ink),
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: const Text('Back', style: TextStyle(color: ink, fontSize: 11, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
-              ),
-            ],
-            const SizedBox(height: 20),
-            label('PLAN ROUTE PREVIEW'),
-            const SizedBox(height: 12),
-            routePreview(routeDay == 0 ? stops : stops.where((x) => x.dayNumber == routeDay).toList()),
-            const SizedBox(height: 15),
+                const SizedBox(height: 20),
 
-            // ADD THIS BLOCK
-            if (days > 1) ...[
-              label('PLAN ROUTE BY DAY'),
-              const SizedBox(height: 8),
-              SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: [
-                    for (int i = 1; i <= days; i++) routePill('Day $i', i),
-                  ])),
-              const SizedBox(height: 16),
-            ],
-            // End of added block
+                // Stops
+                ...stops.asMap().entries.map((e) => stopTile(e.key, e.value)),
+                const SizedBox(height: 20),
 
-            if (route == null)
-              secondary('PLAN ROUTE', generate)
-            else if (!accepted)
-              Row(children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: accept,
-                    icon: const Icon(Icons.thumb_up_alt_outlined, size: 18),
-                    label: const Text("Accept Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF00A774), // Green
-                        side: const BorderSide(color: Color(0xFF00A774), width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => setState(() { route = null; accepted = false; }),
-                    icon: const Icon(Icons.thumb_down_alt_outlined, size: 18),
-                    label: const Text("Reject Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFFEF4444), // Red
-                        side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-                    ),
-                  ),
-                ),
-              ])
-            else
-              Column(
-                children: [
+                // Mode Selection
+                label('SELECT EXPEDITION MODE'),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: modeButton('Solo', 'solo')),
+                  const SizedBox(width: 10),
+                  Expanded(child: modeButton('Team', 'team')),
+                ]),
+
+                // --- FULL TEAM EXPEDITION CONFIGURATION ---
+                if (mode == 'team') ...[
+                  const SizedBox(height: 16),
                   Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0FDF4),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
                     ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 18),
-                        SizedBox(width: 8),
-                        Text('Route Plan Accepted', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 13)),
+                        Row(children: [
+                          const Icon(Icons.groups_rounded, color: blue, size: 20),
+                          const SizedBox(width: 8),
+                          const Text('CREATE SQUAD SETTINGS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1, color: blue)),
+                        ]),
+                        const SizedBox(height: 14),
+                        label('SQUAD NAME *'),
+                        const SizedBox(height: 6),
+                        field(teamName, name.text.isNotEmpty ? '${name.text.trim()} Squad' : 'Enter Squad Name', (_) {}),
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              const Text('Access Type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink)),
+                              Text(openPublic ? 'Public (Listed)' : 'Private (Code)', style: const TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                            ])),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: border)),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                small('PUBLIC', openPublic, () => setState(() => openPublic = true)),
+                                small('PRIVATE', !openPublic, () => setState(() => openPublic = false)),
+                              ]),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Row(children: [
+                          Expanded(child: Text('Max Capacity', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink))),
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, color: blue, size: 20),
+                              onPressed: teamMaxCapacity > 2 ? () => setState(() => teamMaxCapacity--) : null,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            ),
+                            Text('$teamMaxCapacity', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            const SizedBox(width: 2),
+                            const Text('Members', style: TextStyle(fontSize: 11, color: greyText)),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline, color: blue, size: 20),
+                              onPressed: teamMaxCapacity < 10 ? () => setState(() => teamMaxCapacity++) : null,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            ),
+                          ]),
+                        ]),
+                        const Divider(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+                          child: Row(children: [
+                            Icon(openPublic ? Icons.public : Icons.lock_outline, size: 16, color: openPublic ? const Color(0xFF00A774) : blue),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(openPublic ? 'Other travelers can browse and request to join this squad in the Teams UI.' : 'A unique 6-character invitation code will be generated upon creation.', style: const TextStyle(fontSize: 11, color: ink))),
+                          ]),
+                        ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  secondary('RE-PLAN ROUTE', generate), // <--- MOVED INSIDE THE ELSE BLOCK
                 ],
-              ),
 
-            const SizedBox(height: 10),
-            primary('START YOUR ADVENTURE', loading ? null : save)
-          ],
-        ),
+                // --- PLAN ROUTE BY DAY (Inside the sheet now!) ---
+                if (days > 1) ...[
+                  const SizedBox(height: 20),
+                  label('PLAN ROUTE BY DAY'),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(children: [
+                        for (int i = 1; i <= days; i++) routePill('Day $i', i),
+                      ])),
+                  const SizedBox(height: 16),
+                ],
+
+                // Route Buttons & Start Button
+                if (route == null)
+                  secondary('PLAN ROUTE', generate)
+                else if (!accepted)
+                  Row(children: [
+                    Expanded(child: OutlinedButton.icon(onPressed: accept, icon: const Icon(Icons.thumb_up_alt_outlined, size: 18), label: const Text("Accept Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), style: OutlinedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFF00A774), side: const BorderSide(color: Color(0xFF00A774), width: 1.5), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))))),
+                    const SizedBox(width: 12),
+                    Expanded(child: OutlinedButton.icon(onPressed: () => setState(() { route = null; accepted = false; }), icon: const Icon(Icons.thumb_down_alt_outlined, size: 18), label: const Text("Reject Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), style: OutlinedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFFEF4444), side: const BorderSide(color: Color(0xFFEF4444), width: 1.5), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))))),
+                  ])
+                else
+                  Column(children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(color: const Color(0xFFF0FDF4), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFBBF7D0))),
+                      child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 18), SizedBox(width: 8), Text('Route Plan Accepted', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 13))]),
+                    ),
+                    const SizedBox(height: 8),
+                    secondary('RE-PLAN ROUTE', generate),
+                  ]),
+
+                const SizedBox(height: 10),
+                primary('START YOUR ADVENTURE', loading ? null : save)
+              ],
+            ),
+          );
+        },
       ),
     ],
   );
@@ -2111,47 +2061,133 @@ class _PlanScreenState extends State<PlanScreen> {
     ]);
   }
 
-  Widget create() => ListView(padding: const EdgeInsets.fromLTRB(18, 20, 18, 102), children: [
-    banner(),
-    const SizedBox(height: 18),
-    tabs(active: false, enabled: true),
-    const SizedBox(height: 18),
-    surface(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      step('STEP 1 OF 2 • TRIP SETUP', 'Create New Expedition\nPlan'),
-      const Divider(height: 28),
-      label('TRIP PLAN NAME *'),
-      const SizedBox(height: 8),
-      field(name, 'Enter Trip Plan Name', (val) {
-        // If the name they typed matches an existing plan, show a warning
-        if (plans.any((p) => p.name.toLowerCase() == val.toLowerCase())) {
-          note('Name already exists!');
-        }
-      }),
-      const SizedBox(height: 16),
-      Row(children: [
-        Expanded(child: dateBox('START DATE', start, () => pick(true))),
-        const SizedBox(width: 12),
-        Expanded(child: dateBox('END DATE', end, () => pick(false)))
-      ]),
-      const SizedBox(height: 14),
-      Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-              color: const Color(0xFFF0F9FF),
-              borderRadius: BorderRadius.circular(14)),
-          child: Row(children: [
-            const Expanded(
-                child: Text('Calculated Total Days:',
-                    style:
-                    TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-            badge('$days DAYS')
-          ])),
-      const SizedBox(height: 20),
-      mapSection(),
-      const SizedBox(height: 20),
-      primary('NEXT • DAY-BY-DAY SETUP  →', next)
-    ]))
-  ]);
+  Widget create() => Stack(
+    children: [
+      // 1. Main Content (Fixed Header + Expanded Map)
+      Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 10),
+            child: Column(
+              children: [
+                banner(),
+                const SizedBox(height: 18),
+                tabs(active: false, enabled: true),
+              ],
+            ),
+          ),
+
+          // Map fills all remaining space behind the sheet
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: _buildMapWidget(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+
+      // 2. Draggable Bottom Sheet (Form Fields) - MUST BE IN THE STACK
+      DraggableScrollableSheet(
+        initialChildSize: 0.40,
+        minChildSize: 0.20,
+        maxChildSize: 0.85,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 10, offset: Offset(0, -2))],
+            ),
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 102),
+              children: [
+                // Drag Handle
+                Center(
+                  child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 15),
+                      decoration: BoxDecoration(color: const Color(0xFFCBD5E1), borderRadius: BorderRadius.circular(2))
+                  ),
+                ),
+
+                // All your form fields inside a nice white surface
+                surface(Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    step('STEP 1 OF 2 • TRIP SETUP', 'Create New Expedition\nPlan'),
+                    const Divider(height: 28),
+                    label('TRIP PLAN NAME *'),
+                    const SizedBox(height: 8),
+                    field(name, 'Enter Trip Plan Name', (val) {
+                      if (plans.any((p) => p.name.toLowerCase() == val.toLowerCase())) {
+                        note('Name already exists!');
+                      }
+                    }),
+                    const SizedBox(height: 16),
+                    Row(children: [
+                      Expanded(child: dateBox('START DATE', start, () => pick(true))),
+                      const SizedBox(width: 12),
+                      Expanded(child: dateBox('END DATE', end, () => pick(false)))
+                    ]),
+                    const SizedBox(height: 14),
+                    Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                            color: const Color(0xFFF0F9FF),
+                            borderRadius: BorderRadius.circular(14)),
+                        child: Row(children: [
+                          const Expanded(
+                              child: Text('Calculated Total Days:',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          badge('$days DAYS')
+                        ])),
+                    const SizedBox(height: 20),
+
+                    // Search bar and pills
+                    field(placeSearch, 'Search map location, mission or landmark',
+                            (_) => search(),
+                        suffix: Icons.search,
+                        focusNode: _placeSearchFocus),
+                    const SizedBox(height: 14),
+                    SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          pill('All Pins'),
+                          pill('Nearby (<5.0km)', pin: true),
+                          pill('Planner Pins', tick: true),
+                          pill('Blind Box', blind: true)
+                        ])),
+                    const SizedBox(height: 14),
+
+                    // Search Results List
+                    ...places.map((p) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const CircleAvatar(
+                            backgroundColor: Color(0xFFE0F2FE),
+                            child: Icon(Icons.location_pin, color: blue)),
+                        title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(p.formattedAddress,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        trailing: FilledButton(onPressed: () => add(p), child: const Text('ADD')))),
+
+                    const SizedBox(height: 20),
+                    primary('NEXT • DAY-BY-DAY SETUP  →', next)
+                  ],
+                )),
+              ],
+            ),
+          );
+        },
+      ),
+    ],
+  );
+
   Widget mapSection() =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         primary(
@@ -2164,7 +2200,8 @@ class _PlanScreenState extends State<PlanScreen> {
               suffix: Icons.search,
               focusNode: _placeSearchFocus),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
+          // Filters remain ABOVE the map
           SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(children: [
@@ -2174,7 +2211,22 @@ class _PlanScreenState extends State<PlanScreen> {
                 pill('Blind Box', blind: true)
               ])),
           const SizedBox(height: 14),
-          _buildMapWidget(),
+
+          // THE MAP: Fixed Height 400, wrapped in GestureDetector to stop list scroll
+          GestureDetector(
+            onVerticalDragUpdate: (details) {}, // Absorb vertical drags
+            child: Container(
+              height: 400,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFBAE6FD)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _buildMapWidget(),
+            ),
+          ),
+
+          const SizedBox(height: 14),
           ...places.map((p) => ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const CircleAvatar(
@@ -2187,288 +2239,231 @@ class _PlanScreenState extends State<PlanScreen> {
         ]
       ]);
 
-  Widget itinerary() => ListView(padding: const EdgeInsets.fromLTRB(18, 20, 18, 102), children: [
-    banner(),
-    const SizedBox(height: 18),
-    tabs(),
-    const SizedBox(height: 18),
-    if(page == 3)
-      outline('Print Trip Plan', const Color(0xFF00A774), _generateTripPdf),
-    const SizedBox(height: 18),
-    surface(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: step('EXPEDITION DETAILS & ROUTE', name.text)),
-        badge(history ? 'COMPLETED' : 'ACTIVE')
-      ]),
-      const SizedBox(height: 20),
-      Row(children: [
-        Expanded(
-            child: detailBox(
-                'DATES', '${date(start)} →\n${date(end)}', '$days Days Trip')),
-        const SizedBox(width: 12),
-        Expanded(
-          child: detailBox(
-            mode == 'team' ? 'TEAM CODE' : 'EXPEDITION',
-            mode == 'team' ? (_currentPlan?.inviteCode ?? 'PUBLIC') : 'SOLO',
-            mode == 'team' ? 'TEAM MODE' : 'SOLO MODE',
-          ),
-        ),
-      ]),
-      const SizedBox(height: 14),
-      const SizedBox(height: 14),
-
-      // --- SINGLE "DUPLICATE PLAN" ACTION ---
-      InkWell(
-        onTap: _duplicatePlanDialog,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.content_copy_rounded, size: 20, color: blue),
-              SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Duplicate Trip Plan',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink),
-                    ),
-                    Text(
-                      'Create a new copy of this plan as Solo or Team Expedition.',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios, size: 12, color: blue),
-            ],
-          ),
-        ),
-      ),
-      const SizedBox(height: 24),
-      // --- DYNAMIC SQUAD MEMBERS SECTION (TEAM EXPEDITION ONLY) ---
-// --- DYNAMIC SQUAD MEMBERS SECTION (TEAM EXPEDITION ONLY) ---
-      if (mode == 'team') ...[
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            Expanded(
-              child: label('SQUAD MEMBERS (${_teamMembers.isNotEmpty ? _teamMembers.length : 1})'),
-            ),
-            TextButton.icon(
-              onPressed: _openManageSquadBottomSheet,
-              icon: const Icon(Icons.settings_outlined, size: 14, color: blue),
-              label: const Text(
-                'Manage Squad Members',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        if (_loadingTeam)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: LinearProgressIndicator(color: blue),
-          )
-        else if (_teamMembers.isEmpty)
-        // Fallback if members haven't loaded yet or just created
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+  Widget itinerary() => Stack(
+    fit: StackFit.expand,
+    children: [
+      // 1. Fixed Header
+      Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 10),
+            child: Column(
               children: [
-                member(
-                  'ME',
-                  'You (Host)',
-                  blue,
-                  true,
-                ),
-                const SizedBox(width: 8),
+                banner(),
+                const SizedBox(height: 18),
+                tabs(),
+              ],
+            ),
+          ),
+          // 2. Full Screen Map
+          Expanded(
+            child: routePreview(routeDay == 0 ? stops : stops.where((x) => x.dayNumber == routeDay).toList(), showLegend: false),
+          ),
+        ],
+      ),
+
+      // 3. Draggable Bottom Sheet
+      DraggableScrollableSheet(
+        initialChildSize: 0.40,
+        minChildSize: 0.20,
+        maxChildSize: 0.85,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 10, offset: Offset(0, -2))],
+            ),
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 100),
+              children: [
+                // Drag Handle
+                Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 15), decoration: BoxDecoration(color: const Color(0xFFCBD5E1), borderRadius: BorderRadius.circular(2)))),
+
+                // Print Report Button (Always visible)
+                if(page == 3)
+                  outline('Print Trip Plan', const Color(0xFF00A774), _generateTripPdf),
+                const SizedBox(height: 12),
+
+                // Details
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: step('EXPEDITION DETAILS & ROUTE', name.text)),
+                  badge(history ? 'COMPLETED' : 'ACTIVE')
+                ]),
+                const SizedBox(height: 20),
+                Row(children: [
+                  Expanded(child: detailBox('DATES', '${date(start)} →\n${date(end)}', '$days Days Trip')),
+                  const SizedBox(width: 12),
+                  Expanded(child: detailBox(
+                    mode == 'team' ? 'TEAM CODE' : 'EXPEDITION',
+                    mode == 'team' ? (_currentPlan?.inviteCode ?? 'PUBLIC') : 'SOLO',
+                    mode == 'team' ? 'TEAM MODE' : 'SOLO MODE',
+                  )),
+                ]),
+                const SizedBox(height: 14),
+
+                // Duplicate Plan Button
                 InkWell(
-                  onTap: _openManageSquadBottomSheet,
+                  onTap: _duplicatePlanDialog,
+                  borderRadius: BorderRadius.circular(14),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0F9FF),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.person_add_alt_1_outlined, size: 14, color: blue),
-                        SizedBox(width: 6),
-                        Text(
-                          'Invite Squad',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue),
-                        ),
-                      ],
+                    child: const Row(children: [
+                      Icon(Icons.content_copy_rounded, size: 20, color: blue),
+                      SizedBox(width: 10),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Duplicate Trip Plan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ink)),
+                        Text('Create a new copy of this plan as Solo or Team Expedition.', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                      ])),
+                      Icon(Icons.arrow_forward_ios, size: 12, color: blue),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Team Members section
+                if (mode == 'team') ...[
+                  Row(children: [
+                    Expanded(child: label('SQUAD MEMBERS (${_teamMembers.isNotEmpty ? _teamMembers.length : 1})')),
+                    TextButton.icon(onPressed: _openManageSquadBottomSheet, icon: const Icon(Icons.settings_outlined, size: 14, color: blue), label: const Text('Manage Squad Members', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue))),
+                  ]),
+                  const SizedBox(height: 8),
+
+                  // **************************************************************
+                  //  FIXED SECTION: Replaced SingleChildScrollView with Wrap
+                  //  **************************************************************
+                  if (_loadingTeam)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: LinearProgressIndicator(color: blue),
+                    )
+                  else if (_teamMembers.isEmpty)
+                  // Fallback if members haven't loaded yet or just created
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          member(
+                            'ME',
+                            'You (Host)',
+                            blue,
+                            true,
+                          ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: _openManageSquadBottomSheet,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0F9FF),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFFBAE6FD)),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.person_add_alt_1_outlined, size: 14, color: blue),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Invite Squad',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: blue),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                  // ✅ NEW: Wrap handles any number of members – they will wrap to the next line
+                    Wrap(
+                      spacing: 8.0,      // horizontal gap between items
+                      runSpacing: 8.0,   // vertical gap when wrapping
+                      children: _teamMembers.map((m) {
+                        final profile = m['profiles'] as Map<String, dynamic>?;
+                        final role = m['member_role']?.toString() ?? 'MEMBER';
+                        final isHost = role == 'OWNER';
+                        final fullName = profile?['full_name'] ?? 'Traveler';
+                        final initials = fullName.length >= 2
+                            ? fullName.substring(0, 2).toUpperCase()
+                            : 'TR';
+
+                        return member(
+                          initials,
+                          isHost ? '$fullName (Host)' : fullName,
+                          isHost ? blue : const Color(0xFF64748B),
+                          isHost,
+                        );
+                      }).toList(),
                     ),
+                ],
+
+                const Divider(height: 40),
+
+                // Day-by-Day Itinerary
+                Row(children: [
+                  Expanded(child: label('DAY-BY-DAY ITINERARY')),
+                  const Text('Tap pencil to edit place\nlocation', textAlign: TextAlign.right, style: TextStyle(fontSize: 8, color: Colors.grey))
+                ]),
+                const SizedBox(height: 16),
+                ...stops.asMap().entries.map((e) => stopTile(e.key, e.value)),
+                const SizedBox(height: 28),
+
+                // Plan Route by Day (Only if Active)
+                if (days > 1) ...[
+                  label('PLAN ROUTE BY DAY'),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+                    for (int i = 1; i <= days; i++) routePill('Day $i', i),
+                  ])),
+                  const SizedBox(height: 16),
+                ],
+
+                // CRUCIAL: Only show Route Buttons if it's NOT History
+                if (!history) ...[
+                  const SizedBox(height: 6),
+                  if (route == null)
+                    secondary('PLAN ROUTE', generate)
+                  else if (!accepted)
+                    Row(children: [
+                      Expanded(child: OutlinedButton.icon(onPressed: accept, icon: const Icon(Icons.check_circle_outline, size: 18), label: const Text("Accept Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), style: OutlinedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFF00A774), side: const BorderSide(color: Color(0xFF00A774), width: 1.5), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))))),
+                      const SizedBox(width: 12),
+                      Expanded(child: OutlinedButton.icon(onPressed: () => setState(() { route = null; accepted = false; _dayRoutes.remove(routeDay); _dayAccepted[routeDay] = false; }), icon: const Icon(Icons.cancel_outlined, size: 18), label: const Text("Reject Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), style: OutlinedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFFEF4444), side: const BorderSide(color: Color(0xFFEF4444), width: 1.5), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))))),
+                    ])
+                  else
+                    Column(children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(color: const Color(0xFFF0FDF4), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFBBF7D0))),
+                        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 18), SizedBox(width: 8), Text('Route Accepted & Optimized', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 13))]),
+                      ),
+                      const SizedBox(height: 8),
+                      secondary('RE-PLAN ROUTE', generate)
+                    ]),
+                ],
+
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => page = 0),
+                    icon: const Icon(Icons.arrow_back, size: 16),
+                    label: const Text('Back to Plan Listing'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.grey),
                   ),
                 ),
               ],
             ),
-          )
-        else
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _teamMembers.map((m) {
-                final profile = m['profiles'] as Map<String, dynamic>?;
-                final role = m['member_role']?.toString() ?? 'MEMBER';
-                final isHost = role == 'OWNER';
-                final fullName = profile?['full_name'] ?? 'Traveler';
-                final initials = fullName.length >= 2
-                    ? fullName.substring(0, 2).toUpperCase()
-                    : 'TR';
-
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: member(
-                    initials,
-                    isHost ? '$fullName (Host)' : fullName,
-                    isHost ? blue : const Color(0xFF64748B),
-                    isHost,
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-      ],
-      const Divider(height: 40),
-      Row(children: [
-        Expanded(child: label('DAY-BY-DAY ITINERARY')),
-        const Text('Tap pencil to edit place\nlocation',
-            textAlign: TextAlign.right,
-            style: TextStyle(fontSize: 8, color: Colors.grey))
-      ]),
-      const SizedBox(height: 16),
-      ...stops.asMap().entries.map((e) => stopTile(e.key, e.value)),
-      const SizedBox(height: 28),
-      label('CONNECTED PLAN ROUTE MAP'),
-      const Text('Connected waypoints route map preview',
-          style: TextStyle(fontSize: 9, color: Colors.grey)),
-      const SizedBox(height: 16),
-      Stack(children: [
-        routePreview(routeDay == 0 ? stops : stops.where((x) => x.dayNumber == routeDay).toList()),
-        Positioned(
-            right: 10,
-            top: 10,
-            child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(.85),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFBAE6FD))),
-                child: const Row(children: [
-                  Icon(Icons.hub_outlined, size: 14, color: blue),
-                  SizedBox(width: 4),
-                  Text('Fit Route View',
-                      style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: blue))
-                ])))
-      ]),
-      const SizedBox(height: 16),
-
-      // ADD THE DAY SELECTOR HERE (This is the new part)
-      if (days > 1) ...[
-        label('PLAN ROUTE BY DAY'),
-        const SizedBox(height: 8),
-        SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              for (int i = 1; i <= days; i++) routePill('Day $i', i),
-            ])),
-        const SizedBox(height: 16),
-      ],
-
-      if (route == null)
-        secondary('PLAN ROUTE', generate)
-      else if (!accepted)
-        Row(children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: accept,
-              style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white, // White background
-                  foregroundColor: const Color(0xFF00A774), // Green text
-                  side: const BorderSide(color: Color(0xFF00A774), width: 1.5), // Green border
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-              ),
-              icon: const Icon(Icons.check_circle_outline, size: 18),
-              label: const Text("Accept Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => setState(() {
-                route = null;
-                accepted = false;
-                _dayRoutes.remove(routeDay);
-                _dayAccepted[routeDay] = false;
-              }),
-              style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white, // White background
-                  foregroundColor: const Color(0xFFEF4444), // Red text
-                  side: const BorderSide(color: Color(0xFFEF4444), width: 1.5), // Red border
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-              ),
-              icon: const Icon(Icons.cancel_outlined, size: 18),
-              label: const Text("Reject Route", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-          ),
-        ])
-      else
-        Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDF4),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFBBF7D0)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 18),
-                  SizedBox(width: 8),
-                  Text('Route Accepted & Optimized', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 13)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            secondary('RE-PLAN ROUTE', generate)
-          ],
-        ),
-      // Removed the duplicate SizedBox here
-      const SizedBox(height: 8),
-
-      if (isCreating) primary('◉  START YOUR ADVENTURE', loading ? null : save),
-      const SizedBox(height: 12),
-      Center(
-        child: TextButton.icon(
-          onPressed: () => setState(() => page = 0),
-          icon: const Icon(Icons.arrow_back, size: 16),
-          label: const Text('Back to Plan Listing'),
-          style: TextButton.styleFrom(foregroundColor: Colors.grey),
-        ),
+          );
+        },
       ),
-    ]))
-  ]);
+    ],
+  );
 
   void normalizeStops() {
     for (var day = 1; day <= days; day++) {
@@ -2837,67 +2832,45 @@ class _PlanScreenState extends State<PlanScreen> {
     );
 
 
-
-    return Container(
-      height: 245,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFBAE6FD)),
-      ),
-      // Stack allows us to put the legend ON TOP of the map
+    return SizedBox.expand(
       child: Stack(
         children: [
-          // 1. Wrap map in GestureDetector to stop ListView from stealing vertical swipes
-          GestureDetector(
-            onVerticalDragUpdate: (details) {},
-            child: GoogleMap(
-              initialCameraPosition: initialPosition,
-              markers: markers, // If empty, it just shows an empty map!
-              myLocationEnabled: true,
-              myLocationButtonEnabled: true,
-              onMapCreated: (controller) {
-                _mapController = controller;
-              },
-              onTap: (latLng) async {
-                // Find the closest pin within 50 meters (0.05 km)
-                PlaceCandidate? found;
-                double closestDistance = 0.05; // 50 meters threshold
-
-                // Check Nearby
-                for (final p in nearbyPlaces) {
+          GoogleMap(
+            initialCameraPosition: initialPosition,
+            markers: markers,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: true,
+            zoomControlsEnabled: false,
+            onMapCreated: (controller) {
+              _mapController = controller;
+            },
+            onTap: (latLng) async {
+              PlaceCandidate? found;
+              double closestDistance = 0.05;
+              for (final p in nearbyPlaces) {
+                double distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
+                if (distance < closestDistance) { found = p; closestDistance = distance; }
+              }
+              if (found == null) {
+                for (final p in places) {
                   double distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
                   if (distance < closestDistance) { found = p; closestDistance = distance; }
                 }
-
-                // Check Search
-                if (found == null) {
-                  for (final p in places) {
-                    double distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
-                    if (distance < closestDistance) { found = p; closestDistance = distance; }
-                  }
+              }
+              if (found == null) {
+                for (final p in blindBoxPlaces) {
+                  double distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
+                  if (distance < closestDistance) { found = p; closestDistance = distance; }
                 }
-
-                // Check Blind Box
-                if (found == null) {
-                  for (final p in blindBoxPlaces) {
-                    double distance = _calculateDistance(latLng, LatLng(p.latitude, p.longitude));
-                    if (distance < closestDistance) { found = p; closestDistance = distance; }
-                  }
-                }
-
-                if (found != null) {
-                  _showAddPlaceDialog(found);
-                } else {
-                  // Optional: Show a message if they tap empty space
-                  // note('Tap directly on a pin to add it.');
-                }
-              },
-            ),
+              }
+              if (found != null) {
+                _showAddPlaceDialog(found);
+              }
+            },
           ),
 
-          // 2. Legend moved to BOTTOM LEFT to not cover the pin's popup
           Positioned(
-            bottom: 10,
+            top: 10,
             left: 10,
             child: IgnorePointer(
               child: _mapLegend(),
@@ -3019,37 +2992,22 @@ class _PlanScreenState extends State<PlanScreen> {
     }
   }
 
-  Widget routePreview(List<ItineraryStop> s) {
-    if (s.isEmpty) { //
-      return Container(
-        height: 245,
-        decoration: BoxDecoration(
-          color: const Color(0xFFEAF6FD),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFBAE6FD)),
-        ),
-        child: const Center(
-          child: Text('Choose at least one destination for this route day.'),
-        ),
+  Widget routePreview(List<ItineraryStop> s, {bool showLegend = true}) { // <--- Added parameter
+    if (s.isEmpty) {
+      return const Center(
+        child: Text('Choose at least one destination for this route day.'),
       );
     }
 
-    // 1. Identify the Start Point (Current Location)
     final bool hasStart = s.isNotEmpty && s.first.placeId == 'current_location';
-    // If there is a start point, get the actual destinations (everything after it)
     final List<ItineraryStop> destinations = hasStart ? s.sublist(1) : s;
-
-    // 2. Use the start point as the initial camera target
     final first = s.first;
     final initialPosition = CameraPosition(
       target: LatLng(first.latitude, first.longitude),
       zoom: 12,
     );
 
-    // 3. Build Markers (Azure Blue for Start, Blue for Destinations)
     final markers = <Marker>{};
-
-    // Add the Start Point marker (GPS Blue)
     if (hasStart) {
       markers.add(Marker(
         markerId: const MarkerId('current_location'),
@@ -3059,7 +3017,6 @@ class _PlanScreenState extends State<PlanScreen> {
       ));
     }
 
-    // Add the Blue Destination markers
     for (final stop in destinations) {
       markers.add(Marker(
         markerId: MarkerId(stop.placeId),
@@ -3069,7 +3026,6 @@ class _PlanScreenState extends State<PlanScreen> {
       ));
     }
 
-    // 4. Polylines
     Set<Polyline> polylines = {};
     if (route != null && route!.points.isNotEmpty) {
       polylines.add(
@@ -3082,21 +3038,31 @@ class _PlanScreenState extends State<PlanScreen> {
       );
     }
 
-    return Container(
-      height: 245,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFBAE6FD)),
-      ),
-      child: GoogleMap(
-        initialCameraPosition: initialPosition,
-        markers: markers,
-        polylines: polylines,
-        myLocationEnabled: true, // <--- THIS adds the real GPS Blue Dot on top
-        myLocationButtonEnabled: true, // <--- This adds the crosshair button to center on yourself
-        onMapCreated: (controller) {
-          _mapController = controller;
-        },
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          GoogleMap(
+            initialCameraPosition: initialPosition,
+            markers: markers,
+            polylines: polylines,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: true,
+            zoomControlsEnabled: false,
+            onMapCreated: (controller) {
+              _mapController = controller;
+            },
+          ),
+
+          // ONLY SHOW THE LEGEND IF showLegend IS TRUE
+          if (showLegend)
+            Positioned(
+              top: 10,
+              left: 10,
+              child: IgnorePointer(
+                child: _mapLegend(),
+              ),
+            ),
+        ],
       ),
     );
   }

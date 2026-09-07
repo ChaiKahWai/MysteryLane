@@ -5,6 +5,16 @@ String puzzleTextKey(String value) => value
     .replaceAll(RegExp(r'unscramble:.*$', caseSensitive: false), '')
     .replaceAll(RegExp(r'[^a-z0-9]'), '');
 
+String puzzleRoundKey(PuzzleQuestion question) {
+  final type = question.puzzleType.trim().toLowerCase();
+  if (type == 'guess the word' ||
+      type == 'scrambled word' ||
+      type == 'scrambled anagrams') {
+    return 'scrambled:${puzzleTextKey(question.correctAnswer)}';
+  }
+  return 'question:${puzzleTextKey(question.questionText)}';
+}
+
 /// Use unseen destination content first. A replay must not force the same
 /// destination bank again: unseen general content fills the shortage. Once
 /// both banks are exhausted, recycle older questions before recent ones.
@@ -22,16 +32,15 @@ List<PuzzleQuestion> selectDestinationFirstRound(
   );
   final seenKeys = [...local, ...national]
       .where((q) => answered.contains(q.id) || recent.contains(q.id))
-      .map((q) => puzzleTextKey(q.questionText))
+      .map(puzzleRoundKey)
       .toSet();
-  final recentKeys = [...local, ...national]
-      .where((q) => recent.contains(q.id))
-      .map((q) => puzzleTextKey(q.questionText))
-      .toSet();
-  bool fresh(PuzzleQuestion q) =>
-      !seenKeys.contains(puzzleTextKey(q.questionText));
+  final recentKeys = [
+    ...local,
+    ...national,
+  ].where((q) => recent.contains(q.id)).map(puzzleRoundKey).toSet();
+  bool fresh(PuzzleQuestion q) => !seenKeys.contains(puzzleRoundKey(q));
   bool older(PuzzleQuestion q) =>
-      !fresh(q) && !recentKeys.contains(puzzleTextKey(q.questionText));
+      !fresh(q) && !recentKeys.contains(puzzleRoundKey(q));
   List<PuzzleQuestion> shuffled(Iterable<PuzzleQuestion> pool) =>
       pool.toList()..shuffle();
   final selected = <PuzzleQuestion>[];
@@ -40,7 +49,7 @@ List<PuzzleQuestion> selectDestinationFirstRound(
     var added = 0;
     for (final q in pool) {
       if (selected.length >= count || (limit != null && added >= limit)) break;
-      if (keys.add(puzzleTextKey(q.questionText))) {
+      if (keys.add(puzzleRoundKey(q))) {
         selected.add(q);
         added++;
       }
@@ -56,7 +65,7 @@ List<PuzzleQuestion> selectDestinationFirstRound(
       [
         ...local,
         ...national,
-      ].where((q) => recentKeys.contains(puzzleTextKey(q.questionText))),
+      ].where((q) => recentKeys.contains(puzzleRoundKey(q))),
     ),
     limit: 2,
   );
@@ -68,17 +77,15 @@ String? malaysiaFallbackNotice(List<PuzzleQuestion> questions) {
   if (general == 0) return null;
   final local = questions.length - general;
   return local == 0
-      ? 'No new destination questions are available for this round, so it '
-            'contains $general general Malaysia questions.'
+      ? 'No new destination questions are available or they have already '
+            'been played. This round contains $general general Malaysia questions.'
       : 'This destination currently provides $local questions for this round. '
             'The remaining $general are general Malaysia questions.';
 }
 
 List<PuzzleQuestion> uniquePuzzleQuestions(Iterable<PuzzleQuestion> questions) {
   final keys = <String>{};
-  return questions
-      .where((q) => keys.add(puzzleTextKey(q.questionText)))
-      .toList();
+  return questions.where((q) => keys.add(puzzleRoundKey(q))).toList();
 }
 
 /// Never silently serve the entire previous round again. At most two repeats

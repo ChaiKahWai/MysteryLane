@@ -364,7 +364,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
         );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context)

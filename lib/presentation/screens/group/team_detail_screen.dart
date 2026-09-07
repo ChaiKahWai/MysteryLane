@@ -642,7 +642,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     return Scaffold(
       backgroundColor: pageBackground,
       extendBody: true,
-      resizeToAvoidBottomInset: false, // no bottom input, prevent body resize
+      resizeToAvoidBottomInset: false,
       appBar: _buildTopAppBar(),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -843,7 +843,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => PlanScreen(initialGroupId: widget.groupId),
+                        builder: (_) => PlanScreen(initialGroupId: widget.groupId,
+                          initialPlanId: _tripPlan?.id,),
                       ),
                     );
                   },
@@ -1007,32 +1008,35 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
   }
 
-  // ---- TOP APP BAR ----
+  // ---- TOP APP BAR (FIXED OVERFLOW) ----
   PreferredSizeWidget _buildTopAppBar() {
     return AppBar(
-      toolbarHeight: 68,
+      toolbarHeight: kToolbarHeight,          // default 56 – removes extra height
       elevation: 0,
       scrolledUnderElevation: 2,
       backgroundColor: Colors.white.withValues(alpha: 0.97),
       surfaceTintColor: Colors.white,
-      titleSpacing: 16,
+      titleSpacing: 0,                        // reclaim left padding
       title: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: _openHome,
-        child: const Padding(
-          padding: EdgeInsets.symmetric(vertical: 6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _MysteryLaneLogo(),
-              SizedBox(width: 10),
-              Text(
-                'MYSTERYLANE',
-                style: TextStyle(
-                  color: darkText,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
+              const _MysteryLaneLogo(),
+              const SizedBox(width: 8),
+              Flexible(                        // <-- prevents overflow
+                child: Text(
+                  'MYSTERYLANE',
+                  style: const TextStyle(
+                    color: darkText,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -1047,7 +1051,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           foreground: const Color(0xFFD97706),
           onTap: _openLeaderboard,
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 4),              // tighter spacing
         _TopActionButton(
           tooltip: 'Chat',
           icon: Icons.chat_bubble_outline_rounded,
@@ -1060,12 +1064,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             );
           },
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 4),
         _ProfileButton(
           onTap: _openProfile,
           imageUrl: _headerProfilePictureUrl,
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
       ],
       bottom: const PreferredSize(
         preferredSize: Size.fromHeight(1),
@@ -1187,7 +1191,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
 }
 
-// ---- Helper widgets (same as before) ----
+// ---- Helper widgets (same as before, but with reduced sizes) ----
 class _MysteryLaneLogo extends StatelessWidget {
   const _MysteryLaneLogo();
 
@@ -1243,8 +1247,8 @@ class _TopActionButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(99),
         onTap: onTap,
         child: Container(
-          width: 38,
-          height: 38,
+          width: 34,                           // reduced from 38
+          height: 34,
           decoration: BoxDecoration(
             color: background,
             shape: BoxShape.circle,
@@ -1285,8 +1289,8 @@ class _ProfileButton extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: Container(
-          width: 38,
-          height: 38,
+          width: 34,                           // reduced from 38
+          height: 34,
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
             color: Colors.white,

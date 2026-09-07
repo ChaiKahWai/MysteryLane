@@ -2016,13 +2016,15 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
   // --------------------------------------------------------------------------
   // DIALOGS
   // --------------------------------------------------------------------------
-
-  Future<void> _showHistoryDialog(BlindBoxHistoryUi item) {
+  Future<void> _showHistoryDialog(
+      BlindBoxHistoryUi item,
+      ) {
     return showDialog<void>(
       context: context,
       barrierColor: const Color(0xA6424D61),
       builder: (dialogContext) {
-        final width = MediaQuery.sizeOf(dialogContext).width;
+        final width =
+            MediaQuery.sizeOf(dialogContext).width;
 
         return Dialog(
           insetPadding: EdgeInsets.symmetric(
@@ -2031,12 +2033,20 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
           ),
           backgroundColor: Colors.transparent,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 365),
+            constraints: const BoxConstraints(
+              maxWidth: 365,
+            ),
             child: Container(
-              padding: const EdgeInsets.fromLTRB(27, 26, 27, 27),
+              padding: const EdgeInsets.fromLTRB(
+                27,
+                26,
+                27,
+                27,
+              ),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(27),
+                borderRadius:
+                BorderRadius.circular(27),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x380F172A),
@@ -2047,30 +2057,48 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
               ),
               child: SingleChildScrollView(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  crossAxisAlignment:
+                  CrossAxisAlignment.stretch,
                   children: [
+                    // ============================================================
+                    // HEADER
+                    // ============================================================
+
                     Row(
                       children: [
                         Expanded(
                           child: Text(
                             'DRAW HISTORY DETAILS',
-                            style: _bodyStyle.copyWith(
+                            style:
+                            _bodyStyle.copyWith(
                               color: _primary,
                               fontSize: 9.5,
-                              fontWeight: FontWeight.w900,
+                              fontWeight:
+                              FontWeight.w900,
                               letterSpacing: 1.15,
                             ),
                           ),
                         ),
+
                         InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: () => Navigator.of(dialogContext).pop(),
+                          borderRadius:
+                          BorderRadius.circular(
+                            20,
+                          ),
+                          onTap: () {
+                            Navigator.of(
+                              dialogContext,
+                            ).pop();
+                          },
                           child: Container(
                             width: 31,
                             height: 31,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF1F5F9),
-                              shape: BoxShape.circle,
+                            decoration:
+                            const BoxDecoration(
+                              color:
+                              Color(0xFFF1F5F9),
+                              shape:
+                              BoxShape.circle,
                             ),
                             child: const Icon(
                               Icons.close_rounded,
@@ -2081,11 +2109,31 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    const Divider(height: 1, color: Color(0xFFE8EEF4)),
-                    const SizedBox(height: 20),
+
+                    const SizedBox(
+                      height: 10,
+                    ),
+
+                    const Divider(
+                      height: 1,
+                      color: Color(
+                        0xFFE8EEF4,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
+                    // ============================================================
+                    // DESTINATION IMAGE
+                    // ============================================================
+
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius:
+                      BorderRadius.circular(
+                        15,
+                      ),
                       child: SizedBox(
                         height: 160,
                         child: Stack(
@@ -2095,34 +2143,75 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                               url: item.imageUrl,
                               fit: BoxFit.cover,
                             ),
+
+                            // ====================================================
+                            // ADDRESS ON IMAGE
+                            // ====================================================
+
                             Align(
-                              alignment: Alignment.bottomLeft,
+                              alignment:
+                              Alignment
+                                  .bottomLeft,
                               child: Container(
-                                margin: const EdgeInsets.all(9),
-                                padding: const EdgeInsets.symmetric(
+                                margin:
+                                const EdgeInsets
+                                    .all(
+                                  9,
+                                ),
+                                padding:
+                                const EdgeInsets
+                                    .symmetric(
                                   horizontal: 10,
                                   vertical: 7,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xCC1E293B),
-                                  borderRadius: BorderRadius.circular(8),
+                                decoration:
+                                BoxDecoration(
+                                  color:
+                                  const Color(
+                                    0xCC1E293B,
+                                  ),
+                                  borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                    8,
+                                  ),
                                 ),
                                 child: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisSize:
+                                  MainAxisSize.min,
                                   children: [
                                     const Icon(
-                                      Icons.location_on,
+                                      Icons
+                                          .location_on,
                                       size: 13,
-                                      color: Color(0xFFEC4899),
+                                      color: Color(
+                                        0xFFEC4899,
+                                      ),
                                     ),
-                                    const SizedBox(width: 5),
+
+                                    const SizedBox(
+                                      width: 5,
+                                    ),
+
                                     Flexible(
                                       child: Text(
-                                        item.locationName,
-                                        style: _bodyStyle.copyWith(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
+                                        item
+                                            .locationName,
+                                        maxLines: 2,
+                                        overflow:
+                                        TextOverflow
+                                            .ellipsis,
+                                        style:
+                                        _bodyStyle
+                                            .copyWith(
+                                          color:
+                                          Colors
+                                              .white,
+                                          fontSize:
+                                          10,
+                                          fontWeight:
+                                          FontWeight
+                                              .w700,
                                         ),
                                       ),
                                     ),
@@ -2134,7 +2223,15 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
+
+                    const SizedBox(
+                      height: 18,
+                    ),
+
+                    // ============================================================
+                    // DESTINATION NAME
+                    // ============================================================
+
                     Text(
                       item.title,
                       style: _heading.copyWith(
@@ -2142,61 +2239,252 @@ class _BlindBoxPageState extends State<BlindBoxPage> {
                         height: 1.1,
                       ),
                     ),
-                    const SizedBox(height: 7),
+
+                    const SizedBox(
+                      height: 7,
+                    ),
+
+                    // ============================================================
+                    // DRAW DATE + TIME
+                    // ============================================================
+
                     Text(
-                      'Drawn on ${item.drawnAtDate} at ${item.drawnAtTime}',
-                      style: _bodyStyle.copyWith(
+                      'Drawn on '
+                          '${item.drawnAtDate} '
+                          'at '
+                          '${item.drawnAtTime}',
+                      style:
+                      _bodyStyle.copyWith(
                         color: _slate500,
                         fontSize: 11,
                       ),
                     ),
-                    const SizedBox(height: 20),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
+                    // ============================================================
+                    // DESCRIPTION
+                    // ============================================================
+
                     Container(
-                      padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF0F9FF),
-                        borderRadius: BorderRadius.circular(19),
-                        border: Border.all(color: const Color(0xFFD9ECF6)),
+                      padding:
+                      const EdgeInsets
+                          .fromLTRB(
+                        16,
+                        13,
+                        16,
+                        13,
+                      ),
+                      decoration:
+                      BoxDecoration(
+                        color: const Color(
+                          0xFFF0F9FF,
+                        ),
+                        borderRadius:
+                        BorderRadius
+                            .circular(
+                          19,
+                        ),
+                        border: Border.all(
+                          color: const Color(
+                            0xFFD9ECF6,
+                          ),
+                        ),
                       ),
                       child: Text(
                         '"${item.lore}"',
-                        style: const TextStyle(
-                          fontStyle: FontStyle.italic,
-                          color: _slate700,
+                        style:
+                        const TextStyle(
+                          fontStyle:
+                          FontStyle.italic,
+                          color:
+                          _slate700,
                           fontSize: 13,
                           height: 1.55,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 26),
+
+                    const SizedBox(
+                      height: 14,
+                    ),
+
+                    // ============================================================
+                    // ADDRESS + COPY BUTTON
+                    // ============================================================
+
+                    Container(
+                      width:
+                      double.infinity,
+                      padding:
+                      const EdgeInsets
+                          .symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration:
+                      BoxDecoration(
+                        color: const Color(
+                          0xFFF8FAFC,
+                        ),
+                        borderRadius:
+                        BorderRadius
+                            .circular(
+                          16,
+                        ),
+                        border: Border.all(
+                          color: const Color(
+                            0xFFE2E8F0,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment:
+                        CrossAxisAlignment
+                            .center,
+                        children: [
+                          const Icon(
+                            Icons.location_on,
+                            color: Color(
+                              0xFFEC4899,
+                            ),
+                            size: 18,
+                          ),
+
+                          const SizedBox(
+                            width: 9,
+                          ),
+
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                              CrossAxisAlignment
+                                  .start,
+                              children: [
+                                Text(
+                                  'Address',
+                                  style:
+                                  _bodyStyle
+                                      .copyWith(
+                                    color:
+                                    _slate500,
+                                    fontSize:
+                                    10.5,
+                                    fontWeight:
+                                    FontWeight
+                                        .w700,
+                                  ),
+                                ),
+
+                                const SizedBox(
+                                  height: 3,
+                                ),
+
+                                Text(
+                                  item
+                                      .locationName,
+                                  style:
+                                  _bodyStyle
+                                      .copyWith(
+                                    color:
+                                    _primary,
+                                    fontSize:
+                                    11.5,
+                                    height:
+                                    1.35,
+                                    fontWeight:
+                                    FontWeight
+                                        .w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(
+                            width: 8,
+                          ),
+
+                          // ======================================================
+                          // COPY BUTTON
+                          // ======================================================
+
+                          Material(
+                            color:
+                            const Color(
+                              0xFFE0F2FE,
+                            ),
+                            borderRadius:
+                            BorderRadius
+                                .circular(
+                              12,
+                            ),
+                            child: InkWell(
+                              borderRadius:
+                              BorderRadius
+                                  .circular(
+                                12,
+                              ),
+                              onTap: () {
+                                _copyAddress(
+                                  item
+                                      .locationName,
+                                );
+                              },
+                              child:
+                              const Padding(
+                                padding:
+                                EdgeInsets
+                                    .all(
+                                  9,
+                                ),
+                                child: Icon(
+                                  Icons
+                                      .copy_rounded,
+                                  color:
+                                  _primary,
+                                  size: 17,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 26,
+                    ),
+
+                    // ============================================================
+                    // START CHECKPOINT MISSION
+                    // ============================================================
+
                     _SolidPrimaryButton(
                       icon:
                       Icons.navigation_rounded,
-
                       label:
                       _generatingCheckpointMission
                           ? 'GENERATING MISSION...'
                           : 'START CHECKPOINT MISSION',
-
                       onTap: () async {
-                        // Close history detail popup first.
                         Navigator.of(
                           dialogContext,
                         ).pop();
 
-                        // Wait until the dialog finishes closing.
-                        await Future<void>.delayed(
+                        await Future<void>
+                            .delayed(
                           const Duration(
-                            milliseconds: 100,
+                            milliseconds:
+                            100,
                           ),
                         );
 
                         if (!mounted) {
                           return;
                         }
-
-                        // Generate/retrieve the mission for THIS
-                        // exact history destination.
                         await _generateAndOpenCheckpointMissionFromHistory(
                           item,
                         );
@@ -3255,19 +3543,25 @@ class _SubTabButton extends StatelessWidget {
                   width: 21,
                   height: 21,
                   alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
                   decoration: BoxDecoration(
                     color: selected
                         ? Colors.white.withValues(alpha: .10)
                         : const Color(0xFFBAE6FD),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    '$badge',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: selected ? Colors.white : primary,
-                      fontWeight: FontWeight.w900,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '$badge',
+                      maxLines: 1,
+                      softWrap: false,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 9,
+                        height: 1.0,
+                        color: selected ? Colors.white : primary,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                 ),

@@ -17,6 +17,7 @@ import '../../../data/models/puzzle_selection.dart';
 import '../group/chat_list_screen.dart';
 import '../plan/plan_screen.dart';
 import '../group/group_screen.dart';
+import '../profile/achievement_screen.dart';
 
 enum PuzzleCategory { image, scrambled, word, mcq, trueFalse }
 
@@ -736,22 +737,45 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   void _handleAppNavigation(String tab) {
     switch (tab) {
       case 'missions':
-        _replaceWith(const CheckpointScreen());
+        _replaceWith(
+          const CheckpointScreen(),
+        );
         break;
+
       case 'leaderboard':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
+          MaterialPageRoute(
+            builder: (_) =>
+            const LeaderboardScreen(),
+          ),
         );
         break;
+
+    // ==========================================================
+    // ACHIEVEMENTS
+    // ==========================================================
+      case 'achievement':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+            const AchievementScreen(),
+          ),
+        );
+        break;
+
       case 'profile':
         _openProfile();
         break;
+
       default:
         if (Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         } else {
-          _replaceWith(const HomeScreen());
+          _replaceWith(
+            const HomeScreen(),
+          );
         }
     }
   }
@@ -3419,7 +3443,8 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
           _secondaryAction(
             label: 'Continue to Achievement & Community Contribution',
             icon: Icons.workspace_premium,
-            onTap: () => _handleAppNavigation('profile'),
+            onTap: () =>
+                _handleAppNavigation('achievement'),
           ),
         ],
       ),
