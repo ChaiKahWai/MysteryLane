@@ -261,7 +261,7 @@ class _ForgotPasswordScreenState
                         TextInputType.emailAddress,
                         decoration: InputDecoration(
                           hintText:
-                          'explorer@mysterylane.app',
+                          'abc@gmail.com',
                           prefixIcon: const Icon(
                             Icons.email_outlined,
                             color: Color(0xFF94A3B8),

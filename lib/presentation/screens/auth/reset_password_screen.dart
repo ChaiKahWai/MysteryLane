@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/config/supabase_config.dart';
-import 'login_screen.dart';
+import '../auth/login_screen.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -12,537 +12,725 @@ class ResetPasswordScreen extends StatefulWidget {
       _ResetPasswordScreenState();
 }
 
-class _ResetPasswordScreenState
-    extends State<ResetPasswordScreen> {
-  final _formKey = GlobalKey<FormState>();
-
-  final TextEditingController _passwordController =
+class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+  final TextEditingController _newPasswordController =
   TextEditingController();
 
   final TextEditingController _confirmPasswordController =
   TextEditingController();
 
-  bool _isLoading = false;
-
-  bool _showPassword = false;
+  bool _isSaving = false;
+  bool _showNewPassword = false;
   bool _showConfirmPassword = false;
 
-  // ==========================================
-  // PASSWORD REQUIREMENTS
-  // Same as Register Screen
-  // ==========================================
-
-  bool get _hasMinLength =>
-      _passwordController.text.length >= 8;
-
-  bool get _hasUppercase =>
-      RegExp(r'[A-Z]').hasMatch(
-        _passwordController.text,
-      );
-
-  bool get _hasLowercase =>
-      RegExp(r'[a-z]').hasMatch(
-        _passwordController.text,
-      );
-
-  bool get _hasNumber =>
-      RegExp(r'[0-9]').hasMatch(
-        _passwordController.text,
-      );
-
-  bool get _hasSpecialCharacter =>
-      RegExp(r'[^A-Za-z0-9]').hasMatch(
-        _passwordController.text,
-      );
-
-  bool get _isStrongPassword =>
-      _hasMinLength &&
-          _hasUppercase &&
-          _hasLowercase &&
-          _hasNumber &&
-          _hasSpecialCharacter;
+  static const Color primaryBlue = Color(0xFF0284C7);
+  static const Color darkText = Color(0xFF0F172A);
+  static const Color mutedText = Color(0xFF64748B);
 
   @override
   void dispose() {
-    _passwordController.dispose();
+    _newPasswordController.dispose();
     _confirmPasswordController.dispose();
-
     super.dispose();
   }
+
+  // ============================================================
+  // PASSWORD VALIDATION
+  // ============================================================
+
+  bool _isPasswordValid(String password) {
+    final bool hasMinimumLength =
+        password.length >= 8;
+
+    final bool hasUppercase =
+    RegExp(r'[A-Z]').hasMatch(password);
+
+    final bool hasLowercase =
+    RegExp(r'[a-z]').hasMatch(password);
+
+    final bool hasNumber =
+    RegExp(r'[0-9]').hasMatch(password);
+
+    // "_" is EXPLICITLY accepted as a special character.
+    final bool hasSpecialCharacter =
+        password.contains('_') ||
+            RegExp(r'[^A-Za-z0-9\s_]').hasMatch(password);
+
+    return hasMinimumLength &&
+        hasUppercase &&
+        hasLowercase &&
+        hasNumber &&
+        hasSpecialCharacter;
+  }
+
+  // ============================================================
+  // CHECK SAME AS CURRENT PASSWORD
+  // ============================================================
+
+  Future<bool> _isSameAsCurrentPassword(
+      String proposedPassword,
+      ) async {
+    final dynamic result =
+    await SupabaseConfig.client.rpc(
+      'is_current_password',
+      params: {
+        'p_password': proposedPassword,
+      },
+    );
+
+    return result == true;
+  }
+
+  // ============================================================
+  // GO TO LOGIN
+  // ============================================================
+
+  Future<void> _goToLogin() async {
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(),
+      ),
+          (route) => false,
+    );
+  }
+
+  // ============================================================
+  // CANCEL RESET
+  // ============================================================
+
+  Future<void>
+  _cancelResetAndReturnToLogin() async {
+    try {
+      await SupabaseConfig.client.auth.signOut(
+        scope: SignOutScope.local,
+      );
+    } catch (_) {
+      // Continue navigation.
+    }
+
+    if (!mounted) return;
+
+    await _goToLogin();
+  }
+
+  // ============================================================
+  // INVALID / EXPIRED RECOVERY SESSION
+  // ============================================================
+
+  Future<void>
+  _handleUnavailableRecoverySession() async {
+    _showMessage(
+      'This password-reset session is invalid or has expired. '
+          'Please request a new password-reset link.',
+      isError: true,
+    );
+
+    await Future<void>.delayed(
+      const Duration(
+        milliseconds: 1200,
+      ),
+    );
+
+    try {
+      await SupabaseConfig.client.auth.signOut(
+        scope: SignOutScope.local,
+      );
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    await _goToLogin();
+  }
+
+  // ============================================================
+  // RESET PASSWORD
+  // ============================================================
 
   Future<void> _updatePassword() async {
     FocusScope.of(context).unfocus();
 
-    if (!_formKey.currentState!.validate()) {
+    // DO NOT trim password.
+    final String newPassword =
+        _newPasswordController.text;
+
+    final String confirmPassword =
+        _confirmPasswordController.text;
+
+    // ==========================================================
+    // 1. REQUIRED FIELDS
+    // ==========================================================
+
+    if (newPassword.isEmpty ||
+        confirmPassword.isEmpty) {
+      _showMessage(
+        'Please fill both password fields.',
+        isError: true,
+      );
+
+      return;
+    }
+
+    // ==========================================================
+    // 2. PASSWORD STRENGTH
+    // ==========================================================
+
+    if (!_isPasswordValid(newPassword)) {
+      _showMessage(
+        'Password must contain at least 8 characters, '
+            'including at least one uppercase letter, '
+            'one lowercase letter, one number, '
+            'and one special character. '
+            'Underscore (_) is accepted.',
+        isError: true,
+      );
+
+      return;
+    }
+
+    // ==========================================================
+    // 3. CONFIRM PASSWORD
+    // ==========================================================
+
+    if (newPassword != confirmPassword) {
+      _showMessage(
+        'The passwords do not match. Please try again.',
+        isError: true,
+      );
+
+      return;
+    }
+
+    // ==========================================================
+    // 4. CHECK PASSWORD RECOVERY SESSION
+    // ==========================================================
+
+    final Session? recoverySession =
+        SupabaseConfig.client.auth.currentSession;
+
+    final User? recoveryUser =
+        SupabaseConfig.client.auth.currentUser;
+
+    if (recoverySession == null ||
+        recoveryUser == null) {
+      await _handleUnavailableRecoverySession();
       return;
     }
 
     setState(() {
-      _isLoading = true;
+      _isSaving = true;
     });
 
     try {
+      // ========================================================
+      // 5. CHECK SAME AS CURRENT PASSWORD
+      // ========================================================
+
+      final bool sameAsCurrent =
+      await _isSameAsCurrentPassword(
+        newPassword,
+      );
+
+      if (sameAsCurrent) {
+        if (!mounted) return;
+
+        _showMessage(
+          'The new password cannot be the same as your current '
+              'password. Please choose another password.',
+          isError: true,
+        );
+
+        return;
+      }
+
+      // ========================================================
+      // 6. UPDATE PASSWORD
+      // ========================================================
+
+      final UserResponse response =
       await SupabaseConfig.client.auth.updateUser(
         UserAttributes(
-          password: _passwordController.text,
+          password: newPassword,
         ),
       );
 
-      if (!mounted) return;
+      if (response.user == null) {
+        if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Password updated successfully. '
-                  'Please log in with your new password.',
-            ),
-            backgroundColor: Colors.green,
-          ),
+        _showMessage(
+          'Unable to complete the request. Please try again.',
+          isError: true,
         );
 
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-          const LoginScreen(),
+        return;
+      }
+
+      if (!mounted) return;
+
+      // ========================================================
+      // 7. SUCCESS
+      // ========================================================
+
+      _showMessage(
+        'Your password has been reset successfully. '
+            'Please log in using your new password.',
+        isError: false,
+      );
+
+      await Future<void>.delayed(
+        const Duration(
+          milliseconds: 1000,
         ),
-            (route) => false,
+      );
+
+      // ========================================================
+      // 8. END RECOVERY SESSION
+      // ========================================================
+
+      try {
+        await SupabaseConfig.client.auth.signOut(
+          scope: SignOutScope.local,
+        );
+      } catch (_) {}
+
+      if (!mounted) return;
+
+      await _goToLogin();
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+
+      debugPrint(
+        'RESET PASSWORD RPC ERROR: '
+            'message=${error.message}, '
+            'code=${error.code}',
+      );
+
+      _showMessage(
+        'Unable to verify the current password. '
+            'Please make sure the Supabase password-check function '
+            'has been created, then try again.',
+        isError: true,
       );
     } on AuthException catch (error) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              error.message,
-            ),
-            backgroundColor:
-            Colors.redAccent,
-          ),
+      debugPrint(
+        'RESET PASSWORD AUTH ERROR: '
+            'message=${error.message}, '
+            'code=${error.code}',
+      );
+
+      final String errorText =
+      error.message.toLowerCase();
+
+      if ((errorText.contains('password') &&
+          errorText.contains('same')) ||
+          errorText.contains(
+            'different from the old',
+          ) ||
+          errorText.contains(
+            'different from your old',
+          )) {
+        _showMessage(
+          'The new password cannot be the same as your current '
+              'password. Please choose another password.',
+          isError: true,
         );
-    } catch (error) {
+
+        return;
+      }
+
+      // Show real Supabase message.
+      _showMessage(
+        error.message,
+        isError: true,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'RESET PASSWORD ERROR: $error',
+      );
+
+      debugPrintStack(
+        stackTrace: stackTrace,
+      );
+
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              'An unexpected error occurred: $error',
-            ),
-            backgroundColor:
-            Colors.redAccent,
-          ),
-        );
+      _showMessage(
+        'Unable to verify or update the password. '
+            'Please try again.',
+        isError: true,
+      );
     } finally {
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _isSaving = false;
         });
       }
     }
   }
 
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(
+      String message, {
+        bool isError = true,
+      }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+          ),
+          backgroundColor:
+          isError
+              ? Colors.redAccent
+              : Colors.green,
+          behavior:
+          SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  // ============================================================
+  // UI
+  // ============================================================
+
   @override
-  Widget build(BuildContext context) {
-    const primaryBlue =
-    Color(0xFF0284C7);
+  Widget build(
+      BuildContext context,
+      ) {
+    return WillPopScope(
+      onWillPop: () async {
+        await _cancelResetAndReturnToLogin();
 
-    const darkText =
-    Color(0xFF0F172A);
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor:
+        const Color(
+          0xFFF8FAFC,
+        ),
 
-    return Scaffold(
-      backgroundColor:
-      const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          backgroundColor:
+          Colors.white,
+          foregroundColor:
+          primaryBlue,
+          elevation:
+          0,
+          automaticallyImplyLeading:
+          false,
 
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding:
-          const EdgeInsets.all(24),
+          leading:
+          IconButton(
+            onPressed:
+            _isSaving
+                ? null
+                : _cancelResetAndReturnToLogin,
+            icon:
+            const Icon(
+              Icons.arrow_back,
+            ),
+          ),
 
-          child: Column(
-            children: [
-              const SizedBox(
-                height: 40,
-              ),
+          title:
+          const Text(
+            'Reset Password',
+          ),
+        ),
 
-              const Text(
-                'SET NEW PASSWORD',
-                style: TextStyle(
-                  fontSize: 9,
-                  color: primaryBlue,
-                  fontWeight:
-                  FontWeight.bold,
-                  letterSpacing: 1.8,
-                ),
-              ),
+        body: SafeArea(
+          child:
+          SingleChildScrollView(
+            padding:
+            const EdgeInsets.all(
+              22,
+            ),
 
-              const SizedBox(
-                height: 8,
-              ),
+            child:
+            Column(
+              crossAxisAlignment:
+              CrossAxisAlignment.start,
 
-              const Text(
-                'Create New Password',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight:
-                  FontWeight.bold,
-                  fontFamily: 'serif',
-                  color: darkText,
-                ),
-              ),
-
-              const SizedBox(
-                height: 12,
-              ),
-
-              const Text(
-                'Please enter a strong password '
-                    'to secure your account.',
-                textAlign:
-                TextAlign.center,
-                style: TextStyle(
+              children: [
+                const Icon(
+                  Icons.lock_reset_rounded,
+                  size:
+                  52,
                   color:
-                  Color(0xFF64748B),
+                  primaryBlue,
                 ),
-              ),
 
-              const SizedBox(
-                height: 32,
-              ),
+                const SizedBox(
+                  height:
+                  18,
+                ),
 
-              Form(
-                key: _formKey,
+                const Text(
+                  'Create New Password',
+                  style:
+                  TextStyle(
+                    fontSize:
+                    26,
+                    fontWeight:
+                    FontWeight.bold,
+                    fontFamily:
+                    'serif',
+                    color:
+                    darkText,
+                  ),
+                ),
 
-                child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                const SizedBox(
+                  height:
+                  10,
+                ),
 
-                  children: [
-                    const Text(
-                      'NEW PASSWORD',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight:
-                        FontWeight.bold,
-                        color:
-                        Color(
-                          0xFF475569,
-                        ),
-                      ),
+                const Text(
+                  'The new password must contain at least '
+                      '8 characters, including at least one '
+                      'uppercase letter, one lowercase letter, '
+                      'one number, and one special character. '
+                      'Underscore (_) is accepted.',
+                  style:
+                  TextStyle(
+                    fontSize:
+                    13,
+                    color:
+                    mutedText,
+                    height:
+                    1.45,
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  28,
+                ),
+
+                // ==================================================
+                // NEW PASSWORD
+                // ==================================================
+
+                TextField(
+                  controller:
+                  _newPasswordController,
+
+                  obscureText:
+                  !_showNewPassword,
+
+                  enabled:
+                  !_isSaving,
+
+                  enableSuggestions:
+                  false,
+
+                  autocorrect:
+                  false,
+
+                  textInputAction:
+                  TextInputAction.next,
+
+                  decoration:
+                  InputDecoration(
+                    labelText:
+                    'NEW PASSWORD',
+
+                    hintText:
+                    'Enter new password',
+
+                    prefixIcon:
+                    const Icon(
+                      Icons.lock_outline,
                     ),
 
-                    const SizedBox(
-                      height: 8,
-                    ),
-
-                    TextFormField(
-                      controller:
-                      _passwordController,
-
-                      obscureText:
-                      !_showPassword,
-
-                      onChanged: (_) {
-                        setState(() {});
-                      },
-
-                      decoration:
-                      InputDecoration(
-                        hintText:
-                        '••••••••',
-
-                        prefixIcon:
-                        const Icon(
-                          Icons.lock_outline,
-                        ),
-
-                        suffixIcon:
-                        IconButton(
-                          icon: Icon(
-                            _showPassword
-                                ? Icons
-                                .visibility_off
-                                : Icons
-                                .visibility,
-                          ),
-
-                          onPressed: () {
-                            setState(() {
-                              _showPassword =
-                              !_showPassword;
-                            });
+                    suffixIcon:
+                    IconButton(
+                      onPressed:
+                          () {
+                        setState(
+                              () {
+                            _showNewPassword =
+                            !_showNewPassword;
                           },
-                        ),
-
-                        filled: true,
-                        fillColor:
-                        Colors.white,
-
-                        border:
-                        OutlineInputBorder(
-                          borderRadius:
-                          BorderRadius
-                              .circular(
-                            12,
-                          ),
-                        ),
-                      ),
-
-                      validator: (value) {
-                        if (value == null ||
-                            value.isEmpty) {
-                          return 'Password must contain at least 8 characters, '
-                              'including at least one uppercase letter, '
-                              'one lowercase letter, one number, '
-                              'and one special character.';
-                        }
-
-                        if (!_isStrongPassword) {
-                          return 'Password must contain at least 8 characters, '
-                              'including at least one uppercase letter, '
-                              'one lowercase letter, one number, '
-                              'and one special character.';
-                        }
-
-                        return null;
+                        );
                       },
-                    ),
 
-                    const SizedBox(
-                      height: 10,
-                    ),
-
-                    _buildPasswordRule(
-                      'At least 8 characters',
-                      _hasMinLength,
-                    ),
-
-                    _buildPasswordRule(
-                      'At least one uppercase letter',
-                      _hasUppercase,
-                    ),
-
-                    _buildPasswordRule(
-                      'At least one lowercase letter',
-                      _hasLowercase,
-                    ),
-
-                    _buildPasswordRule(
-                      'At least one number',
-                      _hasNumber,
-                    ),
-
-                    _buildPasswordRule(
-                      'At least one special character',
-                      _hasSpecialCharacter,
-                    ),
-
-                    const SizedBox(
-                      height: 20,
-                    ),
-
-                    const Text(
-                      'CONFIRM NEW PASSWORD',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight:
-                        FontWeight.bold,
-                        color:
-                        Color(
-                          0xFF475569,
-                        ),
+                      icon:
+                      Icon(
+                        _showNewPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 8,
+                    border:
+                    OutlineInputBorder(
+                      borderRadius:
+                      BorderRadius.circular(
+                        13,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(
+                  height:
+                  20,
+                ),
+
+                // ==================================================
+                // CONFIRM PASSWORD
+                // ==================================================
+
+                TextField(
+                  controller:
+                  _confirmPasswordController,
+
+                  obscureText:
+                  !_showConfirmPassword,
+
+                  enabled:
+                  !_isSaving,
+
+                  enableSuggestions:
+                  false,
+
+                  autocorrect:
+                  false,
+
+                  textInputAction:
+                  TextInputAction.done,
+
+                  decoration:
+                  InputDecoration(
+                    labelText:
+                    'CONFIRM NEW PASSWORD',
+
+                    hintText:
+                    'Re-enter new password',
+
+                    prefixIcon:
+                    const Icon(
+                      Icons.lock_outline,
                     ),
 
-                    TextFormField(
-                      controller:
-                      _confirmPasswordController,
-
-                      obscureText:
-                      !_showConfirmPassword,
-
-                      decoration:
-                      InputDecoration(
-                        hintText:
-                        '••••••••',
-
-                        prefixIcon:
-                        const Icon(
-                          Icons.lock_outline,
-                        ),
-
-                        suffixIcon:
-                        IconButton(
-                          icon: Icon(
-                            _showConfirmPassword
-                                ? Icons
-                                .visibility_off
-                                : Icons
-                                .visibility,
-                          ),
-
-                          onPressed: () {
-                            setState(() {
-                              _showConfirmPassword =
-                              !_showConfirmPassword;
-                            });
+                    suffixIcon:
+                    IconButton(
+                      onPressed:
+                          () {
+                        setState(
+                              () {
+                            _showConfirmPassword =
+                            !_showConfirmPassword;
                           },
-                        ),
+                        );
+                      },
 
-                        filled: true,
-                        fillColor:
-                        Colors.white,
+                      icon:
+                      Icon(
+                        _showConfirmPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                    ),
 
-                        border:
-                        OutlineInputBorder(
-                          borderRadius:
-                          BorderRadius
-                              .circular(
-                            12,
-                          ),
+                    border:
+                    OutlineInputBorder(
+                      borderRadius:
+                      BorderRadius.circular(
+                        13,
+                      ),
+                    ),
+                  ),
+
+                  onSubmitted:
+                      (_) {
+                    if (!_isSaving) {
+                      _updatePassword();
+                    }
+                  },
+                ),
+
+                const SizedBox(
+                  height:
+                  30,
+                ),
+
+                // ==================================================
+                // RESET PASSWORD BUTTON
+                // ==================================================
+
+                SizedBox(
+                  width:
+                  double.infinity,
+
+                  height:
+                  54,
+
+                  child:
+                  ElevatedButton(
+                    onPressed:
+                    _isSaving
+                        ? null
+                        : _updatePassword,
+
+                    style:
+                    ElevatedButton.styleFrom(
+                      backgroundColor:
+                      primaryBlue,
+
+                      foregroundColor:
+                      Colors.white,
+
+                      shape:
+                      RoundedRectangleBorder(
+                        borderRadius:
+                        BorderRadius.circular(
+                          16,
                         ),
                       ),
-
-                      validator: (value) {
-                        if (value == null ||
-                            value.isEmpty) {
-                          return 'Password and confirmation password do not match.';
-                        }
-
-                        if (value !=
-                            _passwordController
-                                .text) {
-                          return 'Password and confirmation password do not match.';
-                        }
-
-                        return null;
-                      },
                     ),
 
-                    const SizedBox(
-                      height: 32,
-                    ),
-
-                    SizedBox(
+                    child:
+                    _isSaving
+                        ? const SizedBox(
                       width:
-                      double.infinity,
-                      height: 54,
-
+                      22,
+                      height:
+                      22,
                       child:
-                      ElevatedButton(
-                        onPressed:
-                        _isLoading
-                            ? null
-                            : _updatePassword,
-
-                        style:
-                        ElevatedButton
-                            .styleFrom(
-                          backgroundColor:
-                          primaryBlue,
-
-                          foregroundColor:
-                          Colors.white,
-
-                          shape:
-                          RoundedRectangleBorder(
-                            borderRadius:
-                            BorderRadius
-                                .circular(
-                              12,
-                            ),
-                          ),
-                        ),
-
-                        child:
-                        _isLoading
-                            ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child:
-                          CircularProgressIndicator(
-                            strokeWidth:
-                            2,
-                            color:
-                            Colors.white,
-                          ),
-                        )
-                            : const Text(
-                          'UPDATE PASSWORD',
-                          style:
-                          TextStyle(
-                            fontWeight:
-                            FontWeight.bold,
-                          ),
-                        ),
+                      CircularProgressIndicator(
+                        strokeWidth:
+                        2.5,
+                        color:
+                        Colors.white,
+                      ),
+                    )
+                        : const Text(
+                      'RESET PASSWORD',
+                      style:
+                      TextStyle(
+                        fontWeight:
+                        FontWeight.bold,
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
-
-  Widget _buildPasswordRule(
-      String text,
-      bool completed,
-      ) {
-    return Padding(
-      padding:
-      const EdgeInsets.only(
-        bottom: 5,
-      ),
-
-      child: Row(
-        children: [
-          Icon(
-            completed
-                ? Icons.check_circle
-                : Icons
-                .circle_outlined,
-
-            size: 15,
-
-            color:
-            completed
-                ? const Color(
-              0xFF0284C7,
-            )
-                : const Color(
-              0xFFCBD5E1,
-            ),
-          ),
-
-          const SizedBox(
-            width: 8,
-          ),
-
-          Text(
-            text,
-            style:
-            const TextStyle(
-              fontSize: 11,
-              color:
-              Color(
-                0xFF64748B,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
+
+//test
