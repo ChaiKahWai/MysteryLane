@@ -22,7 +22,8 @@ import '../group/group_screen.dart';
 
 class PlanScreen extends StatefulWidget {
   final String? initialGroupId;
-  const PlanScreen({super.key, this.initialGroupId});
+  final String? initialPlanId;
+  const PlanScreen({super.key, this.initialGroupId, this.initialPlanId});
 
   @override
   State<PlanScreen> createState() => _PlanScreenState();
@@ -84,19 +85,24 @@ class _PlanScreenState extends State<PlanScreen> {
   @override
   void initState() {
     super.initState();
-    try {
-      _initController();
-      blindBoxController = BlindBoxController.production();
-      _loadBlindBoxPlaces();
-      if (widget.initialGroupId != null) {
-        _loadGroupPlan(widget.initialGroupId!);
-      } else {
-        load();
-        nearby();
+    blindBoxController = BlindBoxController.production();
+    _loadBlindBoxPlaces();
+
+    // Wait for API initialization before loading plans
+    _initController().then((_) {
+      if (mounted) {
+        if (widget.initialPlanId != null) {
+          _loadPlanById(widget.initialPlanId!);
+        } else if (widget.initialGroupId != null) {
+          _loadGroupPlan(widget.initialGroupId!);
+        } else {
+          load();
+          nearby();
+        }
       }
-    } catch (e) {
-      error = '$e';
-    }
+    }).catchError((e) {
+      setState(() => error = '$e');
+    });
   }
 
   @override
@@ -145,6 +151,35 @@ class _PlanScreenState extends State<PlanScreen> {
       }
     } catch (e) {
       note('Unable to load team plan: $e');
+      setState(() => page = 0);
+    } finally {
+      setState(() => loading = false);
+    }
+  }
+
+  Future<void> _loadPlanById(String planId) async {
+    if (api == null) {
+      note('API not ready.');
+      return;
+    }
+    setState(() => loading = true);
+    try {
+      final allPlans = await api!.loadMyPlans();
+      TripPlan? plan;
+      for (final p in allPlans) {
+        if (p.id == planId) {
+          plan = p;
+          break;
+        }
+      }
+      if (plan == null) {
+        note('Plan not found.');
+        setState(() => page = 0);
+        return;
+      }
+      viewPlan(plan);
+    } catch (e) {
+      note('Unable to load plan: $e');
       setState(() => page = 0);
     } finally {
       setState(() => loading = false);
@@ -756,7 +791,6 @@ class _PlanScreenState extends State<PlanScreen> {
   Future<void> _initController() async {
     try {
       api = await TripPlannerController.createProduction();
-      await load();
     } catch (e) {
       setState(() => error = '$e');
     }

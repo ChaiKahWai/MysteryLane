@@ -843,7 +843,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => PlanScreen(initialGroupId: widget.groupId),
+                        builder: (_) => PlanScreen(initialGroupId: widget.groupId,
+                          initialPlanId: _tripPlan?.id,),
                       ),
                     );
                   },
