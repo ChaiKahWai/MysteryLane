@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- ====================================================== -->
+    <!-- PERMISSIONS -->
+    <!-- ====================================================== -->
+
     <!-- Internet: required for Google Places API and Supabase -->
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -7,14 +11,26 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- ====================================================== -->
+    <!-- APPLICATION -->
+    <!-- ====================================================== -->
+
     <application
         android:label="MYsteryLane"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
+        <!-- ================================================== -->
+        <!-- GOOGLE MAPS API KEY -->
+        <!-- ================================================== -->
+
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyCVm6fQkisMcN9gB59M7iekJapZuRvEYWw" />
+
+        <!-- ================================================== -->
+        <!-- MAIN ACTIVITY -->
+        <!-- ================================================== -->
 
         <activity
             android:name=".MainActivity"
@@ -26,34 +42,54 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
+            <!-- Flutter normal theme -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
 
+            <!-- ================================================== -->
             <!-- NORMAL APP LAUNCH -->
+            <!-- ================================================== -->
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
-                <category
-                    android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- MYsteryLane AUTHENTICATION DEEP LINKS -->
+            <!-- ================================================== -->
+            <!-- REGISTRATION / EMAIL VERIFICATION DEEP LINK -->
+            <!--
+                 Used by:
+                 mysterylane://login-callback
+            -->
+            <!-- ================================================== -->
+
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
-                <category
-                    android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
 
-                <category
-                    android:name="android.intent.category.BROWSABLE" />
-
-                <!-- Registration / Email Verification -->
                 <data
                     android:scheme="mysterylane"
                     android:host="login-callback" />
+            </intent-filter>
 
-                <!-- Forgot Password / Password Recovery -->
+            <!-- ================================================== -->
+            <!-- FORGOT PASSWORD / PASSWORD RECOVERY DEEP LINK -->
+            <!--
+                 Used by:
+                 mysterylane://reset-password-callback
+            -->
+            <!-- ================================================== -->
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
                 <data
                     android:scheme="mysterylane"
                     android:host="reset-password-callback" />
@@ -61,19 +97,25 @@
 
         </activity>
 
+        <!-- ====================================================== -->
+        <!-- FLUTTER EMBEDDING -->
+        <!-- ====================================================== -->
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
 
     </application>
 
+    <!-- ========================================================== -->
+    <!-- QUERIES -->
+    <!-- ========================================================== -->
+
     <queries>
         <intent>
-            <action
-                android:name="android.intent.action.PROCESS_TEXT" />
+            <action android:name="android.intent.action.PROCESS_TEXT" />
 
-            <data
-                android:mimeType="text/plain" />
+            <data android:mimeType="text/plain" />
         </intent>
     </queries>
 

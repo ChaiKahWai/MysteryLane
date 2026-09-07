@@ -1213,6 +1213,92 @@ class _ProfileScreenState extends State<ProfileScreen> {
 // CHANGE PASSWORD
 // ============================================================
 
+  // Calculates the Levenshtein edit distance between two passwords.
+  // The comparison is case-insensitive so that a password that only
+  // changes uppercase/lowercase letters is still treated as the same.
+  int _passwordEditDistance(
+      String first,
+      String second,
+      ) {
+    final String a = first.toLowerCase();
+    final String b = second.toLowerCase();
+
+    if (a.isEmpty) {
+      return b.length;
+    }
+
+    if (b.isEmpty) {
+      return a.length;
+    }
+
+    final List<List<int>> matrix = List.generate(
+      a.length + 1,
+          (_) => List<int>.filled(
+        b.length + 1,
+        0,
+      ),
+    );
+
+    for (int i = 0; i <= a.length; i++) {
+      matrix[i][0] = i;
+    }
+
+    for (int j = 0; j <= b.length; j++) {
+      matrix[0][j] = j;
+    }
+
+    for (int i = 1; i <= a.length; i++) {
+      for (int j = 1; j <= b.length; j++) {
+        final int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+
+        final int deletion = matrix[i - 1][j] + 1;
+        final int insertion = matrix[i][j - 1] + 1;
+        final int replacement = matrix[i - 1][j - 1] + cost;
+
+        int minimum = deletion;
+
+        if (insertion < minimum) {
+          minimum = insertion;
+        }
+
+        if (replacement < minimum) {
+          minimum = replacement;
+        }
+
+        matrix[i][j] = minimum;
+      }
+    }
+
+    return matrix[a.length][b.length];
+  }
+
+  // Returns true when the new password is the same as, or too similar
+  // to, the current password.
+  //
+  // Rejected examples when current password is Chia_2005:
+  // Chia_2005, cHia_2005, CHIA_2005, Chia_2006, Chia_2015,
+  // Chia_3005 and Chia_20055.
+  bool _isPasswordTooSimilar(
+      String currentPassword,
+      String newPassword,
+      ) {
+    final String currentLower = currentPassword.toLowerCase();
+    final String newLower = newPassword.toLowerCase();
+
+    // Same password even when only the letter case is different.
+    if (currentLower == newLower) {
+      return true;
+    }
+
+    // Reject passwords that are only one or two edits away.
+    final int distance = _passwordEditDistance(
+      currentPassword,
+      newPassword,
+    );
+
+    return distance <= 2;
+  }
+
   Future<void> _openChangePassword() async {
     String currentPassword = '';
     String newPassword = '';
@@ -1581,9 +1667,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   onPressed: changing
                                       ? null
                                       : () async {
-                                    final String current = currentPassword.trim();
-                                    final String next = newPassword.trim();
-                                    final String confirm = confirmPassword.trim();
+                                    final String current = currentPassword;
+                                    final String next = newPassword;
+                                    final String confirm = confirmPassword;
 
                                     setDialogState(() {
                                       currentError = null;
@@ -1661,12 +1747,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       }
 
 // [A7e][M14][C13]
-                                      if (next == current) {
+                                      if (_isPasswordTooSimilar(current, next)) {
                                         if (dialogContext.mounted) {
                                           setDialogState(() {
                                             changing = false;
                                             newError =
-                                            'The new password must be different from your current password.';
+                                            'The new password is too similar to your current password. Please choose a more different password.';
                                           });
                                         }
                                         return;
@@ -1775,7 +1861,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Password must contain at least 8 characters, including uppercase, lowercase, number, and special character.',
+                          'Password must contain at least 8 characters, including uppercase, lowercase, number, and special character. The new password must also be sufficiently different from the current password.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Color(0xFF94A3B8),
