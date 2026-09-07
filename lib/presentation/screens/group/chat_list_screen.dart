@@ -119,7 +119,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   String _formatTime(String iso) {
-    final dt = DateTime.parse(iso);
+    final dt = DateTime.parse(iso).toLocal();   
     final now = DateTime.now();
     if (dt.day == now.day && dt.month == now.month && dt.year == now.year) {
       return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
