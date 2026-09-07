@@ -12,6 +12,18 @@ PuzzleQuestion q(int id, {String? text}) => PuzzleQuestion(
   optionD: 'D',
   correctAnswer: 'A',
 );
+
+PuzzleQuestion scrambled(int id, String answer) => PuzzleQuestion(
+  id: 'scrambled-$id',
+  puzzleType: 'Guess the Word',
+  category: 'museum',
+  questionText: 'Scrambled clue $id?',
+  optionA: '',
+  optionB: '',
+  optionC: '',
+  optionD: '',
+  correctAnswer: answer,
+);
 void check(bool value, String message) {
   if (!value) throw StateError(message);
 }
@@ -39,6 +51,22 @@ void main() {
   check(dedup.length == 1, 'Punctuation/case variants must deduplicate');
   final fresh = selectPuzzleRound([...pool, q(18), q(19)], recent, recent);
   check(fresh.every((q) => !recent.contains(q.id)), 'Prefer all ten fresh');
+  final scrambledRound = selectPuzzleRound(
+    [
+      scrambled(1, 'Cendol'),
+      scrambled(2, 'CENDOL'),
+      ...List.generate(10, (i) => scrambled(i + 3, 'Answer $i')),
+    ],
+    {},
+    {},
+  );
+  check(
+    scrambledRound
+            .where((q) => puzzleTextKey(q.correctAnswer) == 'cendol')
+            .length ==
+        1,
+    'A scrambled answer must appear only once in a round',
+  );
   print(
     'Passed: unique rounds, fresh priority, and maximum two recent repeats.',
   );
